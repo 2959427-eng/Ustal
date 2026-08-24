@@ -21,10 +21,24 @@ npm install
 npm run db:generate               # сгенерировать SQL-миграции из схемы Drizzle
 npm run db:migrate                # применить миграции
 npm run db:seed                   # города + demo-пользователи
+npm run db:seed-admin             # dev-администратор (ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD, см. .env.example)
 npm run dev:api                   # http://localhost:4000
 npm run dev:worker
 npm run dev:admin                 # http://localhost:4100
 npm run dev:mobile                # Expo Dev Tools (Android/iOS/эмулятор)
+```
+
+## Сквозная проверка (E2E)
+
+Каждая фаза проверена вручную реальным HTTP-стеком (Fastify `app.inject()`,
+реальная Postgres, реальная очередь pg-boss — без моков фреймворка, `AI_PROVIDER`
+можно оставить `mock`):
+
+```bash
+npx tsx scripts/verify-phase2.ts   # ... по phase7.ts — auth, профиль, заказы, matching, отклики, отзывы
+npx tsx scripts/verify-phase8.ts   # жалобы, блокировки, security-фикс /auth/refresh
+node scripts/verify-admin-e2e.mjs  # headless Chromium (playwright-core): логин админки, мутирующее действие
+                                    # требует npm run build -w @ustal/admin && npm run start -w @ustal/admin (порт 4100)
 ```
 
 ## Проверка перед коммитом
@@ -47,5 +61,10 @@ Timeweb не даёт подключить кастомные расширени
 
 ## Статус
 
-Фаза 1 (Foundation) — в разработке. См. `docs/plan.md` за полным списком фаз
-и `docs/architecture.md` за принятыми архитектурными решениями.
+Фазы 0-8 из `docs/plan.md` реализованы и проверены локально (реальный HTTP +
+реальная Postgres + реальная очередь; для админки — headless-браузер). Вне
+скоупа разработки в песочнице: Android/iOS сборки через EAS (нужен Apple/Google
+developer аккаунт), реальный деплой на Timeweb Cloud (нужен аккаунт), реальный
+ключ OpenAI (`AI_PROVIDER=mock` работает без него для разработки) — см.
+`docs/plan.md` за деталями каждой фазы и `docs/architecture.md` §5 за всеми
+найденными по ходу реализации гэпами/решениями.
