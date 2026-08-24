@@ -55,6 +55,25 @@ describe("computeScore", () => {
     );
     expect(withMissing.score).toBeLessThan(withoutMissing.score);
   });
+
+  it("never returns NaN, even with a NaN component (e.g. pgvector cosine distance of two zero vectors)", () => {
+    const weights = getRuntimeConfig().matching.weights;
+    const result = computeScore(
+      {
+        explicitCapabilityMatch: 1,
+        inferredCapabilityMatch: 0,
+        resourceMatch: 0,
+        semanticSimilarity: NaN,
+        similarCompletedWork: 0,
+        behavioralPreference: 0,
+        missingRequirement: false,
+        negativePreference: false,
+        riskFlag: false,
+      },
+      weights,
+    );
+    expect(Number.isFinite(result.score)).toBe(true);
+  });
 });
 
 describe("classifyMatchType", () => {

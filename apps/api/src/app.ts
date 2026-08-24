@@ -12,6 +12,7 @@ import citiesRoutes from "./routes/cities.js";
 import profileRoutes from "./routes/profile.js";
 import mediaRoutes from "./routes/media.js";
 import ordersRoutes from "./routes/orders.js";
+import feedRoutes from "./routes/feed.js";
 
 export async function buildApp() {
   const env = loadEnv();
@@ -41,7 +42,8 @@ export async function buildApp() {
   await app.register(profileRoutes);
   await app.register(mediaRoutes);
   await app.register(ordersRoutes);
-  // Фазы 4-8 добавляют: /feed, /responses, /reviews,
+  await app.register(feedRoutes);
+  // Фазы 5-8 добавляют: /responses, /reviews,
   // /notifications, /devices, /reports, /blocks, /admin/*
   // — каждая в своём routes/*.ts, зарегистрированном здесь же.
 

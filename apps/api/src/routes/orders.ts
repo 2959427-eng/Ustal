@@ -147,6 +147,12 @@ export default async function ordersRoutes(app: FastifyInstance) {
       .where(eq(schema.orders.id, order.id))
       .returning();
 
+    // Публикация — единственный триггер matching (docs/matching.md §13.5):
+    // заказ должен появиться в лентах кандидатов сразу после публикации, а не
+    // ждать какого-то отдельного шага.
+    const boss = await getBoss();
+    await boss.send(JOB_TYPES.MATCHING_RUN, { orderId: order.id });
+
     return reply.send({ id: updated?.id, status: updated?.status, publishedAt: updated?.publishedAt });
   });
 

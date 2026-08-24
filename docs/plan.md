@@ -56,9 +56,52 @@ typecheck, тесты, сборка, короткий отчёт; переход
   публикация → повторная публикация (409) → отмена; рискованный заказ
   (жёсткое правило) → `moderation_hold` → публикация заблокирована (409), но
   отмена всё равно доступна; голосовой заказ → STT заполняет `source_text`.
-- **Фаза 4 — Matching.** жёсткие фильтры, candidate retrieval (canonical match + resources
-  + pgvector + full-text + история + preferences), scoring без платёжных полей, risk
-  gate, exact/probable/new_opportunity, объяснения, лента, learned preferences.
+- **Фаза 4 — Matching. ✅ Готово и проверено локально.** Публикация заказа
+  (`POST /orders/{id}/publish`) сразу ставит `matching_run` job. Worker
+  (`apps/worker/src/handlers/matching-run.ts`, docs/matching.md §13):
+  13.1 жёсткие фильтры (город — не входит в кандидатский SQL вообще; автор,
+  заблокированные аккаунты — исключены явно; отсутствие обязательного
+  требования — `matchRequirements().missingMandatoryRequirement`, кандидат
+  пропускается, а не штрафуется; регулируемый+неверифицированный — `regulated`
+  ⇒ 0 кандидатов, в норме недостижимо через обычный флоу, т.к. регулируемый
+  заказ не проходит модерацию, но защита на месте и для будущего admin
+  override); 13.2 candidate retrieval — canonical capability/resource match +
+  pgvector semantic similarity (cosine, `profile_embeddings`/`order_embeddings`)
+  + learned_preferences + история завершённых заказов; full-text по
+  `normalized_description` сознательно не реализован в MVP (см. ниже и
+  matching.md) — embedding similarity уже покрывает поиск по смыслу, а
+  canonical-match — точные совпадения, full-text был бы дублирующим
+  усложнением без данных для оценки его пользы на этом этапе; scoring
+  (`packages/matching/src/scoring.ts`, без платёжных полей) → risk gate →
+  классификация exact/probable/new_opportunity
+  (`packages/matching/src/index.ts`, регулируемый+неверифицированный никогда
+  не проходит классификацию — жёсткий инвариант) → человекочитаемое
+  объяснение без технических деталей (`buildExplanation`) →
+  `matching_runs`/`matching_candidates`. `GET /feed` (пагинация, только свои
+  кандидаты, только опубликованные заказы) читает из persisted-кандидатов, а
+  не пересчитывает на лету.
+  Добавлено/исправлено при реализации (см. architecture.md §5 п.12):
+  `minimumRelevanceScore` был некалиброван (35, взято "с потолка" в Фазе 0) —
+  выше максимума одного сильного сигнала (explicit capability match = 30),
+  из-за чего пайплайн не мог выдать ни одного кандидата ни при каких
+  обстоятельствах; пересчитан до 10. pgvector `<=>` между двумя нулевыми
+  векторами возвращает `NaN` (не ошибку) — MockAIProvider отдавал нулевые
+  embedding'и; заменено на детерминированный ненулевой `pseudoEmbedding`,
+  плюс defensive `Number.isFinite`-guards в scoring и matching-run. Mock
+  order extraction всегда возвращал пустые requirement-массивы (matching
+  был непроверяем) — добавлена keyword-эвристика по русским словам.
+  Learned preferences (`GET/DELETE /profile/preferences`, Фаза 2) читаются
+  matching-раном как позитивный/негативный сигнал — сами они пока не
+  создаются автоматически (появится в Фазе 6-7 из истории откликов/оценок).
+  Проверено сквозным сценарием (`scripts/verify-phase4.ts`): автор + 4
+  кандидата (подходит / без профиля / другой город / заблокирован автором)
+  → заказ → extraction (populates `order_requirements`) → публикация →
+  автоматически поставленный `matching_run` job → ровно 1 кандидат в
+  `matching_candidates` (остальные 3 отсеяны каждый своим фильтром) →
+  `GET /feed` показывает заказ только подходящему кандидату, скрыт у
+  остальных и у автора → отмена заказа убирает его из ленты → отдельно:
+  `regulated`-заказ (вставлен напрямую в БД, т.к. через модерацию не может
+  дойти до `published`) → 0 кандидатов.
 - **Фаза 5 — Отклики и обсуждение.** отклики, встречная цена, кандидаты, «Обсудить
   заказ» → contact_unlock, звонок, WhatsApp (условно по `whatsapp_phone`), push.
 - **Фаза 6 — Договорённость и закрытие.** «Договорились» (множественные assignments

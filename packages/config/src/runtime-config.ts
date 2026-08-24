@@ -55,7 +55,15 @@ export function getRuntimeConfig(): RuntimeConfig {
   return {
     matching: {
       weights: DEFAULT_MATCHING_WEIGHTS,
-      minimumRelevanceScore: 35,
+      // Откалибровано в Фазе 4 (было 35 — взято "с потолка" в Фазе 0, ничем не
+      // проверено). При заданных весах максимум ОДНОГО сильного сигнала:
+      // explicit capability match — 30 баллов, inferred/resource match — 15,
+      // semantic similarity — до 15. Порог 35 отсеивал бы вообще всё, включая
+      // безупречное точное совпадение способности без других сигналов — порог
+      // не может быть выше максимума одного компонента. 10 — заведомо выше
+      // "случайного" совпадения (нулевые компоненты дают 0), но пропускает
+      // любой один настоящий структурный сигнал (inferred/resource match).
+      minimumRelevanceScore: 10,
     },
     rateLimits: {
       profileFreeformEditsPerHour: env.PROFILE_FREEFORM_EDITS_PER_HOUR,

@@ -34,27 +34,81 @@ export const mockExtraction: StructuredExtractionProvider = {
     });
   },
   async extractOrder(input, _meta: AiCallMeta) {
+    // Простейший keyword-heuristic, а не имитация NLP: без него extractOrder
+    // всегда возвращал пустые requiredCapabilities/desiredResources, и
+    // matching (Фаза 4) не мог набрать проходной score ни для одного
+    // кандидата ни при каких обстоятельствах — семантически весь пайплайн
+    // matching был непроверяем на MockAIProvider. Фразы — точные nameRu/
+    // synonyms из packages/database/src/seed.ts, чтобы findOntologyNodeForPhrase
+    // их узнал.
+    const lower = input.text.toLowerCase();
+    const requiredCapabilities: string[] = [];
+    const requiredResources: string[] = [];
+    let regulated = false;
+    let requiresQualification = false;
+
+    if (/довез|перевез|доставк/.test(lower)) requiredCapabilities.push("доставка");
+    if (/ремонт|почини|сломал/.test(lower)) requiredCapabilities.push("ремонт");
+    if (/убра|уборк|почист/.test(lower)) requiredCapabilities.push("уборка");
+    if (/собра|сборк/.test(lower)) requiredCapabilities.push("сборка");
+    if (/вожу|води[тл]|за рулём|на машине/.test(lower)) requiredCapabilities.push("вождение");
+    if (/электрич|проводк/.test(lower)) {
+      requiredCapabilities.push("работа с электричеством");
+      regulated = true;
+      requiresQualification = true;
+    }
+    if (/газ(?!ель)/.test(lower)) {
+      requiredCapabilities.push("работа с газом");
+      regulated = true;
+      requiresQualification = true;
+    }
+    if (/газель|грузовик|фургон/.test(lower)) requiredResources.push("использование транспорта");
+    if (requiredCapabilities.length === 0) requiredCapabilities.push("физическая работа");
+
     return wrap({
       normalizedTitle: input.text.slice(0, 60),
       normalizedDescription: input.text,
       actions: [],
-      requiredCapabilities: [],
+      requiredCapabilities,
       desiredCapabilities: [],
-      requiredResources: [],
+      requiredResources,
       desiredResources: [],
       physicalRequirements: [],
       complexity: "low" as const,
-      requiresQualification: false,
-      regulated: false,
+      requiresQualification,
+      regulated,
       estimatedDurationMinutes: null,
       contextualChips: [],
     });
   },
 };
 
+/**
+ * Детерминированный, но НЕ вырожденный вектор: cosine distance между двумя
+ * нулевыми векторами — NaN (pgvector возвращает NaN, не ошибку), что отравляло
+ * бы весь matching score NaN'ом (см. apps/worker/src/handlers/matching-run.ts).
+ * Реальные embedding-модели никогда не возвращают нулевой вектор — мок не
+ * должен создавать баг, которого не бывает у настоящего провайдера. Простой
+ * hash текста как seed даёт: одинаковый текст → одинаковый вектор (полезно
+ * для детерминированных тестов), разный текст → разные (не идентичные)
+ * векторы, ничего похожего на настоящую семантику не изображаем.
+ */
+function pseudoEmbedding(text: string, dimensions: number): number[] {
+  let seed = 0;
+  for (let i = 0; i < text.length; i++) {
+    seed = (seed * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  const vector = new Array(dimensions);
+  for (let i = 0; i < dimensions; i++) {
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    vector[i] = (seed % 2000) / 1000 - 1; // [-1, 1)
+  }
+  return vector;
+}
+
 export const mockEmbedding: EmbeddingProvider = {
   async embed(texts, _meta: AiCallMeta) {
-    return wrap({ vectors: texts.map(() => new Array(1536).fill(0)) });
+    return wrap({ vectors: texts.map((text) => pseudoEmbedding(text, 1536)) });
   },
 };
 

@@ -38,7 +38,11 @@ export function computeScore(input: ScoringInput, weights: MatchingWeights): Sco
   if (input.negativePreference) penalty += weights.negativePreferencePenalty;
   if (input.riskFlag) penalty += weights.riskPenalty;
 
-  const score = Math.max(0, Math.min(100, Math.round((positive - penalty) * 100)));
+  const rawScore = (positive - penalty) * 100;
+  // NaN-защита: один аномальный вход (например NaN semantic similarity —
+  // случается с pgvector cosine distance между нулевыми векторами) не должен
+  // отравлять весь score. Занижаем до 0 вместо NaN.
+  const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, Math.round(rawScore))) : 0;
   return {
     score,
     breakdown: {
