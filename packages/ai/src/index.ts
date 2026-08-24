@@ -4,6 +4,7 @@ import { mockProviders } from "./providers/mock.js";
 import { openAiProviders } from "./providers/openai.js";
 
 export * from "./types.js";
+export * from "./record-run.js";
 export { mockProviders } from "./providers/mock.js";
 export { openAiProviders, moderateWithRules } from "./providers/openai.js";
 

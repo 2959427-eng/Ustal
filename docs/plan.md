@@ -15,9 +15,28 @@ typecheck, тесты, сборка, короткий отчёт; переход
   не Amvera (решение изменено в ходе разработки).
   Проверено вручную: регистрация → дубликат номера (409) → /me → логин →
   refresh-ротация → неверный пароль (401) — всё через реальный HTTP, реальную БД.
-- **Фаза 2 — AI-профиль.** текст/голос, транскрипция, extraction (экономная модель +
-  prompt caching), ontology mapping, резюме, редактирование обычной фразой с rate
-  limiting (N/час, конфигурируемо), embeddings, idempotency key на `POST /profile/inputs`.
+- **Фаза 2 — AI-профиль. ✅ Готово и проверено локально.** `POST /profile/inputs`
+  (текст/голос) с обязательным `Idempotency-Key` (общая таблица `idempotency_keys`,
+  повтор с тем же ключом/телом → тот же ответ, другое тело → 409) и rate limit
+  `PROFILE_FREEFORM_EDITS_PER_HOUR`; `POST /media` (multipart, фото/аудио, provider-
+  абстракция `packages/storage`: local для разработки, s3-заготовка на боевые
+  credentials); worker-пайплайн — STT (голос) → structured extraction
+  (MockAIProvider локально, OpenAI-заготовка на Фазу дальше) → JSON-валидация
+  Zod-схемой → ontology mapping (совпало → `user_capabilities`/`user_resources`,
+  не совпало → `ontology_candidates`, не теряется — остаётся в `summary`) →
+  новая append-only версия `capability_profiles` → embedding (`profile_embeddings`,
+  1536 измерений) → `ai_runs` лог каждого AI-вызова. `GET /profile`,
+  `PATCH /profile` (без AI), `GET/DELETE /profile/preferences`.
+  Добавлено при реализации (см. architecture.md §5 п.10): таблицы `media`,
+  `idempotency_keys`, `profile_embeddings`, пакеты `@ustal/queue` (общий для
+  api/worker) и `@ustal/storage`.
+  Проверено сквозным сценарием (`scripts/verify-phase2.ts`, реальный HTTP +
+  реальная Postgres + реальная очередь pg-boss + MockAIProvider): регистрация →
+  пустой профиль → 400 без Idempotency-Key → 202 с ключом → идемпотентный повтор
+  → 409 на конфликт тела → job из очереди → extraction+ontology+версия+embedding
+  → GET /profile с capabilities → голосовой вход (STT записал transcript) →
+  rate limit на 15-й попытке (429) → PATCH /profile → GET /profile/preferences
+  → POST /media (400 без файла, 201 с файлом) → voice-вход со ссылкой на media.
 - **Фаза 3 — Заказы.** создание с idempotency key, фото, голос, цена, время, AI
   extraction, контекстные чипы, модерация (правила + AI для пограничных случаев),
   публикация.
@@ -37,7 +56,11 @@ typecheck, тесты, сборка, короткий отчёт; переход
 
 ## Что нужно от вас, чтобы двигаться дальше
 
-Код пишется прямо в этой сессии и уже реально запускался (БД, миграции, API,
-регистрация/логин) — но реальный git-репозиторий на GitHub, аккаунт Timeweb
-Cloud и ключ OpenAI нужны, чтобы вынести это за пределы сессии. GitHub PAT вы
-пришлёте позже — до этого момента работа продолжается локально в сессии.
+Репозиторий `2959427-eng/Ustal` подключён — код Фазы 0-1 запушен вручную с
+вашего компьютера (песочница не может пушить в произвольный GitHub-репозиторий
+из-за собственного egress-ограничения). Код Фазы 2 живёт в этой сессии и уже
+реально запускался (БД, миграции, API, очередь, worker) — доставка изменений
+до GitHub идёт тем же способом (архив/бандл + git push с вашей стороны), пока
+не появится альтернативный канал. Для боевого включения остаются нужны:
+аккаунт Timeweb Cloud (хостинг + Object Storage) и ключ OpenAI (сейчас
+`AI_PROVIDER=mock` — работает без него, для разработки этого достаточно).

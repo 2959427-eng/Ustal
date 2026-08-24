@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
@@ -8,6 +9,8 @@ import authenticatePlugin from "./plugins/authenticate.js";
 import authRoutes from "./routes/auth.js";
 import meRoutes from "./routes/me.js";
 import citiesRoutes from "./routes/cities.js";
+import profileRoutes from "./routes/profile.js";
+import mediaRoutes from "./routes/media.js";
 
 export async function buildApp() {
   const env = loadEnv();
@@ -15,6 +18,9 @@ export async function buildApp() {
 
   await app.register(cors, { origin: true });
   await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  await app.register(multipart, {
+    limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  });
 
   await app.register(swagger, {
     openapi: {
@@ -31,8 +37,10 @@ export async function buildApp() {
   await app.register(authRoutes);
   await app.register(meRoutes);
   await app.register(citiesRoutes);
-  // Фазы 2-8 добавляют: /profile, /orders, /feed, /responses, /reviews,
-  // /notifications, /devices, /media, /reports, /blocks, /admin/*
+  await app.register(profileRoutes);
+  await app.register(mediaRoutes);
+  // Фазы 3-8 добавляют: /orders, /feed, /responses, /reviews,
+  // /notifications, /devices, /reports, /blocks, /admin/*
   // — каждая в своём routes/*.ts, зарегистрированном здесь же.
 
   app.setErrorHandler((error, _request, reply) => {

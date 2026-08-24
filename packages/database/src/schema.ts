@@ -88,6 +88,50 @@ export const deviceInstallations = pgTable("device_installations", {
   isActive: boolean("is_active").notNull().default(true),
 });
 
+/**
+ * Добавление #10 (см. docs/architecture.md §5): в исходной модели данных
+ * решение "добавить Object Storage" (п.4) фиксировало инфраструктуру, но не
+ * саму таблицу учёта загруженных файлов — без неё `order_media.media_id` и
+ * `profile_source_inputs.audio_media_id` ссылаются в никуда. Минимальное
+ * решение: единая таблица `media` для фото и аудио, ключ — во внешнем
+ * хранилище (см. packages/storage), не сам файл.
+ */
+export const media = pgTable("media", {
+  id: id(),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 20 }).notNull(), // photo|audio
+  storageProvider: varchar("storage_provider", { length: 20 }).notNull(), // local|s3
+  storageKey: text("storage_key").notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  sizeBytes: integer("size_bytes"),
+  createdAt: createdAt(),
+});
+
+/**
+ * Добавление #10 (продолжение): api.md требует `Idempotency-Key` на
+ * `POST /orders` и `POST /profile/inputs`, но в исходной модели данных не
+ * было таблицы для его хранения. Решение: общая таблица, переиспользуемая
+ * любым endpoint'ом с идемпотентностью (endpoint+key+user уникальны);
+ * повторный вызов с тем же ключом и тем же телом возвращает сохранённый
+ * ответ, с другим телом — 409.
+ */
+export const idempotencyKeys = pgTable(
+  "idempotency_keys",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    endpoint: varchar("endpoint", { length: 100 }).notNull(),
+    key: varchar("key", { length: 200 }).notNull(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    responseStatus: integer("response_status").notNull(),
+    responseBody: jsonb("response_body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    uniqueKey: uniqueIndex("idempotency_keys_unique").on(t.userId, t.endpoint, t.key),
+  }),
+);
+
 // ---------------------------------------------------------------------------
 // AI-профиль возможностей
 // ---------------------------------------------------------------------------
@@ -136,6 +180,22 @@ export const userResources = pgTable("user_resources", {
   attributes: jsonb("attributes").notNull().default({}),
   evidenceType: varchar("evidence_type", { length: 20 }).notNull(),
   confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+});
+
+/**
+ * Добавление #10 (продолжение): `capability_profiles.embedding_model` был
+ * зарезервирован полем, но у профиля не было столбца-вектора (в отличие от
+ * `order_embeddings`), хотя matching.md §13.2 требует semantic similarity и
+ * для профиля тоже. Решение: та же схема, что и у `order_embeddings` —
+ * отдельная таблица 1:1 с версией профиля (профиль append-only, значит и
+ * эмбеддинг версионируется вместе с ним, а не перезаписывается).
+ */
+export const profileEmbeddings = pgTable("profile_embeddings", {
+  capabilityProfileId: uuid("capability_profile_id")
+    .primaryKey()
+    .references(() => capabilityProfiles.id, { onDelete: "cascade" }),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
+  embeddingModel: varchar("embedding_model", { length: 100 }).notNull(),
 });
 
 export const learnedPreferences = pgTable("learned_preferences", {

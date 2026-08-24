@@ -30,6 +30,9 @@ const envSchema = z.object({
   OBJECT_STORAGE_ACCESS_KEY: z.string().optional(),
   OBJECT_STORAGE_SECRET_KEY: z.string().optional(),
 
+  MEDIA_STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
+  MEDIA_LOCAL_DIR: z.string().default("./data/media"),
+
   EXPO_ACCESS_TOKEN: z.string().optional(),
 
   PROFILE_FREEFORM_EDITS_PER_HOUR: z.coerce.number().default(15),

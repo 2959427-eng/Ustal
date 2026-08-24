@@ -18,6 +18,16 @@ ontology mapping → business validation → новая версия профи�
   фактически означает: ни один пользователь не проходит фильтр допуска
   автоматически, регулируемые заказы всегда уходят в manual_review).
 
+## Ontology mapping при извлечении профиля (реализовано в Фазе 2)
+Раздел 11 ТЗ: LLM не создаёт активные узлы онтологии. Поэтому способность/ресурс
+без совпадения в `ontology_nodes` не попадает в `user_capabilities`/`user_resources`
+(структурные поля, используемые ниже для canonical match), а несовпавшая фраза
+уходит в `ontology_candidates` на ручное подтверждение админом (Фаза 8). Это не
+теряет информацию полностью: `capability_profiles.summary` — свободный текст,
+включающий всё, что извлекла модель, и его embedding (`profile_embeddings`)
+по-прежнему участвует в semantic similarity ниже — просто без вклада в
+explicit/inferred capability match, пока админ не смёржит кандидат в онтологию.
+
 ## 13.2 Поиск кандидатов
 Комбинация: совпадение canonical capabilities, совпадение resources, embedding similarity
 (pgvector, `<=>` cosine), полнотекстовый поиск (`ts_vector` по normalized_description),

@@ -1,5 +1,5 @@
 import { loadEnv } from "@ustal/config";
-import { getBoss, JOB_TYPES } from "./queue.js";
+import { getBoss, JOB_TYPES } from "@ustal/queue";
 import { handleProfileExtraction } from "./handlers/profile-extraction.js";
 
 async function main() {

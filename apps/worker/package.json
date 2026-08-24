@@ -18,6 +18,8 @@
     "@ustal/domain": "*",
     "@ustal/matching": "*",
     "@ustal/ontology": "*",
+    "@ustal/queue": "*",
+    "@ustal/storage": "*",
     "@ustal/validation": "*",
     "pg-boss": "^9.0.3",
     "pino": "^9.3.2",

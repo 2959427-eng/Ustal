@@ -1,4 +1,15 @@
 import { z } from "zod";
+import { ruPhoneSchema } from "./auth.js";
+
+/** PATCH /profile — точечные правки без AI (см. docs/api.md). */
+export const updateProfileSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    cityId: z.string().uuid().optional(),
+    whatsappPhone: ruPhoneSchema.nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Нужно указать хотя бы одно поле" });
+export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
 
 export const profileInputSchema = z.object({
   inputType: z.enum(["text", "voice"]),

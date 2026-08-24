@@ -57,6 +57,10 @@ learned_preferences
   id, user_id, ontology_node_id, signal ('positive'|'negative'),
   source ('wants_similar'|'hide_similar'|'response'|'completed_order'),
   weight numeric, created_at, revoked_at nullable
+
+profile_embeddings                      -- добавлено в Фазе 2, см. architecture.md §5 п.10
+  capability_profile_id (FK, PK, 1:1 с версией профиля), embedding vector,
+  embedding_model
 ```
 
 ## Онтология
@@ -155,6 +159,20 @@ audit_logs          id, actor_type ('user'|'admin'|'system'), actor_id nullable,
 background_jobs     -- тонкий слой поверх pg-boss для читаемого статуса/аудита
   id, job_type, status, payload jsonb, attempts, last_error nullable,
   created_at, started_at nullable, finished_at nullable
+```
+
+## Медиа и идемпотентность (добавлено в Фазе 2, см. architecture.md §5 п.10)
+
+```
+media                id, owner_id, kind ('photo'|'audio'), storage_provider ('local'|'s3'),
+                      storage_key, mime_type, size_bytes nullable, created_at
+                      -- order_media.media_id и profile_source_inputs.audio_media_id
+                      -- ссылаются сюда; сам файл — в packages/storage
+
+idempotency_keys     id, user_id, endpoint, key, request_hash, response_status,
+                      response_body jsonb, created_at
+                      -- UNIQUE(user_id, endpoint, key); используется POST /profile/inputs
+                      -- и (в Фазе 3) POST /orders
 ```
 
 ## Ключевые constraints на уровне БД (не только в коде)

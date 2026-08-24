@@ -25,7 +25,10 @@ export interface AiCallResult<T> {
 }
 
 export interface SpeechToTextProvider {
-  transcribe(audio: { mediaId: string; mimeType: string }, meta: AiCallMeta): Promise<AiCallResult<{ transcript: string }>>;
+  transcribe(
+    audio: { filePath: string; mimeType: string },
+    meta: AiCallMeta,
+  ): Promise<AiCallResult<{ transcript: string }>>;
 }
 
 export interface StructuredExtractionProvider {
