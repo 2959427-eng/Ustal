@@ -34,6 +34,7 @@ const envSchema = z.object({
   MEDIA_LOCAL_DIR: z.string().default("./data/media"),
 
   EXPO_ACCESS_TOKEN: z.string().optional(),
+  PUSH_PROVIDER: z.enum(["expo", "mock"]).default("mock"),
 
   PROFILE_FREEFORM_EDITS_PER_HOUR: z.coerce.number().default(15),
   CONTACT_UNLOCKS_PER_HOUR: z.coerce.number().default(30),

@@ -79,14 +79,25 @@ export const userSessions = pgTable("user_sessions", {
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
 
-export const deviceInstallations = pgTable("device_installations", {
-  id: id(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  expoPushToken: text("expo_push_token").notNull(),
-  platform: varchar("platform", { length: 10 }).notNull(), // ios|android
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
-  isActive: boolean("is_active").notNull().default(true),
-});
+export const deviceInstallations = pgTable(
+  "device_installations",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    expoPushToken: text("expo_push_token").notNull(),
+    platform: varchar("platform", { length: 10 }).notNull(), // ios|android
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    isActive: boolean("is_active").notNull().default(true),
+  },
+  (t) => ({
+    // Фаза 5: POST /devices идемпотентен по expo_push_token (upsert, не
+    // дубли, docs/api.md «Уведомления и устройства») — тот же токен может
+    // переехать на другого пользователя (переустановка приложения на другом
+    // аккаунте на том же устройстве), поэтому уникален сам токен, а не пара
+    // (user_id, token).
+    tokenUnique: uniqueIndex("device_installations_token_unique").on(t.expoPushToken),
+  }),
+);
 
 /**
  * Добавление #10 (см. docs/architecture.md §5): в исходной модели данных

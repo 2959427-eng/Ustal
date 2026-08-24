@@ -17,6 +17,7 @@
     "@ustal/database": "*",
     "@ustal/domain": "*",
     "@ustal/matching": "*",
+    "@ustal/notifications": "*",
     "@ustal/ontology": "*",
     "@ustal/queue": "*",
     "@ustal/storage": "*",

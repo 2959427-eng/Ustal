@@ -26,6 +26,8 @@ user_sessions
 device_installations
   id, user_id, expo_push_token, platform ('ios'|'android'),
   last_seen_at, is_active
+  -- expo_push_token UNIQUE (добавлено в Фазе 5, см. architecture.md §5 п.17):
+  --   POST /devices идемпотентен (upsert), нужен на что опереться
 ```
 
 ## AI-профиль возможностей

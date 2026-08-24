@@ -35,6 +35,20 @@ export const createResponseSchema = z.object({
 });
 export type CreateResponseRequest = z.infer<typeof createResponseSchema>;
 
+// PATCH /responses/{id} — та же форма, что и создание, но все поля
+// опциональны (точечная правка одного поля не должна требовать остальные).
+export const updateResponseSchema = z.object({
+  offeredPriceMinor: z.number().int().positive().nullable().optional(),
+  comment: z.string().max(1000).nullable().optional(),
+  availabilityText: z.string().max(300).nullable().optional(),
+});
+export type UpdateResponseRequest = z.infer<typeof updateResponseSchema>;
+
+export const contactUnlockSchema = z.object({
+  responseId: z.string().uuid(),
+});
+export type ContactUnlockRequest = z.infer<typeof contactUnlockSchema>;
+
 export const reviewSchema = z.object({
   toUserId: z.string().uuid(),
   orderId: z.string().uuid(),

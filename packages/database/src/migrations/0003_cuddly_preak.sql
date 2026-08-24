@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "device_installations_token_unique" ON "device_installations" USING btree ("expo_push_token");
