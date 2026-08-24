@@ -49,6 +49,11 @@ export const contactUnlockSchema = z.object({
 });
 export type ContactUnlockRequest = z.infer<typeof contactUnlockSchema>;
 
+export const createAssignmentSchema = z.object({
+  responseId: z.string().uuid(),
+});
+export type CreateAssignmentRequest = z.infer<typeof createAssignmentSchema>;
+
 export const reviewSchema = z.object({
   toUserId: z.string().uuid(),
   orderId: z.string().uuid(),

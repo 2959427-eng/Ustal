@@ -34,7 +34,13 @@ export default async function responsesRoutes(app: FastifyInstance) {
         .code(403)
         .send({ error: { code: "forbidden", message: "Нельзя откликнуться на собственный заказ" } });
     }
-    if (order.status !== "published") {
+    // "published" и "negotiating" оба принимают новые отклики (Фаза 6:
+    // множественные assignments без счётчиков — автор может продолжать
+    // выбирать исполнителей даже после того, как уже выбрал кого-то, а
+    // значит новые желающие тоже должны иметь возможность откликнуться).
+    // Единственное, что блокирует новые отклики — явное закрытие заказа
+    // (orders/{id}/close, см. assignments.ts), а не сам факт первого выбора.
+    if (!["published", "negotiating"].includes(order.status)) {
       return reply.code(409).send({
         error: { code: "invalid_status", message: `Заказ не принимает отклики в статусе "${order.status}"` },
       });
