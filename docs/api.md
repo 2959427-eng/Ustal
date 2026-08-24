@@ -27,9 +27,9 @@
 | Endpoint | Auth | Идемпотентность | Заметки |
 |---|---|---|---|
 | `POST /orders` | access token | **да, `Idempotency-Key`** | создаёт draft, ставит job на extraction |
-| `GET /orders/{id}` | access token, участник или админ | — | |
-| `POST /orders/{id}/publish` | access token, автор | нет | только из `processing`→`published` при `moderation_status = allow` |
-| `POST /orders/{id}/cancel` | access token, автор | нет | допустимые исходные статусы: published, negotiating |
+| `GET /orders/{id}` | access token, автор (чужой заказ — 404, не 403) | — | контекстные чипы — из `order_ai_extractions.raw_result` |
+| `POST /orders/{id}/publish` | access token, автор | нет | из `processing`→`published`, при `moderation_status` ∈ {`allow`, `allow_with_warning`} (см. architecture.md §5 п.11) |
+| `POST /orders/{id}/cancel` | access token, автор | нет | допустимые исходные статусы: `processing`, `moderation_hold`, `published`, `negotiating` (расширено в Фазе 3, см. architecture.md §5 п.11) |
 | `POST /orders/{id}/close` | access token, автор | нет | транзакционно: closed + `responses` без assignment → `not_selected` + уведомления |
 | `GET /orders/{id}/responses` | access token, автор | — | только своему заказу |
 | `POST /orders/{id}/responses` | access token, не автор | нет (но max 1 активный per user проверяется в транзакции) | executor role |

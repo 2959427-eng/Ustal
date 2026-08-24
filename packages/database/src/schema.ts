@@ -260,7 +260,11 @@ export const orders = pgTable("orders", {
   id: id(),
   authorId: uuid("author_id").notNull().references(() => users.id),
   cityId: uuid("city_id").notNull().references(() => cities.id),
-  sourceText: text("source_text").notNull(),
+  // Nullable (изменено в Фазе 3): для голосового заказа на момент INSERT текста
+  // ещё нет — worker заполняет его транскрипцией асинхронно, тот же паттерн,
+  // что и profile_source_inputs.transcript. Пока пусто — заказ в status='processing'
+  // и не виден никому, кроме автора (см. apps/api/src/routes/orders.ts).
+  sourceText: text("source_text"),
   normalizedTitle: text("normalized_title"),
   normalizedDescription: text("normalized_description"),
   priceMinor: integer("price_minor"),
@@ -269,6 +273,9 @@ export const orders = pgTable("orders", {
   status: varchar("status", { length: 20 }).notNull().default("draft"),
   riskLevel: integer("risk_level").notNull().default(0),
   moderationStatus: varchar("moderation_status", { length: 20 }).notNull().default("pending"),
+  // Заменено общей таблицей `idempotency_keys` (добавление #10, Фаза 2) — это
+  // поле больше не заполняется, оставлено nullable, чтобы не ломать уже
+  // накопленные строки при деплое; кандидат на удаление отдельной миграцией.
   idempotencyKey: varchar("idempotency_key", { length: 100 }),
   createdAt: createdAt(),
   publishedAt: timestamp("published_at", { withTimezone: true }),

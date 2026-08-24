@@ -37,9 +37,25 @@ typecheck, тесты, сборка, короткий отчёт; переход
   → GET /profile с capabilities → голосовой вход (STT записал transcript) →
   rate limit на 15-й попытке (429) → PATCH /profile → GET /profile/preferences
   → POST /media (400 без файла, 201 с файлом) → voice-вход со ссылкой на media.
-- **Фаза 3 — Заказы.** создание с idempotency key, фото, голос, цена, время, AI
-  extraction, контекстные чипы, модерация (правила + AI для пограничных случаев),
-  публикация.
+- **Фаза 3 — Заказы. ✅ Готово и проверено локально.** `POST /orders` (текст/голос,
+  фото и голос через `media`/`order_media`, цена, `Idempotency-Key`) — сразу
+  draft→processing, задача в очередь; worker: STT (голос) → AI extraction →
+  Zod-валидация → ontology mapping (`order_requirements`, mandatory/desired) →
+  risk classification (regulated > requiresQualification > обычная) →
+  модерация (сначала детерминированные правила — работают одинаково для
+  любого AI-провайдера, затем `regulated` ⇒ жёсткий manual_review, иначе
+  AI-модерация для пограничных случаев) → `moderation_cases` → embedding.
+  `GET /orders/{id}` (только автору, чужой заказ — 404, не 403), контекстные
+  чипы отдаются из `order_ai_extractions.raw_result`. `POST /orders/{id}/publish`
+  (явное действие автора, требует `moderation_status` allow/allow_with_warning
+  И status=processing) и `POST /orders/{id}/cancel` (в т.ч. из `processing`/
+  `moderation_hold` — расширение машины состояний, см. architecture.md §5 п.11).
+  Проверено сквозным сценарием (`scripts/verify-phase3.ts`): обычный заказ до
+  публикации → идемпотентный повтор → 409 на преждевременную публикацию →
+  job из очереди → extraction+ontology+risk+moderation+embedding →
+  публикация → повторная публикация (409) → отмена; рискованный заказ
+  (жёсткое правило) → `moderation_hold` → публикация заблокирована (409), но
+  отмена всё равно доступна; голосовой заказ → STT заполняет `source_text`.
 - **Фаза 4 — Matching.** жёсткие фильтры, candidate retrieval (canonical match + resources
   + pgvector + full-text + история + preferences), scoring без платёжных полей, risk
   gate, exact/probable/new_opportunity, объяснения, лента, learned preferences.

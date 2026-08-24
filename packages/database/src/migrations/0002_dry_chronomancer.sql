@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ALTER COLUMN "source_text" DROP NOT NULL;

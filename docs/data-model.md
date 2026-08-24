@@ -87,10 +87,14 @@ ontology_candidates
 
 ```
 orders
-  id, author_id, city_id, source_text, normalized_title,
+  id, author_id, city_id, source_text nullable, normalized_title,
   normalized_description, price_minor, currency default 'RUB',
   desired_at nullable, status, risk_level, moderation_status,
   created_at, published_at nullable, closed_at nullable
+  -- source_text nullable с Фазы 3: для голосового заказа заполняется позже
+  --   worker'ом (транскрипция), см. architecture.md §5 п.11
+  -- голосовое вложение — через order_media с media.kind='audio' (position -1),
+  --   без отдельной колонки audio_media_id
   -- НЕТ: required_executors_count, confirmed_executors_count,
   --      price_per_executor, agreed_price, team_size
 
