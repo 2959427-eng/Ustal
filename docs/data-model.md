@@ -125,7 +125,10 @@ contact_unlocks
 order_assignments
   id, order_id, executor_id, response_id,
   status ('selected'|'completed'|'not_completed'|'cancelled'),
-  selected_at, completed_at nullable
+  selected_at, completed_at nullable,
+  not_completed_reason nullable       -- добавлено в Фазе 7, см. architecture.md §5 п.19:
+                                       --   api.md требовал опциональную причину для
+                                       --   not-completed, модели данных не хватало поля
   -- constraint: (order_id, executor_id) уникален — нельзя выбрать дважды
   -- количество записей не ограничено
 ```

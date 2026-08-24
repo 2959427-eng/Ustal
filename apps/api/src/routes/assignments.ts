@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { assertOrderTransition } from "@ustal/domain";
-import { createAssignmentSchema } from "@ustal/validation";
+import { createAssignmentSchema, notCompletedSchema } from "@ustal/validation";
 import { notifyUser } from "../lib/notify.js";
 
 /**
@@ -159,4 +159,99 @@ export default async function assignmentsRoutes(app: FastifyInstance) {
 
     return reply.send({ id: orderId, status: "closed", notSelectedCount: notSelected.length });
   });
+
+  app.post(
+    "/orders/:id/assignments/:assignmentId/complete",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const guard = await loadOwnedSelectedAssignment(db, request.params as { id: string; assignmentId: string }, request.userId);
+      if ("error" in guard) return reply.code(guard.status).send({ error: guard.error });
+
+      await db
+        .update(schema.orderAssignments)
+        .set({ status: "completed", completedAt: new Date() })
+        .where(eq(schema.orderAssignments.id, guard.assignment.id));
+
+      // "Открывает форму оценки на клиенте" (docs/api.md) — сам отзыв
+      // создаётся отдельным вызовом POST /reviews (Фаза 7, routes/reviews.ts),
+      // который проверяет именно наличие completed order_assignment между
+      // парой. Положительный сигнал для matching (совпадение с похожей
+      // выполненной работой, packages/matching/src/scoring.ts
+      // similarCompletedWork) не требует отдельной записи здесь: worker
+      // (apps/worker/src/handlers/matching-run.ts) уже читает
+      // order_assignments.status = 'completed' напрямую при каждом новом
+      // matching_run.
+      await notifyUser(guard.assignment.executorId, "assignment_completed", {
+        orderId: guard.order.id,
+        assignmentId: guard.assignment.id,
+        title: "Заказ отмечен как выполненный",
+        body: guard.order.normalizedTitle
+          ? `«${guard.order.normalizedTitle}» отмечен как выполненный — оставьте отзыв друг о друге`
+          : "Заказ отмечен как выполненный — оставьте отзыв друг о друге",
+      });
+
+      return reply.send({ id: guard.assignment.id, status: "completed" });
+    },
+  );
+
+  app.post(
+    "/orders/:id/assignments/:assignmentId/not-completed",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const body = notCompletedSchema.parse(request.body);
+      const guard = await loadOwnedSelectedAssignment(db, request.params as { id: string; assignmentId: string }, request.userId);
+      if ("error" in guard) return reply.code(guard.status).send({ error: guard.error });
+
+      await db
+        .update(schema.orderAssignments)
+        .set({ status: "not_completed", notCompletedReason: body.reason ?? null })
+        .where(eq(schema.orderAssignments.id, guard.assignment.id));
+
+      // Намеренно НЕ completedAt — семантически это поле «когда выполнено»,
+      // а не «когда закрыт статус». matching не получает позитивный сигнал
+      // (docs/api.md): worker считает только status = 'completed', эта ветка
+      // никогда им не станет.
+      await notifyUser(guard.assignment.executorId, "assignment_not_completed", {
+        orderId: guard.order.id,
+        assignmentId: guard.assignment.id,
+        title: "Заказ отмечен как невыполненный",
+        body: guard.order.normalizedTitle
+          ? `«${guard.order.normalizedTitle}» отмечен как невыполненный`
+          : "Заказ отмечен как невыполненный",
+      });
+
+      return reply.send({ id: guard.assignment.id, status: "not_completed" });
+    },
+  );
+}
+
+/**
+ * Общая проверка для complete/not-completed: назначение существует,
+ * принадлежит указанному заказу, заказ принадлежит вызывающему (автору), и
+ * назначение ещё в статусе `selected` (нельзя завершить уже завершённое или
+ * отменённое назначение повторно/в другую сторону).
+ */
+async function loadOwnedSelectedAssignment(
+  db: ReturnType<typeof getDb>,
+  params: { id: string; assignmentId: string },
+  userId: string,
+): Promise<
+  | { assignment: typeof schema.orderAssignments.$inferSelect; order: typeof schema.orders.$inferSelect }
+  | { status: number; error: { code: string; message: string } }
+> {
+  const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, params.id) });
+  if (!order || order.authorId !== userId) {
+    return { status: 404, error: { code: "not_found", message: "Заказ не найден" } };
+  }
+  const assignment = await db.query.orderAssignments.findFirst({ where: eq(schema.orderAssignments.id, params.assignmentId) });
+  if (!assignment || assignment.orderId !== order.id) {
+    return { status: 404, error: { code: "not_found", message: "Назначение не найдено" } };
+  }
+  if (assignment.status !== "selected") {
+    return {
+      status: 409,
+      error: { code: "invalid_status", message: `Назначение уже в статусе "${assignment.status}" — повторное завершение невозможно` },
+    };
+  }
+  return { assignment, order };
 }

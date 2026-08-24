@@ -16,6 +16,7 @@ import feedRoutes from "./routes/feed.js";
 import responsesRoutes from "./routes/responses.js";
 import contactsRoutes from "./routes/contacts.js";
 import assignmentsRoutes from "./routes/assignments.js";
+import reviewsRoutes from "./routes/reviews.js";
 import myRoutes from "./routes/my.js";
 import notificationsRoutes from "./routes/notifications.js";
 import devicesRoutes from "./routes/devices.js";
@@ -52,13 +53,12 @@ export async function buildApp() {
   await app.register(responsesRoutes);
   await app.register(contactsRoutes);
   await app.register(assignmentsRoutes);
+  await app.register(reviewsRoutes);
   await app.register(myRoutes);
   await app.register(notificationsRoutes);
   await app.register(devicesRoutes);
-  // Фазы 7-8 добавляют: /orders/{id}/assignments/{id}/complete,
-  // /orders/{id}/assignments/{id}/not-completed, /reviews, /reports,
-  // /blocks, /admin/* — каждая в своём routes/*.ts, зарегистрированном
-  // здесь же.
+  // Фаза 8 добавляет: /reports, /blocks, /admin/* — каждая в своём
+  // routes/*.ts, зарегистрированном здесь же.
 
   app.setErrorHandler((error, _request, reply) => {
     if (error.name === "ZodError") {

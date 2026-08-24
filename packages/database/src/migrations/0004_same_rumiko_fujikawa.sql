@@ -1,0 +1,1 @@
+ALTER TABLE "order_assignments" ADD COLUMN "not_completed_reason" text;

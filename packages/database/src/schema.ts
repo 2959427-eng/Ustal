@@ -370,6 +370,11 @@ export const orderAssignments = pgTable(
     status: varchar("status", { length: 20 }).notNull().default("selected"),
     selectedAt: createdAt(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // Фаза 7: api.md для not-completed говорит «опциональная причина», но
+    // исходная модель данных не давала ей места — добавлено минимальное
+    // текстовое поле, см. architecture.md §5. Заполняется только веткой
+    // not-completed; для completed остаётся null.
+    notCompletedReason: text("not_completed_reason"),
   },
   (t) => ({
     // исполнитель не может быть дважды выбран в один заказ
