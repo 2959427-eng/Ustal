@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ustal
+      POSTGRES_PASSWORD: ustal
+      POSTGRES_DB: ustal
+    ports:
+      - "5432:5432"
+    volumes:
+      - ustal_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ustal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://ustal:ustal@db:5432/ustal
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://ustal:ustal@db:5432/ustal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://ustal:ustal@db:5432/ustal
+    ports:
+      - "4100:4100"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  ustal_db_data:

@@ -1,0 +1,29 @@
+{
+  "name": "ustal",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "db:generate": "npm run db:generate -w @ustal/database",
+    "db:migrate": "npm run db:migrate -w @ustal/database",
+    "db:seed": "npm run db:seed -w @ustal/database",
+    "dev:api": "npm run dev -w @ustal/api",
+    "dev:worker": "npm run dev -w @ustal/worker",
+    "dev:admin": "npm run dev -w @ustal/admin",
+    "dev:mobile": "npm run start -w @ustal/mobile"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.45.2",
+    "typescript": "^5.5.4"
+  }
+}

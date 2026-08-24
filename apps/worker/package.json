@@ -1,0 +1,31 @@
+{
+  "name": "@ustal/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo \"(no-op) lint @ustal/worker\"",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@ustal/ai": "*",
+    "@ustal/config": "*",
+    "@ustal/database": "*",
+    "@ustal/domain": "*",
+    "@ustal/matching": "*",
+    "@ustal/ontology": "*",
+    "@ustal/validation": "*",
+    "pg-boss": "^9.0.3",
+    "pino": "^9.3.2",
+    "tsx": "^4.16.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

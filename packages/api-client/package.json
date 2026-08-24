@@ -1,0 +1,15 @@
+{
+  "name": "@ustal/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo \"(no-op) lint @ustal/api-client\""
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

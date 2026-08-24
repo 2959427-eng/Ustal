@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ustal
+          POSTGRES_PASSWORD: ustal
+          POSTGRES_DB: ustal
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ustal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://ustal:ustal@localhost:5432/ustal
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run db:generate
+      - run: npm run db:migrate
+      - run: npm run test
+      - run: npm run build
+
+  docker-images:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [api, worker, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.app }} image
+        run: docker build -f apps/${{ matrix.app }}/Dockerfile -t ustal-${{ matrix.app }}:${{ github.sha }} .
+      # Деплой на Timeweb Cloud App Platform подключается здесь — например,
+      # через twc CLI/API или через автодеплой по git push, который App Platform
+      # настраивает сам при подключении GitHub-репозитория (см. docs/architecture.md).
+      # Требует токена Timeweb Cloud API — добавить как TWC_API_TOKEN в GitHub repo secrets.

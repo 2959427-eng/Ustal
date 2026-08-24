@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "USTAL",
+    "slug": "ustal",
+    "scheme": "ustal",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#FFFFFF"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ru.ustal.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Нужен доступ к микрофону, чтобы вы могли надиктовать описание заказа или профиля вместо набора текста.",
+        "NSCameraUsageDescription": "Нужен доступ к камере, чтобы сфотографировать заказ.",
+        "NSPhotoLibraryUsageDescription": "Нужен доступ к фотографиям, чтобы прикрепить их к заказу."
+      }
+    },
+    "android": {
+      "package": "ru.ustal.app",
+      "permissions": ["RECORD_AUDIO", "CAMERA", "READ_MEDIA_IMAGES", "POST_NOTIFICATIONS"],
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "extra": {
+      "apiBaseUrl": "http://localhost:4000"
+    }
+  }
+}
