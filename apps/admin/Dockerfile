@@ -4,8 +4,10 @@ COPY package.json package-lock.json* ./
 COPY packages ./packages
 COPY apps/admin ./apps/admin
 RUN npm install --no-audit --no-fund --legacy-peer-deps
-# Next.js транспилирует @ustal/database и @ustal/domain из TS-исходников сам
-# (см. transpilePackages в next.config.mjs) — отдельно их собирать не нужно.
+# Next.js транспилирует workspace-пакеты (@ustal/database, @ustal/domain,
+# @ustal/config, @ustal/validation, @ustal/queue) из TS-исходников сам (см.
+# transpilePackages + resolve.extensionAlias в next.config.mjs — Фаза 8,
+# architecture.md §5 п.21) — отдельно их собирать не нужно.
 RUN npm run build -w @ustal/admin
 
 FROM node:20-slim

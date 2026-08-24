@@ -57,15 +57,31 @@ completed `order_assignment` между парой перед записью; UN
 повторной регистрации устройства (upsert, не дубли).
 
 ## Медиа и жалобы
-`POST /media` (фото/аудио → object storage, возвращает `media_id`),
-`POST /reports`, `POST /blocks` — access token.
+`POST /media` (фото/аудио → object storage, возвращает `media_id`).
+`POST /reports` — access token; `targetType` ∈ {`order`, `user`, `response`}, проверка
+существования цели (404, если не найдена), self-report → 400.
+`POST /blocks` — access token; идемпотентно (повторный вызов той же пары
+возвращает существующую запись с 200, а не создаёт дубль/409), self-block → 400.
+`GET /blocks` — список блокировок текущего пользователя. `DELETE /blocks/{id}` —
+только владелец (чужой/несуществующий id → 404).
 
 ## Админка (отдельная авторизация admin_users, не пересекается с users)
-`GET /admin/users`, `GET /admin/orders`, `GET /admin/moderation`,
-`PATCH /admin/moderation/{id}`, `GET /admin/ontology`, `GET /admin/ontology-candidates`,
-`GET /admin/ai-runs`, `GET /admin/ai-costs` — агрегация `ai_runs` по
-`operation_type` (profile extraction / order extraction / moderation / embeddings)
-за период, без отдельной BI-платформы.
+**Архитектурное решение (Фаза 8, architecture.md §5 п.22): у `apps/admin` НЕТ
+REST-контракта `/admin/*` через `apps/api`.** Next.js Server Components и
+Server Actions обращаются к Postgres напрямую через `@ustal/database` — своего
+клиента (мобильного или стороннего) у админки нет, поэтому versioned REST-слой
+между ней и БД не нужен; таблица ниже — не HTTP-эндпоинты, а страницы/actions.
+
+| Страница (`apps/admin/app/(protected)/...`) | Server Action(s) | Что делает |
+|---|---|---|
+| `/` (дашборд) | — | live-счётчики: пользователи, заказы, ожидающая модерация, ожидающие ontology candidates, открытые жалобы |
+| `/users` | `setUserStatusAction` | список (100 последних), блокировка/разблокировка (`users.status`) |
+| `/orders` | — | список заказов со статусами |
+| `/moderation` | `resolveModerationAction(orderId, "allow" \| "warn" \| "reject")` | новая запись в `moderation_cases` (не перезаписывает старую), `reject` переводит заказ в `rejected`; `allow`/`warn` не требуют смены `orders.status` (`moderation_hold → published` уже валидный переход); уведомляет автора |
+| `/ontology-candidates` | `mergeOntologyCandidateAction(candidateId, nodeId)`, `rejectOntologyCandidateAction` | merge добавляет фразу синонимом к существующему узлу (не создаёт новый узел — вне MVP-скоупа), reject помечает `rejected` |
+| `/ai-costs` | — | агрегация `ai_runs` по `operation_type`/provider за 30 дней, без отдельной BI-платформы |
+| `/reports` | `resolveReportAction(reportId, "resolved" \| "dismissed")` | очередь открытых жалоб + read-only список последних блокировок |
+| `/login`, `/` (logout-форма) | `loginAction`, `logoutAction` | argon2-проверка `admin_users`, httpOnly cookie-сессия (`ADMIN_SESSION_SECRET`, 12ч) |
 
 ## Общие правила для каждого endpoint (закреплены в коде и тестах)
 request/response schema (Zod, единый источник для валидации и OpenAPI), явная

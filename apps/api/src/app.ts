@@ -17,6 +17,8 @@ import responsesRoutes from "./routes/responses.js";
 import contactsRoutes from "./routes/contacts.js";
 import assignmentsRoutes from "./routes/assignments.js";
 import reviewsRoutes from "./routes/reviews.js";
+import reportsRoutes from "./routes/reports.js";
+import blocksRoutes from "./routes/blocks.js";
 import myRoutes from "./routes/my.js";
 import notificationsRoutes from "./routes/notifications.js";
 import devicesRoutes from "./routes/devices.js";
@@ -54,11 +56,17 @@ export async function buildApp() {
   await app.register(contactsRoutes);
   await app.register(assignmentsRoutes);
   await app.register(reviewsRoutes);
+  await app.register(reportsRoutes);
+  await app.register(blocksRoutes);
   await app.register(myRoutes);
   await app.register(notificationsRoutes);
   await app.register(devicesRoutes);
-  // Фаза 8 добавляет: /reports, /blocks, /admin/* — каждая в своём
-  // routes/*.ts, зарегистрированном здесь же.
+  // Админка НЕ проходит через этот Fastify-инстанс: apps/admin (Next.js)
+  // обращается к БД напрямую через @ustal/database (server components/
+  // actions), со своей сессионной авторизацией admin_users — так было
+  // заложено уже в Фазе 1 (apps/admin/package.json зависит от
+  // @ustal/database, а не от api-клиента) и подтверждено в Фазе 8. Разделы
+  // /admin/* в docs/api.md описывают операции, а не обязательный REST-слой.
 
   app.setErrorHandler((error, _request, reply) => {
     if (error.name === "ZodError") {

@@ -17,6 +17,7 @@
     "db:generate": "npm run db:generate -w @ustal/database",
     "db:migrate": "npm run db:migrate -w @ustal/database",
     "db:seed": "npm run db:seed -w @ustal/database",
+    "db:seed-admin": "npm run db:seed-admin -w @ustal/database",
     "dev:api": "npm run dev -w @ustal/api",
     "dev:worker": "npm run dev -w @ustal/worker",
     "dev:admin": "npm run dev -w @ustal/admin",

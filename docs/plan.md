@@ -211,9 +211,54 @@ typecheck, тесты, сборка, короткий отчёт; переход
   повторный отзыв той же паре обновляет, а не дублирует → PATCH только
   владельцем → отзыв без завершённой совместной работы / постороннему /
   себе → 403/400.
-- **Фаза 8 — Админка и проверка.** модерация, жалобы, блокировки, ontology
-  candidates, `/admin/ai-costs`, unit/integration/matching-evaluation (25+ кейсов)
-  /E2E тесты, Android/iOS сборки (EAS), деплой по вашей схеме, документация.
+- **Фаза 8 — Админка и проверка. ✅ Backend + админка готовы и проверены
+  локально; EAS-сборки и боевой деплой — вне скоупа песочницы (нужны ваши
+  аккаунты/доступы, см. ниже).**
+  Backend: `POST /reports` (заказ/пользователь/отклик, проверка существования
+  цели, self-report → 400), `POST /blocks` (идемпотентно — повтор возвращает
+  существующую запись с 200, а не дубль/409; self-block → 400; `GET`/`DELETE
+  /blocks/{id}` с проверкой владения). Security-фикс, найденный при
+  проектировании блокировки пользователя (architecture.md §5 п.20):
+  `POST /auth/refresh` теперь проверяет `users.status`, отзывая сессию
+  заблокированного вместо молчаливого продления доступа.
+  Админка (`apps/admin`, Next.js App Router, отдельная авторизация
+  `admin_users`/`ADMIN_SESSION_SECRET`, обращается к БД напрямую через
+  `@ustal/database` — архитектурное решение, зафиксированное в
+  architecture.md §5 п.22, а не REST через `apps/api`): дашборд со счётчиками,
+  список пользователей с блокировкой/разблокировкой, список заказов,
+  модерация (allow/warn/reject поверх `moderation_cases`, уведомление автору),
+  ontology candidates (merge в существующий узел синонимом / reject),
+  `/ai-costs` (агрегация `ai_runs` за 30 дней по типу операции и провайдеру),
+  жалобы и блокировки (resolve/dismiss).
+  matching-evaluation (`packages/matching/src/evaluation.test.ts`, 27
+  сценариев ≥ требуемых 25): полный pure-function пайплайн
+  `matchRequirements → computeScore → classifyMatchType → buildExplanation`
+  на реальных весах из `@ustal/config`, а не только изолированные юнит-тесты
+  формул — покрывает exact/probable/new_opportunity/null-классификацию,
+  regulated+unverified инвариант, штрафы (missing requirement/negative
+  preference/risk) в одиночку и в комбинации, пороговые случаи вплотную к
+  `minimumRelevanceScore`, отсутствие payment-полей на уровне типов.
+  E2E: `scripts/verify-phase8.ts` (backend, Fastify `app.inject()`, тот же
+  паттерн, что и Фазы 2-7) + `scripts/verify-admin-e2e.mjs` (headless
+  Chromium через `playwright-core` — логин админки идёт через React Server
+  Actions "flight"-протокол, не обычный form POST, обычный REST-скрипт
+  здесь неприменим, см. architecture.md §5 п.23; проверяет полный цикл
+  логин → дашборд → все защищённые страницы → реальное мутирующее действие
+  (блокировка пользователя, что действительно меняет `users.status` в БД) →
+  logout). Полная регрессия: `verify-phase2.ts`…`verify-phase7.ts` — всё ещё
+  зелёные после изменений Фазы 8; `npm run typecheck`/`lint`/`test` по всем
+  workspace'ам — чисто.
+  Dockerfile для `apps/api`/`apps/worker`/`apps/admin` и `docker-compose.yml`
+  существовали с Фазы 1 и не требовали изменений (кроме уточняющего
+  комментария в `apps/admin/Dockerfile` про полный список транспилируемых
+  пакетов) — реальную сборку образов в этой сессии проверить не удалось
+  (Docker CLI присутствует, демон недоступен в песочнице), сама структура
+  Dockerfile'ов и команды `npm run build`/`npm run start`, которые они
+  вызывают, проверены напрямую.
+  Вне скоупа песочницы (см. «Что нужно от вас» ниже): Android/iOS сборки
+  через EAS (нужен Apple/Google developer аккаунт), реальный деплой на
+  Timeweb Cloud (нужен аккаунт), реальный ключ OpenAI (`AI_PROVIDER=mock`
+  работает без него для разработки).
 
 ## Что нужно от вас, чтобы двигаться дальше
 

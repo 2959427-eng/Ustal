@@ -90,6 +90,20 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.code(401).send({ error: { code: "invalid_refresh_token", message: "Сессия недействительна" } });
     }
 
+    // Найдено в Фазе 8 (см. architecture.md §5): до блокировки пользователя
+    // /auth/refresh не проверял users.status вообще — заблокированный
+    // администратором аккаунт мог продолжать получать новые access token'ы
+    // через уже выданный refresh, пока сам refresh не истечёт (до
+    // REFRESH_TOKEN_TTL_DAYS, а не до ближайшего логина). Access token
+    // (JWT, ACCESS_TOKEN_TTL_MINUTES) отзыву не подлежит в принципе — это
+    // общее для MVP ограничение (нет denylist'а), refresh — единственная
+    // реальная точка принудительного разрыва сессии.
+    const user = await db.query.users.findFirst({ where: eq(schema.users.id, session.userId) });
+    if (!user || user.status !== "active") {
+      await db.update(schema.userSessions).set({ revokedAt: new Date() }).where(eq(schema.userSessions.id, session.id));
+      return reply.code(401).send({ error: { code: "invalid_refresh_token", message: "Сессия недействительна" } });
+    }
+
     // rotating refresh: старый токен отзывается, выдаётся новый
     await db
       .update(schema.userSessions)

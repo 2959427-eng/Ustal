@@ -184,6 +184,18 @@ idempotency_keys     id, user_id, endpoint, key, request_hash, response_status,
                       -- и (в Фазе 3) POST /orders
 ```
 
+## Админка (в схеме с Фазы 1, задействовано и задокументировано отдельно в Фазе 8 — см. architecture.md §5 п.20/22)
+
+```
+admin_users          id, email UNIQUE, password_hash (argon2id), role ('moderator'
+                      по умолчанию), created_at
+                      -- полностью отдельно от users/user_sessions: своя авторизация
+                      -- (httpOnly signed JWT cookie, ADMIN_SESSION_SECRET), не имеет
+                      -- отношения к мобильной аутентификации пользователей.
+                      -- moderation_cases.resolved_by_admin_id и
+                      -- ontology_candidates.resolved_by_admin_id ссылаются сюда.
+```
+
 ## Ключевые constraints на уровне БД (не только в коде)
 
 - `users.phone` — один номер = максимум один активный аккаунт.
@@ -192,3 +204,5 @@ idempotency_keys     id, user_id, endpoint, key, request_hash, response_status,
 - `order_assignments`: `Договорились` возможно только при наличии `contact_unlock` для той же пары; уникальность (order_id, executor_id).
 - `orders.status = 'closed'` — триггер/проверка блокирует новые `responses`.
 - `reviews`: UNIQUE(from_user_id, to_user_id); INSERT/UPDATE только при наличии `order_assignments.status = 'completed'` между этой парой (в любом направлении ролей).
+- `blocks`: направленная запись (`blocker_id` заблокировал `blocked_id`), не симметричная строка на пару; повторная блокировка той же пары идемпотентна на уровне API (возвращает существующую запись), не создаёт дубль.
+- `admin_users`: `email` UNIQUE; полностью изолирована от `users`/`user_sessions` — компрометация одной таблицы не даёт доступа к другой.

@@ -10,10 +10,12 @@
     "lint": "echo \"(no-op) lint @ustal/database\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
-    "db:seed": "tsx src/seed.ts"
+    "db:seed": "tsx src/seed.ts",
+    "db:seed-admin": "tsx src/seed-admin.ts"
   },
   "dependencies": {
     "@ustal/config": "*",
+    "argon2": "^0.40.3",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.4"
   },
