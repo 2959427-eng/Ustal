@@ -51,7 +51,7 @@ export async function handleProfileExtraction(job: PgBoss.Job<ProfileExtractionJ
     if (!media) throw new Error(`media ${input.audioMediaId} not found`);
 
     const storage = getMediaStorage();
-    const filePath = storage.resolvePath(media.storageKey);
+    const filePath = await storage.resolvePath(media.storageKey);
 
     const sttMeta = { operationType: "profile_stt", traceId: job.id, promptVersion: "v1", schemaVersion: "v1" };
     const sttStarted = new Date();

@@ -7,13 +7,17 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "echo \"(no-op) lint @ustal/ai\""
+    "lint": "echo \"(no-op) lint @ustal/ai\"",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ustal/config": "*",
-    "@ustal/validation": "*"
+    "@ustal/validation": "*",
+    "openai": "^7.5.0",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
   }
 }

@@ -57,7 +57,7 @@ export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobDa
     if (!audio) throw new Error(`order ${order.id}: пустой sourceText без прикреплённого аудио`);
 
     const storage = getMediaStorage();
-    const filePath = storage.resolvePath(audio.storageKey);
+    const filePath = await storage.resolvePath(audio.storageKey);
     const sttMeta = { operationType: "order_stt", traceId: job.id, promptVersion: "v1", schemaVersion: "v1" };
     const sttStarted = new Date();
     const sttResult = await ai.stt.transcribe({ filePath, mimeType: audio.mimeType }, sttMeta);

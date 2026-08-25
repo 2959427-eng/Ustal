@@ -20,7 +20,7 @@ export function createLocalDiskStorage(baseDir: string): MediaStorageProvider {
       await writeFile(fullPath, buffer);
       return { storageKey: key };
     },
-    resolvePath(storageKey: string) {
+    async resolvePath(storageKey: string) {
       return path.join(baseDir, storageKey);
     },
   };

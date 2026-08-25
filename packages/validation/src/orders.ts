@@ -28,6 +28,17 @@ export const orderExtractionResultSchema = z.object({
 });
 export type OrderExtractionResult = z.infer<typeof orderExtractionResultSchema>;
 
+// JSON Schema, которую обязана вернуть ModerationProvider для AI-модерации
+// пограничных случаев (packages/ai/src/providers/openai.ts) — тот же контракт,
+// что и ModerationDecision в packages/ai/src/types.ts (держать значения enum
+// синхронными вручную: у @ustal/ai нет зависимости на @ustal/validation в
+// обратную сторону, а этот enum и так уже мал и стабилен).
+export const moderationDecisionSchema = z.object({
+  decision: z.enum(["allow", "allow_with_warning", "manual_review", "reject"]),
+  reason: z.string(),
+});
+export type ModerationDecisionResult = z.infer<typeof moderationDecisionSchema>;
+
 export const createResponseSchema = z.object({
   offeredPriceMinor: z.number().int().positive().optional(),
   comment: z.string().max(1000).optional(),

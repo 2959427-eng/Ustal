@@ -1,4 +1,5 @@
 import type { AiCallMeta, AiCallResult } from "./types.js";
+import { estimateCostMinor } from "./pricing.js";
 
 /**
  * Строка `ai_runs` (docs/data-model.md) — используется admin `/admin/ai-costs`
@@ -60,9 +61,7 @@ export function buildAiRunRecord(
     error: null,
     tokensInput: result.tokensInput,
     tokensOutput: result.tokensOutput,
-    // TODO: посчитать по RATE_CARD_MINOR_PER_1K_TOKENS (packages/ai/providers/openai.ts),
-    // когда OpenAI-провайдер будет реально подключён.
-    estimatedCostMinor: null,
+    estimatedCostMinor: estimateCostMinor(result.model, result.tokensInput, result.tokensOutput),
     traceId: meta.traceId,
   };
 }

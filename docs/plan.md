@@ -259,6 +259,31 @@ typecheck, тесты, сборка, короткий отчёт; переход
   через EAS (нужен Apple/Google developer аккаунт), реальный деплой на
   Timeweb Cloud (нужен аккаунт), реальный ключ OpenAI (`AI_PROVIDER=mock`
   работает без него для разработки).
+- **Найдено и исправлено после Фазы 8 (при подключении боевого
+  OpenAI-ключа): `packages/ai/src/providers/openai.ts` и
+  `packages/storage/src/providers/s3.ts` были заготовками с Фазы 1-2 —
+  каждый метод бросал `notImplemented()`, и это оставалось незамеченным
+  все 8 фаз, потому что вся проверка шла через `AI_PROVIDER=mock`/
+  `MEDIA_STORAGE_PROVIDER=local`.** Подробности — architecture.md §5 п.24.
+  Кратко: реализованы настоящие вызовы `whisper-1` (STT), `gpt-4o-mini`
+  через Structured Outputs (`response_format: json_schema`, без
+  `strict: true` — несовместимо с `z.record()` в схеме атрибутов ресурса,
+  реальная валидация — `zodSchema.parse()`), `text-embedding-3-small`
+  (эмбеддинги), rule-based + AI-модерация с принудительным
+  `manual_review` для regulated-категорий; и настоящий S3-клиент для
+  Timeweb Cloud Object Storage (`forcePathStyle: true`, `resolvePath()`
+  теперь асинхронный — возвращает presigned GET URL, а не путь на диске;
+  оба места вызова в `apps/worker` обновлены на `await`). Добавлены
+  юнит-тесты (`packages/ai/src/providers/openai.test.ts`,
+  `packages/storage/src/index.test.ts`) — покрывают явную ошибку при
+  отсутствии `OPENAI_API_KEY`/`OBJECT_STORAGE_*`, а не сетевые вызовы.
+  Проверено: `npm run typecheck`/`lint`/`test` по всем workspace'ам чисто,
+  полная регрессия `verify-phase2.ts`…`verify-phase8.ts` зелёная на
+  `AI_PROVIDER=mock`. **Не проверено в этой песочнице (нет боевого ключа):
+  реальные вызовы Structured Outputs/Whisper/embeddings и реальный S3-
+  эндпоинт Timeweb — это должно быть первым, что проверяется вручную
+  после того, как это исправление окажется в вашем окружении** (см.
+  `AI_HANDOFF.md`).
 
 ## Что нужно от вас, чтобы двигаться дальше
 
