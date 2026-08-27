@@ -54,4 +54,13 @@ describe("openai provider — client construction", () => {
     const result = await providers.embedding.embed(["x"], { operationType: "test", traceId: "t1", promptVersion: "v1", schemaVersion: "v1" });
     expect(result.provider).toBe("mock");
   });
+
+  it("OPENAI_BASE_URL валидируется как URL в общем env-контракте", async () => {
+    Object.assign(process.env, BASE_ENV, {
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://ai-relay.ustal.example/v1",
+    });
+    const { loadEnv } = await import("@ustal/config");
+    expect(loadEnv().OPENAI_BASE_URL).toBe("https://ai-relay.ustal.example/v1");
+  });
 });

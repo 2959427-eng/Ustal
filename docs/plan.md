@@ -284,6 +284,11 @@ typecheck, тесты, сборка, короткий отчёт; переход
   эндпоинт Timeweb — это должно быть первым, что проверяется вручную
   после того, как это исправление окажется в вашем окружении** (см.
   `AI_HANDOFF.md`).
+- **Подготовлена инфраструктура Timeweb Cloud для боевого включения AI через
+  EU relay без нового провайдера:** `OPENAI_BASE_URL` добавлен в общий env-
+  контракт и OpenAI SDK, `infra/timeweb/relay` поднимает Caddy relay на
+  отдельном VPS Frankfurt/Amsterdam, `infra/timeweb/app` поднимает основной
+  backend/admin/Postgres за Caddy, инструкция — `docs/timeweb-deploy.md`.
 
 ## Что нужно от вас, чтобы двигаться дальше
 

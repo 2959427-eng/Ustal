@@ -45,7 +45,10 @@ function getClient(): OpenAI {
         "или переключитесь на AI_PROVIDER=mock для разработки.",
     );
   }
-  client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  client = new OpenAI({
+    apiKey: env.OPENAI_API_KEY,
+    baseURL: env.OPENAI_BASE_URL,
+  });
   return client;
 }
 

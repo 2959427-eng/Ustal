@@ -59,6 +59,11 @@ Timeweb не даёт подключить кастомные расширени
 Мобильное приложение собирается отдельно через EAS Build (Android/iOS), не
 через этот хостинг.
 
+Практический VPS-вариант для Timeweb Cloud находится в `infra/timeweb/`:
+`infra/timeweb/app` поднимает API/worker/admin/Postgres за Caddy, а
+`infra/timeweb/relay` поднимает маленький EU relay для OpenAI. Подробный порядок
+настройки DNS, `.env` и запуска — в `docs/timeweb-deploy.md`.
+
 ## Статус
 
 Фазы 0-8 из `docs/plan.md` реализованы и проверены локально (реальный HTTP +

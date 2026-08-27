@@ -60,8 +60,11 @@ describe("getMediaStorage", () => {
     expect(storage.name).toBe("s3");
   });
 
-  it("MEDIA_STORAGE_PROVIDER не задан (по умолчанию local) не требует OBJECT_STORAGE_*", async () => {
-    Object.assign(process.env, BASE_ENV);
+  it("MEDIA_STORAGE_PROVIDER=local не требует OBJECT_STORAGE_*", async () => {
+    Object.assign(process.env, BASE_ENV, { MEDIA_STORAGE_PROVIDER: "local" });
+    delete process.env.OBJECT_STORAGE_ENDPOINT;
+    delete process.env.OBJECT_STORAGE_ACCESS_KEY;
+    delete process.env.OBJECT_STORAGE_SECRET_KEY;
     const { getMediaStorage } = await import("./index.js");
     const storage = getMediaStorage();
     expect(storage.name).toBe("local");

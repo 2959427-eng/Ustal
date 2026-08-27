@@ -1,0 +1,23 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$RELAY_DOMAIN} {
+	encode zstd gzip
+
+	@authorizedOpenai {
+		path /v1/*
+		header Authorization "Bearer {$RELAY_CLIENT_TOKEN}"
+	}
+	handle @authorizedOpenai {
+		reverse_proxy https://api.openai.com {
+			header_up Host api.openai.com
+			header_up Authorization "Bearer {$OPENAI_API_KEY}"
+			header_down -server
+		}
+	}
+
+	respond /health "ok" 200
+	respond /v1/* "unauthorized" 401
+	respond 404
+}

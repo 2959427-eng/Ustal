@@ -20,6 +20,7 @@ const envSchema = z.object({
 
   AI_PROVIDER: z.enum(["openai", "mock"]).default("mock"),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
   AI_MODEL_EXTRACTION: z.string().default("gpt-4o-mini"),
   AI_MODEL_MODERATION: z.string().default("gpt-4o-mini"),
   AI_MODEL_EMBEDDING: z.string().default("text-embedding-3-small"),

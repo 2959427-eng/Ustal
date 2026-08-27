@@ -29,6 +29,7 @@ export interface RuntimeConfig {
   };
   ai: {
     provider: "openai" | "mock";
+    baseUrl?: string;
     models: {
       extraction: string;
       moderation: string;
@@ -71,6 +72,7 @@ export function getRuntimeConfig(): RuntimeConfig {
     },
     ai: {
       provider: env.AI_PROVIDER,
+      baseUrl: env.OPENAI_BASE_URL,
       models: {
         extraction: env.AI_MODEL_EXTRACTION,
         moderation: env.AI_MODEL_MODERATION,
