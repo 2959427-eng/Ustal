@@ -1,6 +1,6 @@
 # USTAL OpenAI relay on Timeweb EU VPS
 
-This service runs separately from the main USTAL backend. Use a small Timeweb Cloud server in Frankfurt or Amsterdam.
+This service runs separately from the main USTAL backend. Use a small Timeweb Cloud server in Frankfurt or Amsterdam. The current deployment target is Amsterdam (`ustal-openai-relay-ams`).
 
 ## Files
 
@@ -23,3 +23,4 @@ Security model:
 - `RELAY_CLIENT_TOKEN` is a long random shared secret.
 - Main USTAL app uses `OPENAI_BASE_URL=https://<relay-domain>/v1` and `OPENAI_API_KEY=<RELAY_CLIENT_TOKEN>`.
 - Caddy rejects `/v1/*` without `Authorization: Bearer <RELAY_CLIENT_TOKEN>` and replaces it with the real OpenAI key upstream.
+- If an authenticated `/v1/models` request returns OpenAI `invalid_api_key`, the relay authentication layer passed and the real key on the relay must be replaced.

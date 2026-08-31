@@ -6,26 +6,24 @@
 
 Создать отдельный Cloud Server:
 
-- location: Frankfurt или Amsterdam;
-- OS: Ubuntu 22.04/24.04 LTS;
-- size: минимальная конфигурация с 2 GB RAM достаточна для Caddy reverse proxy;
+- location: Frankfurt или Amsterdam. Current relay VPS: Amsterdam, `ustal-openai-relay-ams`;
+- OS: Ubuntu 22.04/24.04 LTS; Ubuntu 26.04 also works with `infra/timeweb/scripts/bootstrap-ubuntu.sh`;
+- size: минимальная конфигурация с 1-2 GB RAM достаточна для Caddy reverse proxy;
 - firewall: открыть `80/tcp`, `443/tcp`, `22/tcp`; закрыть всё остальное.
 
 DNS:
 
 - `ai-relay.<domain>` A-record на публичный IP relay-сервера.
+- Temporary smoke checks may use `195-133-40-91.sslip.io`, which resolves to the Amsterdam relay IPv4, until the final domain is chosen.
 
 На сервере:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl git docker.io docker-compose-plugin
-sudo systemctl enable --now docker
-
 git clone <repo-url> ustal-foundation
 cd ustal-foundation/infra/timeweb/relay
 cp .env.example .env
 nano .env
+bash ../scripts/bootstrap-ubuntu.sh
 bash ../scripts/deploy-relay.sh
 bash ../scripts/verify-relay.sh
 ```
@@ -67,6 +65,7 @@ bash ../scripts/verify-app-storage.sh
 
 - Relay не должен публиковать endpoint без TLS. Caddy автоматически получает Let's Encrypt сертификат, если DNS уже указывает на сервер и порты 80/443 открыты.
 - Relay не должен быть открытым публичным прокси: `/v1/*` возвращает `401`, если `Authorization` не равен `Bearer <RELAY_CLIENT_TOKEN>`.
+- A `401 invalid_api_key` response from OpenAI through an authenticated relay request means the relay route is working but the relay still has a placeholder or invalid real OpenAI key.
 - Production runtime валидирует этот инвариант: `NODE_ENV=production` + `AI_PROVIDER=openai` без `OPENAI_BASE_URL` не стартует, чтобы российский backend не ушёл напрямую на `api.openai.com`.
 - Не добавлять Redis/BullMQ для MVP: очередь уже работает через PostgreSQL.
 - Не хранить `.env` в git.
