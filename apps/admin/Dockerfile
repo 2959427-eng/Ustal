@@ -1,6 +1,7 @@
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 WORKDIR /repo
 COPY package.json package-lock.json* ./
+COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/admin ./apps/admin
 RUN npm install --no-audit --no-fund --legacy-peer-deps
@@ -10,7 +11,7 @@ RUN npm install --no-audit --no-fund --legacy-peer-deps
 # architecture.md §5 п.21) — отдельно их собирать не нужно.
 RUN npm run build -w @ustal/admin
 
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /repo
 ENV NODE_ENV=production
 COPY --from=build /repo /repo
