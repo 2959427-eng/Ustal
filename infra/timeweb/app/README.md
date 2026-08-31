@@ -13,11 +13,9 @@ This compose stack runs the main USTAL backend:
 ```bash
 cp .env.example .env
 nano .env
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec api npm run db:migrate
-docker compose -f docker-compose.prod.yml exec api npm run db:seed
-docker compose -f docker-compose.prod.yml exec api npm run db:seed-admin
-curl -fsS https://$API_DOMAIN/health
+bash ../scripts/deploy-app.sh
+bash ../scripts/verify-app-ai-route.sh
+bash ../scripts/verify-app-storage.sh
 ```
 
 When using the EU relay, set:
@@ -29,4 +27,3 @@ OPENAI_API_KEY=<same value as RELAY_CLIENT_TOKEN on the relay VPS>
 ```
 
 Do not put the real OpenAI key on the main app server.
-

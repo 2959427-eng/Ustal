@@ -63,4 +63,14 @@ describe("openai provider — client construction", () => {
     const { loadEnv } = await import("@ustal/config");
     expect(loadEnv().OPENAI_BASE_URL).toBe("https://ai-relay.ustal.example/v1");
   });
+
+  it("production + AI_PROVIDER=openai требует OPENAI_BASE_URL, чтобы не было прямого маршрута к OpenAI", async () => {
+    Object.assign(process.env, BASE_ENV, {
+      NODE_ENV: "production",
+      OPENAI_API_KEY: "relay-client-token",
+    });
+    delete process.env.OPENAI_BASE_URL;
+    const { loadEnv } = await import("@ustal/config");
+    expect(() => loadEnv()).toThrow(/OPENAI_BASE_URL/);
+  });
 });

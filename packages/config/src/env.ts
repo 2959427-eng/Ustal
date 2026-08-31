@@ -7,44 +7,54 @@ import { loadDotenvOnce } from "./dotenv-root.js";
  * секреты не утекали в мобильный bundle и чтобы отсутствующая переменная
  * падала явной ошибкой при старте, а не тихо где-то в середине запроса.
  */
-const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  LOG_LEVEL: z.string().default("info"),
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    LOG_LEVEL: z.string().default("info"),
 
-  DATABASE_URL: z.string().url().or(z.string().startsWith("postgres://")),
+    DATABASE_URL: z.string().url().or(z.string().startsWith("postgres://")),
 
-  JWT_ACCESS_SECRET: z.string().min(16),
-  JWT_REFRESH_SECRET: z.string().min(16),
-  ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().default(15),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(30),
+    JWT_ACCESS_SECRET: z.string().min(16),
+    JWT_REFRESH_SECRET: z.string().min(16),
+    ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().default(15),
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(30),
 
-  AI_PROVIDER: z.enum(["openai", "mock"]).default("mock"),
-  OPENAI_API_KEY: z.string().optional(),
-  OPENAI_BASE_URL: z.string().url().optional(),
-  AI_MODEL_EXTRACTION: z.string().default("gpt-4o-mini"),
-  AI_MODEL_MODERATION: z.string().default("gpt-4o-mini"),
-  AI_MODEL_EMBEDDING: z.string().default("text-embedding-3-small"),
-  AI_MODEL_STT: z.string().default("whisper-1"),
+    AI_PROVIDER: z.enum(["openai", "mock"]).default("mock"),
+    OPENAI_API_KEY: z.string().optional(),
+    OPENAI_BASE_URL: z.string().url().optional(),
+    AI_MODEL_EXTRACTION: z.string().default("gpt-4o-mini"),
+    AI_MODEL_MODERATION: z.string().default("gpt-4o-mini"),
+    AI_MODEL_EMBEDDING: z.string().default("text-embedding-3-small"),
+    AI_MODEL_STT: z.string().default("whisper-1"),
 
-  OBJECT_STORAGE_ENDPOINT: z.string().optional(),
-  OBJECT_STORAGE_BUCKET: z.string().default("ustal-media"),
-  OBJECT_STORAGE_ACCESS_KEY: z.string().optional(),
-  OBJECT_STORAGE_SECRET_KEY: z.string().optional(),
+    OBJECT_STORAGE_ENDPOINT: z.string().optional(),
+    OBJECT_STORAGE_BUCKET: z.string().default("ustal-media"),
+    OBJECT_STORAGE_ACCESS_KEY: z.string().optional(),
+    OBJECT_STORAGE_SECRET_KEY: z.string().optional(),
 
-  MEDIA_STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
-  MEDIA_LOCAL_DIR: z.string().default("./data/media"),
+    MEDIA_STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
+    MEDIA_LOCAL_DIR: z.string().default("./data/media"),
 
-  EXPO_ACCESS_TOKEN: z.string().optional(),
-  PUSH_PROVIDER: z.enum(["expo", "mock"]).default("mock"),
+    EXPO_ACCESS_TOKEN: z.string().optional(),
+    PUSH_PROVIDER: z.enum(["expo", "mock"]).default("mock"),
 
-  PROFILE_FREEFORM_EDITS_PER_HOUR: z.coerce.number().default(15),
-  CONTACT_UNLOCKS_PER_HOUR: z.coerce.number().default(30),
+    PROFILE_FREEFORM_EDITS_PER_HOUR: z.coerce.number().default(15),
+    CONTACT_UNLOCKS_PER_HOUR: z.coerce.number().default(30),
 
-  ADMIN_SESSION_SECRET: z.string().min(16).optional(),
+    ADMIN_SESSION_SECRET: z.string().min(16).optional(),
 
-  API_PORT: z.coerce.number().default(4000),
-  ADMIN_PORT: z.coerce.number().default(4100),
-});
+    API_PORT: z.coerce.number().default(4000),
+    ADMIN_PORT: z.coerce.number().default(4100),
+  })
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV === "production" && env.AI_PROVIDER === "openai" && !env.OPENAI_BASE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["OPENAI_BASE_URL"],
+        message: "required in production when AI_PROVIDER=openai; production OpenAI traffic must go through relay",
+      });
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
