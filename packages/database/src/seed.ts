@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb, getSql, schema } from "./client.js";
 
 const CITIES = [
@@ -268,33 +268,80 @@ const ONTOLOGY_NODES: SeedNode[] = [
 async function main() {
   const db = getDb();
 
-  const insertedCities = await db.insert(schema.cities).values(CITIES).returning();
+  // Идемпотентность: db:seed выполняется при каждом деплое (см.
+  // infra/timeweb/scripts/deploy-app.sh), в т.ч. на уже засеянной боевой
+  // базе. cities.name и ontology_synonyms не имеют уникальных ограничений
+  // (дубликаты не упадут с ошибкой, но тихо продублируются), а
+  // ontology_nodes.canonical_key — имеет (`unique()` в schema.ts), поэтому
+  // без явной фильтрации по уже существующим строкам плоский повторный
+  // insert упал бы с ошибкой уникальности и оставил бы новые узлы
+  // невставленными. Решение — везде вставлять только то, чего ещё нет.
+
+  const existingCityNames = new Set((await db.select({ name: schema.cities.name }).from(schema.cities)).map((c) => c.name));
+  const newCities = CITIES.filter((c) => !existingCityNames.has(c.name));
+  const insertedCities = newCities.length > 0 ? await db.insert(schema.cities).values(newCities).returning() : [];
   // eslint-disable-next-line no-console
-  console.log(`Seeded ${insertedCities.length} cities.`);
+  console.log(`Seeded ${insertedCities.length} cities (${CITIES.length - newCities.length} already existed).`);
 
-  const insertedNodes = await db
-    .insert(schema.ontologyNodes)
-    .values(
-      ONTOLOGY_NODES.map((n) => ({
-        canonicalKey: n.canonicalKey,
-        nameRu: n.nameRu,
-        nodeType: n.nodeType,
-        regulated: n.regulated ?? false,
-        riskLevel: n.riskLevel ?? 0,
-        requiresVerification: n.requiresVerification ?? n.regulated ?? false,
-      })),
-    )
-    .returning();
+  const existingNodes = await db
+    .select({ id: schema.ontologyNodes.id, canonicalKey: schema.ontologyNodes.canonicalKey, nameRu: schema.ontologyNodes.nameRu })
+    .from(schema.ontologyNodes)
+    .where(
+      inArray(
+        schema.ontologyNodes.canonicalKey,
+        ONTOLOGY_NODES.map((n) => n.canonicalKey),
+      ),
+    );
+  const idByKey = new Map(existingNodes.map((n) => [n.canonicalKey, n.id]));
+  const existingNameByKey = new Map(existingNodes.map((n) => [n.canonicalKey, n.nameRu]));
+
+  const newOntologyNodes = ONTOLOGY_NODES.filter((n) => !idByKey.has(n.canonicalKey));
+  if (newOntologyNodes.length > 0) {
+    const insertedNodes = await db
+      .insert(schema.ontologyNodes)
+      .values(
+        newOntologyNodes.map((n) => ({
+          canonicalKey: n.canonicalKey,
+          nameRu: n.nameRu,
+          nodeType: n.nodeType,
+          regulated: n.regulated ?? false,
+          riskLevel: n.riskLevel ?? 0,
+          requiresVerification: n.requiresVerification ?? n.regulated ?? false,
+        })),
+      )
+      .returning();
+    for (const n of insertedNodes) idByKey.set(n.canonicalKey, n.id);
+  }
   // eslint-disable-next-line no-console
-  console.log(`Seeded ${insertedNodes.length} ontology nodes.`);
+  console.log(`Seeded ${newOntologyNodes.length} ontology nodes (${ONTOLOGY_NODES.length - newOntologyNodes.length} already existed).`);
 
-  const idByKey = new Map(insertedNodes.map((n) => [n.canonicalKey, n.id]));
-
-  // Второй проход: проставляем parent_id теперь, когда все id известны —
-  // ontology_nodes.parent_id ссылается на саму же таблицу, единой вставкой
-  // с parentId это сделать нельзя (родитель ещё не имеет id на момент values()).
-  let parentLinksSet = 0;
+  // Реконсиляция подписи (nameRu) уже существующих узлов: вставка выше
+  // затрагивает только НОВЫЕ canonicalKey, поэтому косметическое
+  // переименование уже существующего узла (пример: electrical_work —
+  // «работа с электричеством» → «профессиональная электрика», см. §5 п.27
+  // docs/architecture.md) само по себе на уже засеянной базе не применится.
+  // canonicalKey/regulated/riskLevel сознательно НЕ трогаем здесь: любое их
+  // изменение — это смысловое решение об онтологии, а не опечатка в подписи,
+  // и должно приниматься явно, а не тихим автообновлением при каждом деплое.
+  let nameUpdates = 0;
   for (const n of ONTOLOGY_NODES) {
+    const existingName = existingNameByKey.get(n.canonicalKey);
+    if (existingName === undefined || existingName === n.nameRu) continue;
+    const id = idByKey.get(n.canonicalKey);
+    if (!id) continue;
+    await db.update(schema.ontologyNodes).set({ nameRu: n.nameRu }).where(eq(schema.ontologyNodes.id, id));
+    nameUpdates += 1;
+  }
+  // eslint-disable-next-line no-console
+  console.log(`Updated nameRu label on ${nameUpdates} existing ontology nodes to match current seed data.`);
+
+  // Второй проход: проставляем parent_id только для реально новых узлов —
+  // ontology_nodes.parent_id ссылается на саму же таблицу, единой вставкой
+  // с parentId это сделать нельзя (родитель ещё не имеет id на момент
+  // values()); родитель при этом может быть как новым, так и уже
+  // существовавшим узлом — idByKey выше покрывает оба случая.
+  let parentLinksSet = 0;
+  for (const n of newOntologyNodes) {
     if (!n.parentKey) continue;
     const childId = idByKey.get(n.canonicalKey);
     const parentId = idByKey.get(n.parentKey);
@@ -307,15 +354,25 @@ async function main() {
   // eslint-disable-next-line no-console
   console.log(`Linked ${parentLinksSet} parent relationships.`);
 
+  const existingSynonymRows = await db
+    .select({ ontologyNodeId: schema.ontologySynonyms.ontologyNodeId, phraseRu: schema.ontologySynonyms.phraseRu })
+    .from(schema.ontologySynonyms);
+  const existingSynonymKeys = new Set(existingSynonymRows.map((s) => `${s.ontologyNodeId}::${s.phraseRu.toLowerCase()}`));
+
   const synonymRows = ONTOLOGY_NODES.flatMap((n) => {
     const nodeId = idByKey.get(n.canonicalKey);
     if (!nodeId || !n.synonyms?.length) return [];
-    return n.synonyms.map((phraseRu) => ({ ontologyNodeId: nodeId, phraseRu }));
+    return n.synonyms
+      .filter((phraseRu) => !existingSynonymKeys.has(`${nodeId}::${phraseRu.toLowerCase()}`))
+      .map((phraseRu) => ({ ontologyNodeId: nodeId, phraseRu }));
   });
   if (synonymRows.length > 0) {
     const insertedSynonyms = await db.insert(schema.ontologySynonyms).values(synonymRows).returning();
     // eslint-disable-next-line no-console
     console.log(`Seeded ${insertedSynonyms.length} ontology synonyms.`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`Seeded 0 ontology synonyms (all already existed).`);
   }
 
   // Демо-пользователи и заказы (12-15 профилей, раздел 32 ТЗ) добавляются
