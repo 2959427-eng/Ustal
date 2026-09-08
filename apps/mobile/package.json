@@ -9,7 +9,7 @@
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "echo \"(no-op) @ustal/mobile tests — jest-expo unit tests added in Фаза 8\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -38,6 +38,7 @@
     "@types/react": "^18.3.3",
     "eslint": "^8.57.0",
     "eslint-config-expo": "^7.1.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
   }
 }
