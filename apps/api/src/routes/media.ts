@@ -11,6 +11,32 @@ import { MEDIA_LIMITS, mediaKindSchema } from "@ustal/validation";
  * порядка полей "kind"/"file" в форме, который мобильный клиент не
  * гарантирует.
  */
+
+// Раньше проверялся только заявленный клиентом Content-Type (part.mimetype) —
+// его легко подделать, назвав что угодно "image/jpeg". Полноценный whitelist
+// по сигнатуре реального контента рискует ложно отклонить валидные, но менее
+// типичные варианты кодирования настоящих фото/аудио (а это сломало бы
+// загрузку у реальных пользователей — как раз то, что нельзя допустить).
+// Вместо этого — blacklist по сигнатурам заведомо опасного контента
+// (исполняемые файлы, скрипты, архивы) — ловит попытку загрузить что-то
+// явно не медиа под чужой маской, не рискуя отклонить настоящее фото/аудио.
+const DANGEROUS_SIGNATURES: { bytes: number[]; label: string }[] = [
+  { bytes: [0x4d, 0x5a], label: "исполняемый файл Windows (MZ/PE)" },
+  { bytes: [0x7f, 0x45, 0x4c, 0x46], label: "исполняемый файл Linux (ELF)" },
+  { bytes: [0x23, 0x21], label: "скрипт (#!)" },
+  { bytes: [0x50, 0x4b, 0x03, 0x04], label: "zip/офисный архив (PK)" },
+  { bytes: [0x3c, 0x3f, 0x70, 0x68, 0x70], label: "PHP-скрипт (<?php)" },
+];
+
+function detectDangerousSignature(buffer: Buffer): string | null {
+  for (const sig of DANGEROUS_SIGNATURES) {
+    if (buffer.length >= sig.bytes.length && sig.bytes.every((b, i) => buffer[i] === b)) {
+      return sig.label;
+    }
+  }
+  return null;
+}
+
 export default async function mediaRoutes(app: FastifyInstance) {
   const db = getDb();
   const storage = getMediaStorage();
@@ -51,6 +77,13 @@ export default async function mediaRoutes(app: FastifyInstance) {
       return reply
         .code(400)
         .send({ error: { code: "file_too_large", message: `Файл больше ${limits.maxBytes} байт` } });
+    }
+
+    const dangerous = detectDangerousSignature(fileBuffer);
+    if (dangerous) {
+      return reply.code(400).send({
+        error: { code: "invalid_file_content", message: `Содержимое файла похоже на ${dangerous}, а не на ${kind}` },
+      });
     }
 
     const stored = await storage.upload({ buffer: fileBuffer, ownerId: request.userId, kind, mimeType });
