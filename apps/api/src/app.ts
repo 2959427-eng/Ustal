@@ -27,19 +27,42 @@ export async function buildApp() {
   const env = loadEnv();
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
 
-  await app.register(cors, { origin: true });
+  // CORS в основном имеет смысл для браузерных клиентов (Origin-заголовок) —
+  // мобильное приложение (fetch из React Native) и админка (прямой доступ к
+  // БД, не через это API) под него не подпадают. В production по умолчанию
+  // не открываем API для произвольных браузерных источников; в dev/test
+  // оставляем permissive для локальной разработки и Swagger "Try it out".
+  await app.register(cors, { origin: env.NODE_ENV === "production" ? false : true });
   await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
   await app.register(multipart, {
     limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   });
 
-  await app.register(swagger, {
-    openapi: {
-      openapi: "3.1.0",
-      info: { title: "USTAL API", version: "0.1.0" },
-    },
+  // Базовые security-заголовки без отдельной зависимости (@fastify/helmet
+  // сюда не добавлен — не хотим добавлять новый пакет вслепую без прогона
+  // npm install на машине пользователя). Минимальный набор, который ничего
+  // не ломает: не влияет на существующие ответы, только добавляет заголовки.
+  app.addHook("onSend", async (_request, reply, payload) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "no-referrer");
+    return payload;
   });
-  await app.register(swaggerUi, { routePrefix: "/docs" });
+
+  // Swagger UI отдаёт полную схему API (все роуты, поля) без какой-либо
+  // авторизации — приемлемо для разработки, но не должно торчать в интернет
+  // в production (сейчас admin/api уже за публичным доменом — см.
+  // AI_HANDOFF.md/аудит безопасности). Ничего не ломает: сама схема нигде
+  // в коде не используется программно, только UI на /docs.
+  if (env.NODE_ENV !== "production") {
+    await app.register(swagger, {
+      openapi: {
+        openapi: "3.1.0",
+        info: { title: "USTAL API", version: "0.1.0" },
+      },
+    });
+    await app.register(swaggerUi, { routePrefix: "/docs" });
+  }
 
   await app.register(authenticatePlugin);
 
@@ -74,9 +97,18 @@ export async function buildApp() {
     }
     app.log.error(error);
     const statusCode = error.statusCode ?? 500;
-    return reply
-      .code(statusCode)
-      .send({ error: { code: statusCode === 500 ? "internal_error" : "error", message: error.message } });
+    // На 5xx (в том числе непойманные исключения вроде "Failed to create ...")
+    // не отдаём клиенту error.message — это может утечь внутренние детали
+    // (текст ошибки Postgres, путь к файлу и т.п.). Полный текст всё ещё
+    // уходит в app.log.error(error) выше. Для всех остальных статусов (4xx —
+    // валидация, not_found, rate_limited и т.д.) поведение не изменилось.
+    const isServerError = statusCode >= 500;
+    return reply.code(statusCode).send({
+      error: {
+        code: isServerError ? "internal_error" : "error",
+        message: isServerError ? "Внутренняя ошибка сервера" : error.message,
+      },
+    });
   });
 
   return app;

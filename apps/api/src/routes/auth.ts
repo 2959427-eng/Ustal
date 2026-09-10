@@ -15,7 +15,12 @@ import { generateRefreshToken, hashRefreshToken, signAccessToken } from "../lib/
 export default async function authRoutes(app: FastifyInstance) {
   const db = getDb();
 
-  app.post("/auth/register", async (request, reply) => {
+  // Глобальный rate-limit (app.ts, 100/мин на IP) применяется одинаково ко
+  // всем ручкам — для /auth/login и /auth/register этого мало (подбор
+  // пароля/спам регистраций одним IP), поэтому здесь дополнительно затянуто
+  // per-route через тот же @fastify/rate-limit (не отдельный пакет — просто
+  // route-level override, ничего не ломает для остальных ручек).
+  app.post("/auth/register", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     const body = registerSchema.parse(request.body);
 
     const existing = await db.query.users.findFirst({
@@ -54,7 +59,7 @@ export default async function authRoutes(app: FastifyInstance) {
     return reply.code(201).send({ accessToken, refreshToken: refresh.token, userId: user.id });
   });
 
-  app.post("/auth/login", async (request, reply) => {
+  app.post("/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     const body = loginSchema.parse(request.body);
 
     const user = await db.query.users.findFirst({
