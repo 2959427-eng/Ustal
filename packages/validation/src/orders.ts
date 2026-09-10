@@ -11,6 +11,16 @@ export const createOrderSchema = z.object({
 });
 export type CreateOrderRequest = z.infer<typeof createOrderSchema>;
 
+/**
+ * Пауза «Проверка транскрипции» (экраны 9/11, claude/pipeline-split-design.md):
+ * PATCH /orders/{id}/transcript — правка распознанного текста ДО
+ * подтверждения (POST /orders/{id}/confirm-transcript).
+ */
+export const editOrderTranscriptSchema = z.object({
+  transcriptCorrected: z.string().min(1).max(4000),
+});
+export type EditOrderTranscriptRequest = z.infer<typeof editOrderTranscriptSchema>;
+
 export const orderExtractionResultSchema = z.object({
   normalizedTitle: z.string(),
   normalizedDescription: z.string(),

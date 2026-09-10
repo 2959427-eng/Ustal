@@ -1,6 +1,8 @@
 import { loadEnv } from "@ustal/config";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
+import { handleProfileTranscribe } from "./handlers/profile-transcribe.js";
 import { handleProfileExtraction } from "./handlers/profile-extraction.js";
+import { handleOrderTranscribe } from "./handlers/order-transcribe.js";
 import { handleOrderExtraction } from "./handlers/order-extraction.js";
 import { handleMatchingRun } from "./handlers/matching-run.js";
 import { handleNotificationDispatch } from "./handlers/notification-dispatch.js";
@@ -9,7 +11,9 @@ async function main() {
   loadEnv();
   const boss = await getBoss();
 
+  await boss.work(JOB_TYPES.PROFILE_TRANSCRIBE, handleProfileTranscribe);
   await boss.work(JOB_TYPES.PROFILE_EXTRACTION, handleProfileExtraction);
+  await boss.work(JOB_TYPES.ORDER_TRANSCRIBE, handleOrderTranscribe);
   await boss.work(JOB_TYPES.ORDER_EXTRACTION, handleOrderExtraction);
   await boss.work(JOB_TYPES.MATCHING_RUN, handleMatchingRun);
   await boss.work(JOB_TYPES.NOTIFICATION_DISPATCH, handleNotificationDispatch);

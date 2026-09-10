@@ -10,6 +10,12 @@ import { loadEnv } from "@ustal/config";
  * тоже стал ставить задачи (Фаза 2, POST /profile/inputs).
  */
 export const JOB_TYPES = {
+  // Пауза «Проверка транскрипции» (claude/pipeline-split-design.md): STT
+  // выделен в отдельный job от extraction — voice-ввод сначала уходит сюда,
+  // extraction ставится в очередь только явным подтверждением клиента
+  // (POST /profile/inputs/{id}/confirm, POST /orders/{id}/confirm-transcript).
+  PROFILE_TRANSCRIBE: "profile_transcribe",
+  ORDER_TRANSCRIBE: "order_transcribe",
   PROFILE_EXTRACTION: "profile_extraction",
   ORDER_EXTRACTION: "order_extraction",
   MODERATION: "moderation",

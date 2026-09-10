@@ -1,10 +1,9 @@
 import type PgBoss from "pg-boss";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
 import { getRuntimeConfig } from "@ustal/config";
 import { getDb, schema } from "@ustal/database";
 import { createOntologyCandidate, findOntologyNodeForPhrase } from "@ustal/ontology";
-import { getMediaStorage } from "@ustal/storage";
 import { capabilityExtractionResultSchema } from "@ustal/validation";
 
 export interface ProfileExtractionJobData {
@@ -30,6 +29,17 @@ type ResourceInsert = Omit<typeof schema.userResources.$inferInsert, "capability
  *
  * capability_profiles append-only (docs/data-model.md): каждый вызов создаёт
  * новую версию, старая не перезаписывается.
+ *
+ * Пауза «Проверка транскрипции» (claude/pipeline-split-design.md): STT для
+ * voice-ввода больше не делается здесь — этот job теперь ставится в очередь
+ * только после явного подтверждения (POST /profile/inputs/{id}/confirm,
+ * status='confirmed'), STT — отдельный job (profile-transcribe.ts).
+ *
+ * Пауза «Подтверждение изменений» (экран 10, claude/pipeline-split-design.md):
+ * новая версия создаётся со status='draft', а не сразу «текущей» —
+ * пользователь явно применяет её (POST /profile/draft/{id}/apply) или
+ * отклоняет (POST /profile/draft/{id}/discard). `GET /profile` отдаёт только
+ * status='applied'.
  */
 export async function handleProfileExtraction(job: PgBoss.Job<ProfileExtractionJobData>) {
   const db = getDb();
@@ -41,35 +51,14 @@ export async function handleProfileExtraction(job: PgBoss.Job<ProfileExtractionJ
   });
   if (!input) throw new Error(`profile_source_inputs ${job.data.sourceInputId} not found`);
 
-  let transcript = input.transcript;
-
-  if (input.inputType === "voice" && !transcript) {
-    if (!input.audioMediaId) {
-      throw new Error(`profile_source_inputs ${input.id}: voice input без audioMediaId`);
-    }
-    const media = await db.query.media.findFirst({ where: eq(schema.media.id, input.audioMediaId) });
-    if (!media) throw new Error(`media ${input.audioMediaId} not found`);
-
-    const storage = getMediaStorage();
-    const filePath = await storage.resolvePath(media.storageKey);
-
-    const sttMeta = { operationType: "profile_stt", traceId: job.id, promptVersion: "v1", schemaVersion: "v1" };
-    const sttStarted = new Date();
-    const sttResult = await ai.stt.transcribe({ filePath, mimeType: media.mimeType }, sttMeta);
-    await db.insert(schema.aiRuns).values(buildAiRunRecord(sttMeta, sttStarted, { result: sttResult }));
-
-    transcript = sttResult.data.transcript;
-    await db
-      .update(schema.profileSourceInputs)
-      .set({ transcript })
-      .where(eq(schema.profileSourceInputs.id, input.id));
-  }
-
-  const text = input.transcriptCorrected ?? transcript ?? input.rawText;
+  const text = input.transcriptCorrected ?? input.transcript ?? input.rawText;
   if (!text) throw new Error(`profile_source_inputs ${input.id}: нет текста для extraction`);
 
+  // Текущий («живой») профиль — applied, не draft: previousProfileSummary для
+  // AI и база для диффа в GET /profile/draft должны быть тем, что пользователь
+  // сейчас реально видит, а не незакоммиченным черновиком другого запуска.
   const previousProfile = await db.query.capabilityProfiles.findFirst({
-    where: eq(schema.capabilityProfiles.userId, job.data.userId),
+    where: and(eq(schema.capabilityProfiles.userId, job.data.userId), eq(schema.capabilityProfiles.status, "applied")),
     orderBy: desc(schema.capabilityProfiles.profileVersion),
   });
 
@@ -90,7 +79,16 @@ export async function handleProfileExtraction(job: PgBoss.Job<ProfileExtractionJ
   // проверяем это явно, а не доверяем типам: ответ LLM мог не пройти
   // structured-outputs валидацию на стороне провайдера.
   const extracted = capabilityExtractionResultSchema.parse(extractionResult.data);
-  const newVersion = (previousProfile?.profileVersion ?? 0) + 1;
+
+  // Номер версии — по максимуму СРЕДИ ВСЕХ строк пользователя (applied +
+  // draft + discarded), не только applied: если пользователь отправил новую
+  // правку, не решив судьбу предыдущего черновика (rate limit это разрешает,
+  // до 15/час), два draft'а не должны получить одинаковый profileVersion.
+  const latestAny = await db.query.capabilityProfiles.findFirst({
+    where: eq(schema.capabilityProfiles.userId, job.data.userId),
+    orderBy: desc(schema.capabilityProfiles.profileVersion),
+  });
+  const newVersion = (latestAny?.profileVersion ?? 0) + 1;
 
   const capabilityRows: CapabilityInsert[] = [];
   for (const capability of extracted.capabilities) {
@@ -133,6 +131,7 @@ export async function handleProfileExtraction(job: PgBoss.Job<ProfileExtractionJ
       profileVersion: newVersion,
       extractionVersion: "v1",
       embeddingModel: config.ai.models.embedding,
+      status: "draft",
     })
     .returning();
   if (!newProfile) throw new Error("Failed to create capability_profiles row");

@@ -1,11 +1,10 @@
 import type PgBoss from "pg-boss";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders, moderateWithRules } from "@ustal/ai";
 import { getRuntimeConfig } from "@ustal/config";
 import { getDb, schema } from "@ustal/database";
 import { assertOrderTransition } from "@ustal/domain";
 import { createOntologyCandidate, findOntologyNodeForPhrase } from "@ustal/ontology";
-import { getMediaStorage } from "@ustal/storage";
 import { orderExtractionResultSchema } from "@ustal/validation";
 
 export interface OrderExtractionJobData {
@@ -33,6 +32,12 @@ const REQUIREMENT_TYPES = {
  * помечен моделью как `regulated` — жёстко manual_review (в MVP нет
  * верификации, поэтому ни один регулируемый заказ не публикуется
  * автоматически), и только для оставшихся пограничных случаев — AI-модерация.
+ *
+ * Пауза «Проверка транскрипции» (claude/pipeline-split-design.md): STT для
+ * voice-заказа больше не делается здесь — этот job ставится в очередь
+ * только после подтверждения транскрипта (POST /orders/{id}/confirm-transcript),
+ * `sourceText` к этому моменту уже заполнен. STT — отдельный job
+ * (order-transcribe.ts).
  */
 export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobData>) {
   const db = getDb();
@@ -42,29 +47,14 @@ export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobDa
   const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, job.data.orderId) });
   if (!order) throw new Error(`order ${job.data.orderId} not found`);
 
-  let sourceText = order.sourceText;
-
+  // Пауза «Проверка транскрипции» (claude/pipeline-split-design.md): STT для
+  // voice-заказа больше не делается здесь — этот job теперь ставится в
+  // очередь только после явного подтверждения (POST /orders/{id}/confirm-
+  // transcript, sourceStatus='confirmed', sourceText уже заполнен). STT —
+  // отдельный job (order-transcribe.ts).
+  const sourceText = order.sourceText;
   if (!sourceText) {
-    // Голосовой заказ: аудио прикреплено как order_media с media.kind='audio'
-    // (см. apps/api/src/routes/orders.ts — так же переиспользуется media без
-    // отдельной колонки audio_media_id на orders, по аналогии с фото).
-    const attachedMedia = await db
-      .select({ media: schema.media })
-      .from(schema.orderMedia)
-      .innerJoin(schema.media, eq(schema.orderMedia.mediaId, schema.media.id))
-      .where(and(eq(schema.orderMedia.orderId, order.id), eq(schema.media.kind, "audio")));
-    const audio = attachedMedia[0]?.media;
-    if (!audio) throw new Error(`order ${order.id}: пустой sourceText без прикреплённого аудио`);
-
-    const storage = getMediaStorage();
-    const filePath = await storage.resolvePath(audio.storageKey);
-    const sttMeta = { operationType: "order_stt", traceId: job.id, promptVersion: "v1", schemaVersion: "v1" };
-    const sttStarted = new Date();
-    const sttResult = await ai.stt.transcribe({ filePath, mimeType: audio.mimeType }, sttMeta);
-    await db.insert(schema.aiRuns).values(buildAiRunRecord(sttMeta, sttStarted, { result: sttResult }));
-
-    sourceText = sttResult.data.transcript;
-    await db.update(schema.orders).set({ sourceText }).where(eq(schema.orders.id, order.id));
+    throw new Error(`order ${order.id}: пустой sourceText (sourceStatus=${order.sourceStatus}) — extraction должен запускаться только после подтверждения транскрипта`);
   }
 
   const extractionMeta = { operationType: "order_extraction", traceId: job.id, promptVersion: "v1", schemaVersion: "v1" };

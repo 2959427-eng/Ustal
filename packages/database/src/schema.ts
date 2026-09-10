@@ -155,6 +155,11 @@ export const profileSourceInputs = pgTable("profile_source_inputs", {
   audioMediaId: uuid("audio_media_id"),
   transcript: text("transcript"),
   transcriptCorrected: text("transcript_corrected"),
+  // Пауза «Проверка транскрипции» (экран 9 screens.md, claude/pipeline-split-design.md):
+  // transcribing (voice, STT ещё не готов) -> awaiting_review (STT готов, можно
+  // править) -> confirmed (ушло в profile_extraction). Text-ввод сразу confirmed —
+  // там нечего разделять, правка уже произошла в композере до отправки.
+  status: varchar("status", { length: 20 }).notNull().default("confirmed"),
   createdAt: createdAt(),
 });
 
@@ -165,6 +170,11 @@ export const capabilityProfiles = pgTable("capability_profiles", {
   profileVersion: integer("profile_version").notNull(),
   extractionVersion: varchar("extraction_version", { length: 50 }).notNull(),
   embeddingModel: varchar("embedding_model", { length: 100 }),
+  // Пауза «Подтверждение изменений» (экран 10 screens.md,
+  // claude/pipeline-split-design.md): draft (extraction только что создал,
+  // ещё не текущий профиль) -> applied (текущий) -> superseded (был applied,
+  // заменён более новым) | discarded (пользователь отклонил черновик).
+  status: varchar("status", { length: 20 }).notNull().default("applied"),
   createdAt: createdAt(),
 });
 
@@ -272,10 +282,20 @@ export const orders = pgTable("orders", {
   authorId: uuid("author_id").notNull().references(() => users.id),
   cityId: uuid("city_id").notNull().references(() => cities.id),
   // Nullable (изменено в Фазе 3): для голосового заказа на момент INSERT текста
-  // ещё нет — worker заполняет его транскрипцией асинхронно, тот же паттерн,
-  // что и profile_source_inputs.transcript. Пока пусто — заказ в status='processing'
-  // и не виден никому, кроме автора (см. apps/api/src/routes/orders.ts).
+  // ещё нет. Пока пусто — заказ в status='processing' и не виден никому,
+  // кроме автора (см. apps/api/src/routes/orders.ts).
+  //
+  // Пауза «Проверка транскрипции» (экран 9/11 screens.md,
+  // claude/pipeline-split-design.md): `transcript` — сырой результат STT,
+  // неизменяемый; `sourceText` заполняется ТОЛЬКО на шаге подтверждения
+  // (POST /orders/{id}/confirm-transcript), не раньше — иначе order_extraction
+  // мог бы стартовать раньше, чем пользователь успел поправить текст.
+  // `sourceStatus`: transcribing (voice, STT ещё не готов) -> awaiting_review
+  // (STT готов, можно править) -> confirmed (sourceText заполнен, ушло в
+  // order_extraction). Text-ввод сразу confirmed, sourceText = введённый текст.
   sourceText: text("source_text"),
+  transcript: text("transcript"),
+  sourceStatus: varchar("source_status", { length: 20 }).notNull().default("confirmed"),
   normalizedTitle: text("normalized_title"),
   normalizedDescription: text("normalized_description"),
   priceMinor: integer("price_minor"),

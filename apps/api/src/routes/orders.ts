@@ -3,7 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { assertOrderTransition } from "@ustal/domain";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
-import { createOrderSchema } from "@ustal/validation";
+import { createOrderSchema, editOrderTranscriptSchema } from "@ustal/validation";
 import { withIdempotency } from "../lib/idempotency.js";
 
 /**
@@ -49,12 +49,17 @@ export default async function ordersRoutes(app: FastifyInstance) {
         }
       }
 
+      // Пауза «Проверка транскрипции» (экран 9/11, claude/pipeline-split-design.md):
+      // voice-заказ сначала уходит только на STT (ORDER_TRANSCRIBE) и ждёт
+      // подтверждения — sourceText остаётся пустым до confirm-transcript.
+      // text-заказ — без изменений, sourceText заполнен сразу, extraction сразу.
       const [order] = await db
         .insert(schema.orders)
         .values({
           authorId: request.userId,
           cityId: authorProfile.cityId,
           sourceText: body.inputType === "text" ? (body.text ?? null) : null,
+          sourceStatus: body.inputType === "voice" ? "transcribing" : "confirmed",
           priceMinor: body.priceMinor ?? null,
           status: "draft",
         })
@@ -77,7 +82,11 @@ export default async function ordersRoutes(app: FastifyInstance) {
       await db.update(schema.orders).set({ status: "processing" }).where(eq(schema.orders.id, order.id));
 
       const boss = await getBoss();
-      await boss.send(JOB_TYPES.ORDER_EXTRACTION, { orderId: order.id });
+      if (body.inputType === "voice") {
+        await boss.send(JOB_TYPES.ORDER_TRANSCRIBE, { orderId: order.id });
+      } else {
+        await boss.send(JOB_TYPES.ORDER_EXTRACTION, { orderId: order.id });
+      }
 
       return { status: 201, body: { orderId: order.id, status: "processing" } };
     });
@@ -117,6 +126,73 @@ export default async function ordersRoutes(app: FastifyInstance) {
       contextualChips: rawResult?.contextualChips ?? [],
       requirements,
       photoMediaIds: mediaRows.filter((m) => m.position >= 0).map((m) => m.mediaId),
+      // Пауза «Проверка транскрипции» (экран 9/11) — видно только автору,
+      // ownership уже проверен выше.
+      sourceStatus: order.sourceStatus,
+      transcript: order.transcript,
+    });
+  });
+
+  app.patch("/orders/:id/transcript", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = editOrderTranscriptSchema.parse(request.body);
+
+    const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, id) });
+    if (!order || order.authorId !== request.userId) {
+      return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
+    }
+    if (order.sourceStatus !== "awaiting_review") {
+      return reply.code(409).send({
+        error: { code: "invalid_status", message: `Транскрипт нельзя редактировать в статусе "${order.sourceStatus}"` },
+      });
+    }
+
+    const [updated] = await db
+      .update(schema.orders)
+      .set({ sourceText: body.transcriptCorrected })
+      .where(eq(schema.orders.id, id))
+      .returning();
+    return reply.send({ id: updated!.id, transcript: updated!.transcript, sourceText: updated!.sourceText });
+  });
+
+  app.post("/orders/:id/confirm-transcript", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await withIdempotency(request, reply, "POST /orders/:id/confirm-transcript", async (): Promise<{
+      status: number;
+      body: Record<string, unknown>;
+    }> => {
+      const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, id) });
+      if (!order || order.authorId !== request.userId) {
+        return { status: 404 as const, body: { error: { code: "not_found", message: "Заказ не найден" } } };
+      }
+      if (order.sourceStatus !== "awaiting_review") {
+        return {
+          status: 409 as const,
+          body: {
+            error: { code: "invalid_status", message: `Нельзя подтвердить транскрипт в статусе "${order.sourceStatus}"` },
+          },
+        };
+      }
+
+      // sourceText мог уже быть поправлен через PATCH .../transcript — если
+      // нет, используем сырой результат STT как есть.
+      const sourceText = order.sourceText ?? order.transcript;
+      if (!sourceText) {
+        return {
+          status: 409 as const,
+          body: { error: { code: "invalid_status", message: "Нет текста транскрипта для подтверждения" } },
+        };
+      }
+
+      await db
+        .update(schema.orders)
+        .set({ sourceText, sourceStatus: "confirmed" })
+        .where(eq(schema.orders.id, id));
+
+      const boss = await getBoss();
+      await boss.send(JOB_TYPES.ORDER_EXTRACTION, { orderId: order.id });
+
+      return { status: 202 as const, body: { orderId: order.id, status: "processing" as const } };
     });
   });
 

@@ -20,6 +20,15 @@ export const profileInputSchema = z.object({
 });
 export type ProfileInputRequest = z.infer<typeof profileInputSchema>;
 
+/**
+ * Пауза «Проверка транскрипции» (экран 9, claude/pipeline-split-design.md):
+ * PATCH /profile/inputs/{id} — правка распознанного текста ДО подтверждения.
+ */
+export const editTranscriptSchema = z.object({
+  transcriptCorrected: z.string().min(1).max(4000),
+});
+export type EditTranscriptRequest = z.infer<typeof editTranscriptSchema>;
+
 // JSON Schema, которую обязана вернуть StructuredExtractionProvider для профиля.
 // LLM никогда не пишет в БД напрямую — этот же контракт валидирует ответ AI
 // перед ontology mapping (см. docs/architecture.md, packages/ai).

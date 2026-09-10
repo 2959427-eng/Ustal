@@ -8,9 +8,24 @@ import { useState } from "react";
 /**
  * Главная: две точки входа — "Что вам нужно?" (создать заказ) и
  * "Что вы умеете делать?" (AI-профиль). Раздел 6/9 ТЗ.
+ *
+ * Текст (и голос — раздел 8 ТЗ), набранный/записанный здесь, не теряется
+ * при переходе на экран создания заказа: передаётся через параметры
+ * маршрута и там становится начальным состоянием композера.
  */
 export default function HomeScreen() {
   const [needText, setNeedText] = useState("");
+  const [needAudioUri, setNeedAudioUri] = useState<string | null>(null);
+
+  const handlePublish = () => {
+    router.push({
+      pathname: "/(tabs)/create",
+      params: {
+        prefillText: needText.trim() || undefined,
+        prefillAudioUri: needAudioUri ?? undefined,
+      },
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -21,9 +36,11 @@ export default function HomeScreen() {
         value={needText}
         onChangeText={setNeedText}
         placeholder="Например: нужно перевезти диван на новую квартиру"
-        onStartRecording={() => {}}
+        audioUri={needAudioUri}
+        onAudioRecorded={setNeedAudioUri}
+        onAudioDeleted={() => setNeedAudioUri(null)}
       />
-      <PrimaryButton label="Опубликовать заказ" onPress={() => router.push("/(tabs)/create")} />
+      <PrimaryButton label="Опубликовать заказ" onPress={handlePublish} />
 
       <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>Что вы умеете делать?</Text>
       <PrimaryButton
