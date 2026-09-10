@@ -1,3 +1,29 @@
+# AI_HANDOFF — 2026-09-10 (Claude Cowork: весь накопленный код закоммичен в 11 логических коммитов)
+
+State: успех. Весь ранее накопленный незакоммиченный массив (backend compat-фиксы, split AI-пайплайн voice->STT->extraction, весь оставшийся мобильный клиент — заказы/лента/профиль/уведомления/блокировки/жалобы/настройки, security-фиксы, bridge-инструментарий) разбит на 11 отдельных коммитов и закоммичен локально на `main`. Без Codex (у него в этот день был исчерпан токен-бюджет) — типизацию/lint/тесты и сам коммит выполнил пользователь вручную по моим инструкциям, я готовил список файлов на коммит и проверял diff через файловый мост.
+
+Коммиты (новые сверху):
+- `bc88188` chore: add Claude<->Codex file-bridge tooling and AI handoff log
+- `893c707` mobile: point at production API URL and fix Babel/TS build config
+- `537c8fa` security: rate-limit login attempts, restrict CORS/Swagger to non-production, hide 5xx error details from clients
+- `3cb5013` backend: reject uploads with dangerous file signatures regardless of declared mime type
+- `11c5942` backend: enrich order/response read models for mobile client (orderAuthorId, assignmentStatus, assignmentId)
+- `5e0ee15` mobile: notifications and settings screens
+- `ab8ada3` mobile: user blocking and reporting
+- `c0c5bb7` mobile+backend: split voice pipeline into transcription review before AI extraction (order-transcribe/profile-transcribe worker handlers, migration 0005, packages/api-client uploadForm/ApiRequestError, create/index/profile screens, AiInputField/VoiceRecorder/PhotoPicker)
+- `ec4e265` mobile: order feed, my orders/responses, and order detail screens
+- `7bad58f` chore: ignore accidental artifacts and local scratch files (.gitignore: %SystemDrive%/, "Claude outputs/", video/, timeweb-*.txt, expo-*.svg — не код приложения, случайный мусор или переписка с поддержкой, оставлены на диске нетронутыми, просто исключены из git)
+- `e514853` chore: refresh package-lock.json
+
+Финальный git status --short после всех коммитов — пуст (чистое дерево, кроме gitignored-путей). Ничего не откатывалось, ничего не удалялось. Push НЕ выполнялся — все коммиты только локальные на `main`, `origin/main` не трогали. Timeweb/infra и production-секреты не затрагивались.
+
+Технический долг, зафиксирован для памяти: `packages/api-client/src/index.ts` (ApiRequestError) закоммичен только в `c0c5bb7`, хотя фактически уже использовался более ранним коммитом `545e6c8` (refresh-session fix) — при изолированном `git checkout 545e6c8` сборка не пройдёт из-за отсутствующего экспорта. Не критично для реальной истории (HEAD в целом консистентен), но стоит иметь в виду при будущем rebase/cherry-pick.
+
+Следующий этап (по изначальному приоритету пользователя): живой E2E-тест на телефоне через Expo Go.
+
+---
+
+
 # AI_HANDOFF — 2026-09-08 (Claude Cowork: refresh-session flow закоммичен вручную, без Codex)
 
 Отдельный блок сверху предыдущего (не удаляю его — он документирует реальную блокировку, которая привела к этому решению).
