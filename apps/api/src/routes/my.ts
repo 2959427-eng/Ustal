@@ -70,6 +70,19 @@ export default async function myRoutes(app: FastifyInstance) {
       : [];
     const unlockedOrderIds = new Set(unlocks.map((u) => u.orderId));
 
+    // Добавление: assignmentStatus и orderAuthorId — исполнителю нужно знать,
+    // выбрали ли его и завершена ли работа (чтобы показать «Отметить
+    // выполнено» на своей стороне и открыть форму отзыва — POST /reviews
+    // требует toUserId, а до этого поля у мобильного клиента исполнителя не
+    // было способа узнать id автора заказа, не имея доступа к GET /orders/{id}
+    // чужого заказа). Тот же паттерн, что и unlocks/orderById выше.
+    const assignments = orderIds.length > 0
+      ? await db.query.orderAssignments.findMany({
+          where: (t, { inArray, and: a, eq: e }) => a(inArray(t.orderId, orderIds), e(t.executorId, request.userId)),
+        })
+      : [];
+    const assignmentStatusByOrderId = new Map(assignments.map((a) => [a.orderId, a.status]));
+
     return reply.send({
       items: rows.map((r) => {
         const order = orderById.get(r.orderId);
@@ -78,12 +91,14 @@ export default async function myRoutes(app: FastifyInstance) {
           orderId: r.orderId,
           orderTitle: order?.normalizedTitle ?? null,
           orderStatus: order?.status ?? null,
+          orderAuthorId: order?.authorId ?? null,
           status: r.status,
           offeredPriceMinor: r.offeredPriceMinor,
           comment: r.comment,
           availabilityText: r.availabilityText,
           createdAt: r.createdAt,
           isContactUnlocked: unlockedOrderIds.has(r.orderId),
+          assignmentStatus: assignmentStatusByOrderId.get(r.orderId) ?? null,
         };
       }),
       limit,

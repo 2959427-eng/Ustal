@@ -112,21 +112,27 @@ export default async function responsesRoutes(app: FastifyInstance) {
     ]);
     const profileByUser = new Map(executorProfiles.map((p) => [p.userId, p]));
     const unlockedExecutorIds = new Set(unlocks.map((u) => u.executorId));
-    const assignmentByExecutor = new Map(assignments.map((a) => [a.executorId, a.status]));
+    // Полный assignment (не только status) — id нужен клиенту-автору для
+    // POST /orders/{id}/assignments/{assignmentId}/complete и .../not-completed.
+    const assignmentByExecutor = new Map(assignments.map((a) => [a.executorId, a]));
 
     return reply.send({
-      items: responseRows.map((r) => ({
-        id: r.id,
-        executorId: r.executorId,
-        executorName: profileByUser.get(r.executorId)?.name ?? null,
-        status: r.status,
-        offeredPriceMinor: r.offeredPriceMinor,
-        comment: r.comment,
-        availabilityText: r.availabilityText,
-        createdAt: r.createdAt,
-        isContactUnlocked: unlockedExecutorIds.has(r.executorId),
-        assignmentStatus: assignmentByExecutor.get(r.executorId) ?? null,
-      })),
+      items: responseRows.map((r) => {
+        const assignment = assignmentByExecutor.get(r.executorId);
+        return {
+          id: r.id,
+          executorId: r.executorId,
+          executorName: profileByUser.get(r.executorId)?.name ?? null,
+          status: r.status,
+          offeredPriceMinor: r.offeredPriceMinor,
+          comment: r.comment,
+          availabilityText: r.availabilityText,
+          createdAt: r.createdAt,
+          isContactUnlocked: unlockedExecutorIds.has(r.executorId),
+          assignmentId: assignment?.id ?? null,
+          assignmentStatus: assignment?.status ?? null,
+        };
+      }),
     });
   });
 
