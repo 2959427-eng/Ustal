@@ -50,7 +50,27 @@ export default async function blocksRoutes(app: FastifyInstance) {
 
   app.get("/blocks", { preHandler: app.authenticate }, async (request, reply) => {
     const rows = await db.query.blocks.findMany({ where: eq(schema.blocks.blockerId, request.userId) });
-    return reply.send({ items: rows.map((b) => ({ id: b.id, blockedId: b.blockedId, createdAt: b.createdAt })) });
+
+    // Список без имён бесполезен на экране «Заблокированные пользователи»
+    // (раздел 29 ТЗ) — сырой blockedId ничего не скажет пользователю.
+    // Публичного GET /users/{id} в API нет (сознательно — не хотим отдавать
+    // произвольный lookup по чужому userId), поэтому имя подтягивается
+    // только для уже заблокированных этим пользователем, тем же паттерном,
+    // что и executorName в responses.ts.
+    const blockedIds = rows.map((b) => b.blockedId);
+    const profiles = blockedIds.length > 0
+      ? await db.query.userProfiles.findMany({ where: (t, { inArray }) => inArray(t.userId, blockedIds) })
+      : [];
+    const nameByUserId = new Map(profiles.map((p) => [p.userId, p.name]));
+
+    return reply.send({
+      items: rows.map((b) => ({
+        id: b.id,
+        blockedId: b.blockedId,
+        blockedName: nameByUserId.get(b.blockedId) ?? null,
+        createdAt: b.createdAt,
+      })),
+    });
   });
 
   app.delete("/blocks/:id", { preHandler: app.authenticate }, async (request, reply) => {
