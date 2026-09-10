@@ -10,3 +10,10 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 data/media/
+
+# Accidental/non-code artifacts and local scratch - not part of app history
+%SystemDrive%/
+Claude outputs/
+video/
+timeweb-*.txt
+expo-*.svg
