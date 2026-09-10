@@ -1,0 +1,4 @@
+{
+  "task_id": "test-001",
+  "prompt": "Это тестовая задача watcher'а Claude<->Codex. НИЧЕГО не меняй, не коммить и не пушь. Просто выполни `git status --short` и `git branch --show-current` в текущей директории и выведи результат в стандартный вывод — это нужно только чтобы проверить, что watcher (scripts/codex-bridge.ps1) правильно подхватывает задачу, запускает Codex CLI в правильном cwd и пишет status.json/result.md/лог."
+}

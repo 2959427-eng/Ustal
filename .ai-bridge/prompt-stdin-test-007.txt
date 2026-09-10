@@ -1,0 +1,18 @@
+Bridge stdin test 007. Cyrillic check: Привет, это тестовая задача для проверки stdin-моста. Ничего не меняй, ничего не коммить, ничего не пушь.
+
+This line has "double quotes around a phrase" and also 'single quotes around another phrase', plus an em-dash like this — right here, and markdown-style backtick code spans like `npm run typecheck`, `git status --short`, `codex exec`, and a longer one: `npm run test --workspace=@ustal/mobile -- --reporter=verbose`.
+
+Here is a deliberately long single line to check nothing truncates it: the quick brown fox jumps over the lazy dog while a second quick brown fox also jumps over the same lazy dog and a third one watches from a distance and takes notes about how many times this sentence can repeat itself before anyone gets bored of reading it end to end without a single line break anywhere in sight, which is exactly the point of this particular paragraph existing at all.
+
+And now several short lines separated by real newlines, to check multiline handling end to end:
+line one
+line two with 'quotes' and "quotes" mixed together
+line three with ещё кириллица и тире — вот так
+
+Do ONLY the following three things, nothing else - do not modify, stage, or commit any file, do not run npm install, do not touch any application code, do not push:
+
+1. Print this exact marker line, verbatim, so it can be checked in the log: STDIN-TEST-007-MARKER-OK
+2. Run: git branch --show-current
+3. Run: git status --short
+
+That is the entire task. Stop after step 3.
