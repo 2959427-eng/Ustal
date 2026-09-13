@@ -1,69 +1,56 @@
 import { useEffect, useRef, useState } from "react";
 import { View, Text, TextInput, StyleSheet, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AiInputField } from "../../src/components/AiInputField";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
-import { logout } from "../../src/api/auth";
-import {
-  getProfile,
-  submitProfileInput,
-  getProfileInput,
-  editProfileTranscript,
-  confirmProfileInput,
-  getProfileDraft,
-  applyProfileDraft,
-  discardProfileDraft,
-} from "../../src/api/profile";
-import { uploadMedia } from "../../src/api/media";
+import { getProfile, submitProfileInput, getProfileDraft, applyProfileDraft, discardProfileDraft } from "../../src/api/profile";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 45000;
 
-type Phase = "idle" | "transcribing" | "transcript_review" | "processing" | "draft_review";
+type Phase = "idle" | "processing" | "draft_review";
 
 /**
- * Профиль: AI-профиль возможностей (раздел 7 ТЗ — текст и голос, см.
- * src/components/VoiceRecorder.tsx), ссылки на уведомления (раздел 26 ТЗ,
- * app/notifications.tsx) и настройки (раздел 27 ТЗ, app/settings.tsx —
- * оттуда же ссылка на заблокированных пользователей, раздел 29 ТЗ).
- * Logout — реальный.
+ * «Навыки и ресурсы» — конструктор AI-профиля возможностей (раздел 7 ТЗ).
+ * Открывается по ссылке «Изменить» с экрана «Личный кабинет»
+ * (app/(tabs)/account.tsx).
  *
- * Две паузы AI-пайплайна (claude/pipeline-split-design.md, backend-срез
- * «разделить STT/extraction пайплайн»):
+ * 2026-09-13 fix: раньше здесь ДУБЛИРОВАЛИСЬ ссылки на уведомления/настройки
+ * и «Выйти» — они уже есть (и полнее: настройки/уведомления/заблокированные
+ * + подтверждение выхода) на настоящем экране профиля, app/(tabs)/account.tsx.
+ * Здесь их быть не должно — этот экран только про сам AI-профиль.
  *
- * Экран 9 «Проверка транскрипции» — voice-ввод сначала уходит только на
- * STT (`phase="transcribing"`, поллинг GET /profile/inputs/{id}), затем
- * пользователь видит и может поправить распознанный текст
- * (`phase="transcript_review"`, PATCH .../inputs/{id}) и только явно
- * подтверждает отправку в AI (POST .../confirm). Text-ввод эту паузу не
- * проходит — правка уже произошла в композере до отправки.
+ * 2026-09-13 fix (голос): голосовой ввод убран по просьбе пользователя — та
+ * же причина, что и для создания заказа (app/(tabs)/create.tsx): было
+ * неочевидно, что запись — это диктовка для AI, а не голосовое сообщение.
+ * Вместе с этим убрана и пауза «Проверка транскрипции» (экран 9 —
+ * `phase="transcribing"`/`"transcript_review"`, STT + правка распознанного
+ * текста) — она была нужна ТОЛЬКО голосовому вводу, текстовый её никогда не
+ * проходил (см. старый комментарий ниже, который это же и объяснял).
+ * Бэкенд (`submitProfileInput({inputType: "voice", ...})`,
+ * `GET /profile/inputs/{id}`, `editProfileTranscript`, `confirmProfileInput`)
+ * не трогала — оставлен нетронутым на случай, если голос вернут на другой
+ * экран.
  *
- * Экран 10 «...подтверждения удаления значимых пунктов» — extraction
- * создаёт ЧЕРНОВИК (`phase="processing"` → поллинг GET /profile/draft),
- * который показывается пользователю С ДИФФОМ (что добавится/уберётся)
- * ДО применения (`phase="draft_review"`) — пользователь явно применяет
+ * Пауза применения (экран 10, «...подтверждения удаления значимых
+ * пунктов») остаётся — она про результат AI-extraction, а не про
+ * транскрипцию, и относится к любому вводу: extraction создаёт ЧЕРНОВИК
+ * (`phase="processing"` → поллинг GET /profile/draft), который показывается
+ * пользователю С ДИФФОМ (что добавится/уберётся) ДО применения
+ * (`phase="draft_review"`) — пользователь явно применяет
  * (POST /profile/draft/{id}/apply) или отклоняет (POST .../discard).
- * `GET /profile` (ниже) отдаёт только уже применённую версию. Это
- * заменяет прежний временный компромисс (постфактум-сверку из slice 7
- * этой ветки) полноценной блокирующей паузой.
+ * `GET /profile` (ниже) отдаёт только уже применённую версию.
  */
 export default function ProfileScreen() {
   const queryClient = useQueryClient();
-  const [loggingOut, setLoggingOut] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [text, setText] = useState("");
-  const [audioUri, setAudioUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pollTimedOut, setPollTimedOut] = useState(false);
 
   const [phase, setPhase] = useState<Phase>("idle");
-  const [sourceInputId, setSourceInputId] = useState<string | null>(null);
-  const [transcriptText, setTranscriptText] = useState("");
-  const originalTranscriptRef = useRef("");
 
   const pollDeadlineRef = useRef<number | null>(null);
 
@@ -72,34 +59,12 @@ export default function ProfileScreen() {
     queryFn: getProfile,
   });
 
-  const inputQuery = useQuery({
-    queryKey: ["profileInput", sourceInputId],
-    queryFn: () => getProfileInput(sourceInputId!),
-    enabled: phase === "transcribing" && !!sourceInputId,
-    refetchInterval: phase === "transcribing" ? POLL_INTERVAL_MS : false,
-  });
-
   const draftQuery = useQuery({
     queryKey: ["profileDraft"],
     queryFn: getProfileDraft,
     enabled: phase === "processing",
     refetchInterval: phase === "processing" ? POLL_INTERVAL_MS : false,
   });
-
-  // Транскрипция готова — переходим к её проверке.
-  useEffect(() => {
-    if (phase !== "transcribing" || !inputQuery.data) return;
-    if (inputQuery.data.status === "awaiting_review") {
-      const t = inputQuery.data.transcript ?? "";
-      originalTranscriptRef.current = t;
-      setTranscriptText(t);
-      setPollTimedOut(false);
-      pollDeadlineRef.current = null;
-      setPhase("transcript_review");
-    } else if (pollDeadlineRef.current && Date.now() > pollDeadlineRef.current) {
-      setPollTimedOut(true);
-    }
-  }, [inputQuery.data, phase]);
 
   // Черновик после extraction готов — показываем дифф на подтверждение.
   useEffect(() => {
@@ -113,16 +78,6 @@ export default function ProfileScreen() {
     }
   }, [draftQuery.data, phase]);
 
-  const onLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await logout();
-      router.replace("/onboarding");
-    } finally {
-      setLoggingOut(false);
-    }
-  };
-
   const startDraftPolling = () => {
     pollDeadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
     setPollTimedOut(false);
@@ -131,25 +86,15 @@ export default function ProfileScreen() {
 
   const onSubmit = async () => {
     const trimmed = text.trim();
-    if (!trimmed && !audioUri) return;
+    if (!trimmed) return;
     setSubmitError(null);
     setSubmitting(true);
     try {
       const idempotencyKey = generateIdempotencyKey("profile-input");
-      if (audioUri) {
-        const { mediaId } = await uploadMedia("audio", { uri: audioUri, name: "voice.m4a", type: "audio/m4a" });
-        const accepted = await submitProfileInput({ inputType: "voice", audioMediaId: mediaId }, idempotencyKey);
-        setSourceInputId(accepted.sourceInputId);
-        pollDeadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
-        setPollTimedOut(false);
-        setPhase("transcribing");
-      } else {
-        await submitProfileInput({ inputType: "text", text: trimmed }, idempotencyKey);
-        startDraftPolling();
-      }
+      await submitProfileInput({ inputType: "text", text: trimmed }, idempotencyKey);
+      startDraftPolling();
       setComposerOpen(false);
       setText("");
-      setAudioUri(null);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Не удалось отправить. Попробуйте ещё раз.");
     } finally {
@@ -157,27 +102,8 @@ export default function ProfileScreen() {
     }
   };
 
-  const onConfirmTranscript = async () => {
-    if (!sourceInputId) return;
-    setSubmitError(null);
-    setSubmitting(true);
-    try {
-      if (transcriptText.trim() !== originalTranscriptRef.current) {
-        await editProfileTranscript(sourceInputId, transcriptText.trim());
-      }
-      const idempotencyKey = generateIdempotencyKey("profile-confirm-transcript");
-      await confirmProfileInput(sourceInputId, idempotencyKey);
-      startDraftPolling();
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Не удалось подтвердить транскрипт.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const cancelAll = () => {
     setPhase("idle");
-    setSourceInputId(null);
     setSubmitError(null);
     setPollTimedOut(false);
     pollDeadlineRef.current = null;
@@ -218,7 +144,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Профиль</Text>
+      <Text style={styles.title}>Навыки и ресурсы</Text>
 
       {isLoading && phase === "idle" && <ActivityIndicator color={colors.primary} />}
 
@@ -242,40 +168,6 @@ export default function ProfileScreen() {
           Расскажите текстом, что вы умеете, какие у вас инструменты, транспорт
           или другие ресурсы — AI соберёт из этого профиль возможностей.
         </Text>
-      )}
-
-      {phase === "transcribing" && (
-        <View style={styles.processingBox}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.processingText}>Распознаём голос…</Text>
-          {pollTimedOut && (
-            <>
-              <Text style={styles.hint}>Это занимает больше времени, чем обычно.</Text>
-              <PrimaryButton label="Проверить снова" variant="secondary" onPress={() => void inputQuery.refetch()} />
-            </>
-          )}
-        </View>
-      )}
-
-      {phase === "transcript_review" && (
-        <View style={styles.reviewBox}>
-          <Text style={styles.reviewTitle}>Проверьте распознанный текст</Text>
-          <Text style={styles.hint}>Можно поправить перед отправкой в AI.</Text>
-          <TextInput
-            style={styles.textArea}
-            value={transcriptText}
-            onChangeText={setTranscriptText}
-            multiline
-          />
-          {submitError && <Text style={styles.error}>{submitError}</Text>}
-          <PrimaryButton
-            label="Отправить AI"
-            onPress={onConfirmTranscript}
-            loading={submitting}
-            disabled={transcriptText.trim().length === 0}
-          />
-          <PrimaryButton label="Отмена" variant="secondary" onPress={cancelAll} disabled={submitting} />
-        </View>
       )}
 
       {phase === "processing" && (
@@ -319,21 +211,16 @@ export default function ProfileScreen() {
 
       {phase === "idle" && composerOpen && (
         <>
-          <AiInputField
+          <TextInput
+            style={styles.textArea}
+            multiline
             value={text}
             onChangeText={setText}
             placeholder="Например: делаю мелкий ремонт, есть свой инструмент и грузовой велосипед"
-            audioUri={audioUri}
-            onAudioRecorded={setAudioUri}
-            onAudioDeleted={() => setAudioUri(null)}
+            placeholderTextColor={colors.textSecondary}
           />
           {submitError && <Text style={styles.error}>{submitError}</Text>}
-          <PrimaryButton
-            label="Отправить AI"
-            onPress={onSubmit}
-            loading={submitting}
-            disabled={text.trim().length === 0 && !audioUri}
-          />
+          <PrimaryButton label="Отправить AI" onPress={onSubmit} loading={submitting} disabled={text.trim().length === 0} />
         </>
       )}
 
@@ -342,21 +229,6 @@ export default function ProfileScreen() {
           label={data?.profile ? "Рассказать ещё" : "Создать AI-профиль"}
           onPress={() => setComposerOpen(true)}
         />
-      )}
-
-      {phase === "idle" && (
-        <View style={styles.navRow}>
-          <View style={styles.navButton}>
-            <PrimaryButton label="Уведомления" variant="secondary" onPress={() => router.push("/notifications")} />
-          </View>
-          <View style={styles.navButton}>
-            <PrimaryButton label="Настройки" variant="secondary" onPress={() => router.push("/settings")} />
-          </View>
-        </View>
-      )}
-
-      {phase === "idle" && (
-        <PrimaryButton label="Выйти" variant="secondary" loading={loggingOut} onPress={onLogout} />
       )}
     </View>
   );
@@ -375,18 +247,15 @@ const styles = StyleSheet.create({
   chipText: { ...typography.caption, color: colors.textPrimary },
   processingBox: { alignItems: "center", gap: spacing.xs, padding: spacing.md },
   processingText: { ...typography.body, color: colors.textSecondary },
-  navRow: { flexDirection: "row", gap: spacing.sm },
-  navButton: { flex: 1 },
   reviewBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.sm },
   reviewTitle: { ...typography.subtitle, color: colors.textPrimary },
   textArea: {
     ...typography.body,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.sm,
-    padding: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    minHeight: 120,
     color: colors.textPrimary,
-    minHeight: 96,
     textAlignVertical: "top",
   },
   diffSection: { gap: 2 },

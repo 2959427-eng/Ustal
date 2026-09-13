@@ -1,13 +1,10 @@
 import { apiClient, getApiBaseUrl } from "./client";
-import { Platform } from "react-native";
 
 export type MediaKind = "photo" | "audio";
 
 /**
- * React Native (Expo) описывает файл для multipart/form-data объектом
- * `{uri, name, type}`, а не `Blob`/`File` из DOM — так его понимает
- * RN-полифилл `FormData`, поэтому тип не совпадает со стандартным
- * `FormDataEntryValue`.
+ * Файл, выбранный `expo-image-picker`/`expo-av` (native) или `<input
+ * type=file>` (web, тогда `file` — настоящий DOM `File`).
  */
 export interface UploadableFile {
   uri: string;
@@ -27,23 +24,30 @@ export interface MediaUploaded {
  * `apiClient.uploadForm` (не `request<T>`, который всегда шлёт
  * `Content-Type: application/json`) — boundary должен выставить сам
  * `fetch`/полифилл `FormData` по телу запроса.
+ *
+ * 2026-09-14 fix: раньше на native (`Platform.OS !== "web"`) файл
+ * добавлялся в `FormData` старым RN-шорткатом `{uri, name, type}` —
+ * это на нашей версии RN (`0.86.3`) реально падало на телефоне с
+ * `Unsupported FormData part implementation` (репродуцировано на
+ * устройстве, см. AI_HANDOFF.md) до того, как запрос вообще уходил на
+ * сервер — глобальный `fetch` больше не понимает этот шорткат, нужен
+ * настоящий `Blob`. Убрали ветвление по платформе — везде читаем файл
+ * через `fetch(file.uri)` (для `file://`/`content://`/`ph://` это
+ * работает и на native, не только на web) и добавляем в форму уже
+ * настоящий `Blob`, как на web раньше в fallback-ветке.
  */
 export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promise<MediaUploaded> {
   const form = new FormData();
   form.append("kind", kind);
-  if (Platform.OS === "web") {
-    let blob: Blob;
-    if (file.file) {
-      blob = file.file;
-    } else {
-      const response = await fetch(file.uri);
-      if (!response.ok) throw new Error("Не удалось прочитать выбранный файл.");
-      blob = await response.blob();
-    }
-    form.append("file", blob, file.name);
+  let blob: Blob;
+  if (file.file) {
+    blob = file.file;
   } else {
-    form.append("file", { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+    const response = await fetch(file.uri);
+    if (!response.ok) throw new Error("Не удалось прочитать выбранный файл.");
+    blob = await response.blob();
   }
+  form.append("file", blob, file.name);
   return apiClient.uploadForm<MediaUploaded>("/media", form);
 }
 

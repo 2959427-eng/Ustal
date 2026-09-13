@@ -25,14 +25,25 @@ it("reads the local blob when the web picker supplies only a URI", async () => {
   expect(await (form.get("file") as File).text()).toBe("audio");
 });
 
-it("preserves the native multipart descriptor without reading file URIs with fetch", async () => {
+// 2026-09-14: раньше native (Platform.OS !== "web") отправлял файл старым RN-
+// шорткатом `{uri, name, type}` напрямую в FormData.append, без чтения через
+// fetch — этот тест раньше как раз закреплял такое поведение как ожидаемое.
+// На устройстве (react-native 0.86.3) это оказалось реальным багом: глобальный
+// fetch больше не принимает такой дескриптор и падает с "Unsupported FormData
+// part implementation" ещё до отправки запроса (см. AI_HANDOFF.md, 2026-09-14).
+// Починили — native теперь тоже читает файл через fetch(uri)->blob(), как и
+// web-ветка без file.file ниже. Тест обновлён под новое (правильное) поведение.
+it("reads native file URIs with fetch instead of passing the raw RN descriptor", async () => {
   Platform.OS = "ios";
-  const append = vi.fn();
-  vi.stubGlobal("FormData", class { append = append; });
-  const fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("fetch", vi.fn(async (uri: string) => {
+    expect(uri).toBe("file:///avatar.jpg");
+    return new Response(new Blob(["jpeg-bytes"], { type: "image/jpeg" }));
+  }));
   const file = { uri: "file:///avatar.jpg", name: "avatar.jpg", type: "image/jpeg" };
   await uploadMedia("photo", file);
-  expect(append).toHaveBeenCalledWith("file", file);
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetch).toHaveBeenCalledWith("file:///avatar.jpg");
+  const form = vi.mocked(apiClient.uploadForm).mock.calls[0]![1];
+  const uploaded = form.get("file") as File;
+  expect(uploaded.name).toBe("avatar.jpg");
+  expect(await uploaded.text()).toBe("jpeg-bytes");
 });

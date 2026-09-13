@@ -29,6 +29,7 @@ export function AvatarPicker({ avatarMediaId, initial, onChange, saving, size = 
   const busy = uploading || !!saving;
 
   const pickFrom = async (source: "library" | "camera") => {
+    let stage = "доступ к фото";
     setError(null);
     try {
       const permission = Platform.OS === "web" ? { granted: true } :
@@ -40,6 +41,7 @@ export function AvatarPicker({ avatarMediaId, initial, onChange, saving, size = 
         return;
       }
 
+      stage = "выбор и обрезка фото";
       const result =
         source === "library"
           ? await ImagePicker.launchImageLibraryAsync({
@@ -57,11 +59,14 @@ export function AvatarPicker({ avatarMediaId, initial, onChange, saving, size = 
 
       if (result.canceled || result.assets.length === 0) return;
 
+      stage = "подготовка файла";
       const asset = result.assets[0]!;
       setUploading(true);
       const mimeType = asset.mimeType ?? "image/jpeg";
       const name = asset.fileName ?? `avatar-${Date.now()}.jpg`;
+      stage = "загрузка на сервер";
       const { mediaId } = await uploadMedia("photo", { uri: asset.uri, name, type: mimeType, file: asset.file });
+      stage = "сохранение в профиле";
       await onChange(mediaId);
     } catch (cause) {
       if (cause instanceof ApiRequestError) {
@@ -73,7 +78,11 @@ export function AvatarPicker({ avatarMediaId, initial, onChange, saving, size = 
               ? "Фото слишком большое. Выберите файл до 10 МБ."
               : `Не удалось сохранить фото (HTTP ${cause.status}). Попробуйте ещё раз.`);
       } else {
-        setError("Не удалось выбрать или сохранить фото. Проверьте подключение и попробуйте ещё раз.");
+        const detail = (cause instanceof Error ? cause.message : String(cause))
+          .replace(/(?:https?|file|content):\/\/\S+/gi, "[адрес скрыт]")
+          .replace(/Bearer\s+\S+/gi, "[токен скрыт]")
+          .slice(0, 240);
+        setError(`Этап: ${stage}. ${detail || "Неизвестная ошибка"}`);
       }
     } finally {
       setUploading(false);
