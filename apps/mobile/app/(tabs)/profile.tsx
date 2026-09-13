@@ -41,10 +41,32 @@ type Phase = "idle" | "processing" | "draft_review";
  * (`phase="draft_review"`) — пользователь явно применяет
  * (POST /profile/draft/{id}/apply) или отклоняет (POST .../discard).
  * `GET /profile` (ниже) отдаёт только уже применённую версию.
+ *
+ * 2026-09-14 fix: пустое состояние (профиля ещё нет) переделано под
+ * согласованный с пользователем макет — карточка с иконкой и одной ясной
+ * причиной заполнить профиль («Так заказы находят вас точнее») вместо
+ * абстрактной кнопки «Создать AI-профиль» без объяснения. Заполненное
+ * состояние раньше показывало ТОЛЬКО `data.capabilities` одним общим рядом
+ * чипов — `data.resources` (API их отдаёт, `src/api/profile.ts`) нигде не
+ * отображались вообще. Теперь два подписанных раздела: «Что я умею»
+ * (capabilities) и «Ресурсы» (resources).
+ *
+ * 2026-09-14 fix (поле ввода сразу на экране): раньше поле ввода было
+ * скрыто за отдельной кнопкой («Заполнить профиль»/«Рассказать ещё»),
+ * которая открывала композер — лишний шаг. Убрала `composerOpen`: текстовое
+ * поле теперь всегда видно на экране сразу под карточкой/сводкой, кнопка
+ * подписана «Сохранить» (было «Отправить AI» — по просьбе пользователя,
+ * сама отправка на сервер и AI-обработка не изменились).
+ *
+ * 2026-09-14 fix (убрана карточка-объяснение): пользователь счёл два блока
+ * (карточка «Так заказы находят вас точнее» + поле ввода) избыточными —
+ * убрала карточку `promptCard` полностью для пустого состояния (профиля
+ * ещё нет), её текст-объяснение перенесла в плейсхолдер самого поля ввода.
+ * Сводка уже заполненного профиля (`summaryBox` с «Что я умею»/«Ресурсы»)
+ * не тронута — просьба касалась только верхнего блока в пустом состоянии.
  */
 export default function ProfileScreen() {
   const queryClient = useQueryClient();
-  const [composerOpen, setComposerOpen] = useState(false);
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -93,7 +115,6 @@ export default function ProfileScreen() {
       const idempotencyKey = generateIdempotencyKey("profile-input");
       await submitProfileInput({ inputType: "text", text: trimmed }, idempotencyKey);
       startDraftPolling();
-      setComposerOpen(false);
       setText("");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Не удалось отправить. Попробуйте ещё раз.");
@@ -152,22 +173,30 @@ export default function ProfileScreen() {
         <View style={styles.summaryBox}>
           <Text style={styles.summaryText}>{data.profile.summary}</Text>
           {data.capabilities.length > 0 && (
-            <View style={styles.chipRow}>
-              {data.capabilities.map((cap) => (
-                <View key={cap.id} style={styles.chip}>
-                  <Text style={styles.chipText}>{cap.label}</Text>
-                </View>
-              ))}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Что я умею</Text>
+              <View style={styles.chipRow}>
+                {data.capabilities.map((cap) => (
+                  <View key={cap.id} style={styles.chip}>
+                    <Text style={styles.chipText}>{cap.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          {data.resources.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Ресурсы</Text>
+              <View style={styles.chipRow}>
+                {data.resources.map((res) => (
+                  <View key={res.id} style={styles.chip}>
+                    <Text style={styles.chipText}>{res.label}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           )}
         </View>
-      )}
-
-      {phase === "idle" && !isLoading && !data?.profile && (
-        <Text style={styles.body}>
-          Расскажите текстом, что вы умеете, какие у вас инструменты, транспорт
-          или другие ресурсы — AI соберёт из этого профиль возможностей.
-        </Text>
       )}
 
       {phase === "processing" && (
@@ -209,26 +238,19 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {phase === "idle" && composerOpen && (
+      {phase === "idle" && (
         <>
           <TextInput
             style={styles.textArea}
             multiline
             value={text}
             onChangeText={setText}
-            placeholder="Например: делаю мелкий ремонт, есть свой инструмент и грузовой велосипед"
+            placeholder="Опишите себя текстом, какие у вас навыки, инструменты или транспорт"
             placeholderTextColor={colors.textSecondary}
           />
           {submitError && <Text style={styles.error}>{submitError}</Text>}
-          <PrimaryButton label="Отправить AI" onPress={onSubmit} loading={submitting} disabled={text.trim().length === 0} />
+          <PrimaryButton label="Сохранить" onPress={onSubmit} loading={submitting} disabled={text.trim().length === 0} />
         </>
-      )}
-
-      {phase === "idle" && !composerOpen && (
-        <PrimaryButton
-          label={data?.profile ? "Рассказать ещё" : "Создать AI-профиль"}
-          onPress={() => setComposerOpen(true)}
-        />
       )}
     </View>
   );
@@ -237,11 +259,12 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
   title: { ...typography.title, color: colors.textPrimary },
-  body: { ...typography.body, color: colors.textSecondary },
   error: { ...typography.caption, color: colors.danger },
   hint: { ...typography.caption, color: colors.textSecondary },
-  summaryBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.sm },
+  summaryBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.md },
   summaryText: { ...typography.body, color: colors.textPrimary },
+  section: { gap: spacing.xs },
+  sectionLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   chip: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 4 },
   chipText: { ...typography.caption, color: colors.textPrimary },
