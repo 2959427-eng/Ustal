@@ -60,10 +60,30 @@ export default async function profileRoutes(app: FastifyInstance) {
   app.patch("/profile", { preHandler: app.authenticate }, async (request, reply) => {
     const body = updateProfileSchema.parse(request.body);
 
+    // Фото профиля (аватарка, экран «Личный кабинет») — тот же mediaId,
+    // что возвращает POST /media (kind: "photo"), см. routes/media.ts.
+    // Проверка владения — тот же паттерн, что и audioMediaId в
+    // POST /profile/inputs выше: чужой/несуществующий/не-photo id не
+    // должен молча привязаться к профилю.
+    if (body.avatarMediaId) {
+      const owned = await db.query.media.findFirst({
+        where: and(eq(schema.media.id, body.avatarMediaId), eq(schema.media.ownerId, request.userId)),
+      });
+      if (!owned || owned.kind !== "photo") {
+        return reply.code(400).send({
+          error: {
+            code: "media_not_found",
+            message: "avatarMediaId не найден, не является фото или принадлежит другому пользователю",
+          },
+        });
+      }
+    }
+
     const updates: Partial<typeof schema.userProfiles.$inferInsert> = { updatedAt: new Date() };
     if (body.name !== undefined) updates.name = body.name;
     if (body.cityId !== undefined) updates.cityId = body.cityId;
     if (body.whatsappPhone !== undefined) updates.whatsappPhone = body.whatsappPhone;
+    if (body.avatarMediaId !== undefined) updates.avatarMediaId = body.avatarMediaId;
 
     const [updated] = await db
       .update(schema.userProfiles)
@@ -74,7 +94,12 @@ export default async function profileRoutes(app: FastifyInstance) {
     if (!updated) {
       return reply.code(404).send({ error: { code: "not_found", message: "Профиль не найден" } });
     }
-    return reply.send({ name: updated.name, cityId: updated.cityId, whatsappPhone: updated.whatsappPhone });
+    return reply.send({
+      name: updated.name,
+      cityId: updated.cityId,
+      whatsappPhone: updated.whatsappPhone,
+      avatarMediaId: updated.avatarMediaId,
+    });
   });
 
   app.post("/profile/inputs", { preHandler: app.authenticate }, async (request, reply) => {

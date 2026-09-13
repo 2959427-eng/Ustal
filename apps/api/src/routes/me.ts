@@ -20,6 +20,7 @@ export default async function meRoutes(app: FastifyInstance) {
       name: profile.name,
       cityId: profile.cityId,
       whatsappPhone: profile.whatsappPhone,
+      avatarMediaId: profile.avatarMediaId,
     });
   });
 }

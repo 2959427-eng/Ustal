@@ -1,4 +1,6 @@
+import { createReadStream } from "node:fs";
 import type { FastifyInstance } from "fastify";
+import { eq } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { getMediaStorage } from "@ustal/storage";
 import { MEDIA_LIMITS, mediaKindSchema } from "@ustal/validation";
@@ -101,5 +103,43 @@ export default async function mediaRoutes(app: FastifyInstance) {
     if (!row) throw new Error("Failed to persist media");
 
     return reply.code(201).send({ mediaId: row.id });
+  });
+
+  /**
+   * GET /media/{id} — отдаёт содержимое загруженного файла обратно клиенту.
+   * До этого POST /media использовался только worker'ом (STT читает файл
+   * через storage.resolvePath на сервере) — отдать файл наружу было нечем,
+   * а аватарке профиля (и в перспективе фото заказа) нужен URL для
+   * <Image source={{uri}}>.
+   *
+   * Фото отдаём БЕЗ access token по непредсказуемому UUID — тот же уровень
+   * защиты, что и presigned URL у s3-провайдера (providers/s3.ts: секрет в
+   * самой ссылке, а не в сессии), иначе пришлось бы прокидывать
+   * Authorization в заголовки каждого <Image> в React Native. Аудио
+   * (голосовые вводы профиля/заказа) — приватное, отдаём только владельцу.
+   */
+  app.get("/media/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const media = await db.query.media.findFirst({ where: eq(schema.media.id, id) });
+    if (!media) {
+      return reply.code(404).send({ error: { code: "not_found", message: "Файл не найден" } });
+    }
+
+    if (media.kind !== "photo") {
+      await app.authenticate(request, reply);
+      if (reply.sent) return;
+      if (media.ownerId !== request.userId) {
+        return reply.code(404).send({ error: { code: "not_found", message: "Файл не найден" } });
+      }
+    }
+
+    const resolved = await storage.resolvePath(media.storageKey);
+    if (storage.name === "s3") {
+      // resolvePath уже вернул presigned GET URL — редиректим на него.
+      return reply.redirect(resolved);
+    }
+    // local: resolvePath вернул путь на диске процесса api — стримим файл сами.
+    reply.type(media.mimeType);
+    return reply.send(createReadStream(resolved));
   });
 }

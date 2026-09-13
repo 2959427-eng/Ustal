@@ -7,6 +7,8 @@ export const updateProfileSchema = z
     name: z.string().min(1).max(100).optional(),
     cityId: z.string().uuid().optional(),
     whatsappPhone: ruPhoneSchema.nullable().optional(),
+    /** Фото профиля — id из POST /media (kind: "photo"), null снимает аватар. */
+    avatarMediaId: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "Нужно указать хотя бы одно поле" });
 export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
