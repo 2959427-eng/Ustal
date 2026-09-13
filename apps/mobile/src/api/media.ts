@@ -25,7 +25,7 @@ export interface MediaUploaded {
  * `Content-Type: application/json`) — boundary должен выставить сам
  * `fetch`/полифилл `FormData` по телу запроса.
  *
- * 2026-09-14 fix: раньше на native (`Platform.OS !== "web"`) файл
+ * 2026-09-14 fix #1: раньше на native (`Platform.OS !== "web"`) файл
  * добавлялся в `FormData` старым RN-шорткатом `{uri, name, type}` —
  * это на нашей версии RN (`0.86.3`) реально падало на телефоне с
  * `Unsupported FormData part implementation` (репродуцировано на
@@ -35,6 +35,18 @@ export interface MediaUploaded {
  * через `fetch(file.uri)` (для `file://`/`content://`/`ph://` это
  * работает и на native, не только на web) и добавляем в форму уже
  * настоящий `Blob`, как на web раньше в fallback-ветке.
+ *
+ * 2026-09-14 fix #2: после fix #1 запрос стал реально доходить до
+ * сервера, но тот отвечал `invalid_mime_type` («Выберите JPEG, PNG или
+ * WebP») даже на настоящее JPEG-фото с камеры/галереи. Причина:
+ * `fetch(file.uri)` на локальном `file://`/`content://`/`ph://` URI на
+ * native не всегда сохраняет реальный mime в `Blob.type` (часто пусто
+ * или generic `application/octet-stream`) — а именно `Blob.type`
+ * определяет `Content-Type` этой части multipart-тела, по которому
+ * сервер (`apps/api/src/routes/media.ts`, whitelist `MEDIA_LIMITS`)
+ * сверяет формат. `expo-image-picker` (см. `AvatarPicker.tsx`) уже
+ * заранее даёт верный mime в `file.type` — не полагаемся на то, что
+ * угадает `fetch`, а пересобираем `Blob` с явным типом из `file.type`.
  */
 export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promise<MediaUploaded> {
   const form = new FormData();
@@ -45,7 +57,8 @@ export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promis
   } else {
     const response = await fetch(file.uri);
     if (!response.ok) throw new Error("Не удалось прочитать выбранный файл.");
-    blob = await response.blob();
+    const raw = await response.blob();
+    blob = new Blob([raw], { type: file.type });
   }
   form.append("file", blob, file.name);
   return apiClient.uploadForm<MediaUploaded>("/media", form);

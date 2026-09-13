@@ -47,3 +47,20 @@ it("reads native file URIs with fetch instead of passing the raw RN descriptor",
   expect(uploaded.name).toBe("avatar.jpg");
   expect(await uploaded.text()).toBe("jpeg-bytes");
 });
+
+// 2026-09-14 fix #2: после фикса выше запрос стал реально доходить до сервера,
+// но тот отвечал invalid_mime_type даже на настоящее JPEG-фото — fetch() на
+// локальном file://-URI на native не всегда кладёт верный mime в Blob.type
+// (часто пусто/generic), а именно Blob.type становится Content-Type части
+// multipart, по которому сервер валидирует формат. Чиним: доверяем mime,
+// который уже дал сам пикер (file.type), а не то, что угадает fetch.
+it("uses the picker-supplied mime type, not whatever fetch guesses for a local file", async () => {
+  Platform.OS = "android";
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(new Blob(["jpeg-bytes"], { type: "" }))));
+  const file = { uri: "content://media/avatar.jpg", name: "avatar.jpg", type: "image/jpeg" };
+  await uploadMedia("photo", file);
+  const form = vi.mocked(apiClient.uploadForm).mock.calls[0]![1];
+  const uploaded = form.get("file") as File;
+  expect(uploaded.type).toBe("image/jpeg");
+  expect(await uploaded.text()).toBe("jpeg-bytes");
+});
