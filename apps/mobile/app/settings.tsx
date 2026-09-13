@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { CityPicker } from "../src/components/CityPicker";
+import { useState } from "react";
 import { View, Text, TextInput, StyleSheet, ActivityIndicator, Pressable, FlatList } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -35,13 +36,18 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [syncedMeData, setSyncedMeData] = useState<typeof meQuery.data>(undefined);
 
-  useEffect(() => {
-    if (!meQuery.data) return;
+  // Синхронизируем поля формы с данными аккаунта при их появлении/изменении
+  // идентичности объекта (например, после invalidateQueries(["me"]) в
+  // handleSave). Вычисляем прямо во время рендера вместо useEffect — паттерн
+  // React "adjusting state when a prop changes" (react-hooks/set-state-in-effect).
+  if (meQuery.data && meQuery.data !== syncedMeData) {
+    setSyncedMeData(meQuery.data);
     setName(meQuery.data.name);
     setWhatsapp(meQuery.data.whatsappPhone ?? "");
     setCityId(meQuery.data.cityId);
-  }, [meQuery.data]);
+  }
 
   const cityName = (id: string | null) => citiesQuery.data?.find((c) => c.id === id)?.name ?? "Не выбран";
 
@@ -80,24 +86,7 @@ export default function SettingsScreen() {
           <Text style={styles.backText}>← Назад</Text>
         </Pressable>
         <Text style={styles.title}>Выберите город</Text>
-        {citiesQuery.isLoading && <ActivityIndicator color={colors.primary} />}
-        {citiesQuery.data && (
-          <FlatList
-            data={citiesQuery.data}
-            keyExtractor={(c) => c.id}
-            renderItem={({ item }) => (
-              <Pressable
-                style={styles.cityRow}
-                onPress={() => {
-                  setCityId(item.id);
-                  setCityPickerOpen(false);
-                }}
-              >
-                <Text style={styles.cityRowText}>{item.name}</Text>
-              </Pressable>
-            )}
-          />
-        )}
+        <CityPicker cities={citiesQuery.data ?? []} loading={citiesQuery.isLoading} error={citiesQuery.isError} onRetry={() => { void citiesQuery.refetch(); }} selectedId={cityId} onSelect={(id) => { setCityId(id); setSaved(false); setCityPickerOpen(false); }} />
       </View>
     );
   }
@@ -114,7 +103,7 @@ export default function SettingsScreen() {
           <View style={styles.gap}>
             <Text style={styles.title}>Настройки</Text>
 
-            <Text style={styles.sectionTitle}>Аккаунт</Text>
+            <Text style={styles.sectionTitle}>Личные данные</Text>
             {meQuery.isLoading ? (
               <ActivityIndicator color={colors.primary} />
             ) : (
@@ -172,14 +161,14 @@ const styles = StyleSheet.create({
   backText: { ...typography.body, color: colors.primary },
   gap: { gap: spacing.sm, marginBottom: spacing.md },
   title: { ...typography.title, color: colors.textPrimary },
-  sectionTitle: { ...typography.subtitle, color: colors.textPrimary, marginTop: spacing.sm },
+  sectionTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary, marginTop: spacing.sm },
   label: { ...typography.caption, color: colors.textSecondary },
   body: { ...typography.body, color: colors.textPrimary },
   input: {
     ...typography.body,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.sm,
+    borderColor: colors.borderLight,
+    borderRadius: radii.md,
     padding: spacing.sm,
     color: colors.textPrimary,
   },
@@ -187,19 +176,21 @@ const styles = StyleSheet.create({
   success: { ...typography.caption, color: colors.success },
   retry: { ...typography.body, color: colors.primary },
   linkRow: { paddingVertical: spacing.sm },
-  linkText: { ...typography.body, color: colors.primary },
-  cityRow: { padding: spacing.md, borderRadius: radii.sm, backgroundColor: colors.surface, marginBottom: spacing.xs },
+  linkText: { ...typography.body, fontWeight: "600", color: colors.primary },
+  cityRow: { padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.surface, marginBottom: spacing.xs },
   cityRowText: { ...typography.body, color: colors.textPrimary },
   prefRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.lg,
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
   prefInfo: { gap: 2 },
-  prefLabel: { ...typography.body, color: colors.textPrimary },
-  prefSignal: { ...typography.caption, color: colors.textSecondary },
+  prefLabel: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
+  prefSignal: { ...typography.caption, color: colors.textTertiary },
 });

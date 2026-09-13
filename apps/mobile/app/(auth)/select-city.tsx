@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, StyleSheet, View } from "react-native";
+import { Text, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import { colors, spacing, typography, radii } from "../../src/theme/tokens";
+import { colors, spacing, typography } from "../../src/theme/tokens";
 import { getCities, type City } from "../../src/api/cities";
 import { register } from "../../src/api/auth";
 import { clearRegistrationDraft, getRegistrationDraft } from "../../src/state/registrationDraft";
 import { ensurePushRegistered } from "../../src/notifications/push";
+
+import { CityPicker } from "../../src/components/CityPicker";
 
 export default function SelectCityScreen() {
   const [cities, setCities] = useState<City[]>([]);
@@ -46,24 +48,7 @@ export default function SelectCityScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Выберите город</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {loadingCities ? (
-        <ActivityIndicator color={colors.primary} />
-      ) : (
-        <FlatList
-          data={cities}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.item}
-              disabled={submittingCityId !== null}
-              onPress={() => onSelectCity(item.id)}
-            >
-              <Text style={styles.itemText}>{item.name}</Text>
-              {submittingCityId === item.id ? <ActivityIndicator color={colors.primary} /> : null}
-            </Pressable>
-          )}
-        />
-      )}
+      <CityPicker cities={cities} loading={loadingCities} error={!loadingCities && cities.length === 0 && !!error} busyId={submittingCityId} onSelect={onSelectCity} onRetry={() => { setLoadingCities(true); setError(null); void getCities().then(setCities).catch(() => setError("Не удалось загрузить города")).finally(() => setLoadingCities(false)); }} />
     </View>
   );
 }
@@ -71,15 +56,5 @@ export default function SelectCityScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: spacing.lg, backgroundColor: colors.background },
   title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: spacing.md,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-    marginBottom: spacing.xs,
-  },
-  itemText: { ...typography.body, color: colors.textPrimary },
   error: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
 });

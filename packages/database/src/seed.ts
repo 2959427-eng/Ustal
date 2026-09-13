@@ -1,11 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { getDb, getSql, schema } from "./client.js";
 
-const CITIES = [
-  { name: "Владивосток", regionName: "Приморский край", federalDistrict: "Дальневосточный", timezone: "Asia/Vladivostok" },
-  { name: "Уссурийск", regionName: "Приморский край", federalDistrict: "Дальневосточный", timezone: "Asia/Vladivostok" },
-  { name: "Хабаровск", regionName: "Хабаровский край", federalDistrict: "Дальневосточный", timezone: "Asia/Vladivostok" },
-];
+import { seedCities } from "./seed-cities.js";
 
 /**
  * Онтология — универсальные элементы задачи, НЕ список профессий/категорий
@@ -277,11 +273,7 @@ async function main() {
   // insert упал бы с ошибкой уникальности и оставил бы новые узлы
   // невставленными. Решение — везде вставлять только то, чего ещё нет.
 
-  const existingCityNames = new Set((await db.select({ name: schema.cities.name }).from(schema.cities)).map((c) => c.name));
-  const newCities = CITIES.filter((c) => !existingCityNames.has(c.name));
-  const insertedCities = newCities.length > 0 ? await db.insert(schema.cities).values(newCities).returning() : [];
-  // eslint-disable-next-line no-console
-  console.log(`Seeded ${insertedCities.length} cities (${CITIES.length - newCities.length} already existed).`);
+  console.log(`Seeded ${await seedCities()} new cities.`);
 
   const existingNodes = await db
     .select({ id: schema.ontologyNodes.id, canonicalKey: schema.ontologyNodes.canonicalKey, nameRu: schema.ontologyNodes.nameRu })
