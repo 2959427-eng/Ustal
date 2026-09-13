@@ -162,12 +162,15 @@ export interface UpdateProfileInput {
   name?: string;
   cityId?: string;
   whatsappPhone?: string | null;
+  /** mediaId из uploadMedia("photo", ...) (src/api/media.ts) — см. AvatarPicker.tsx. */
+  avatarMediaId?: string | null;
 }
 
 export interface UpdateProfileResult {
   name: string;
   cityId: string;
   whatsappPhone: string | null;
+  avatarMediaId: string | null;
 }
 
 /** PATCH /profile (раздел 27 ТЗ, экран настроек) — точечные правки без AI: имя, город, WhatsApp. */

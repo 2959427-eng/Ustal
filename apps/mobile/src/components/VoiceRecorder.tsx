@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
-import { Audio, type AVPlaybackStatus } from "expo-av";
+import { useEffect, useState } from "react";
+import { View, Text, Pressable, StyleSheet, Alert, Keyboard } from "react-native";
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   onRecorded: (uri: string) => void;
   onDelete: () => void;
   disabled?: boolean;
+  compact?: boolean;
+  onRecordingChange?: (active: boolean) => void;
 }
 
 function formatMs(ms: number): string {
@@ -20,7 +22,7 @@ function formatMs(ms: number): string {
 
 /**
  * Запись голоса (раздел 8 ТЗ): запись → прослушивание → удаление →
- * перезапись. Формат записи — HIGH_QUALITY preset expo-av (`.m4a`/AAC),
+ * перезапись. Формат записи — HIGH_QUALITY preset expo-audio (`.m4a`/AAC),
  * это совпадает с допустимыми MIME-типами на сервере (`audio/m4a` —
  * packages/validation/src/media.ts MEDIA_LIMITS.audio), поэтому загрузка
  * идёт без перекодирования на клиенте.
@@ -29,80 +31,63 @@ function formatMs(ms: number): string {
  * записано/удалено, значение — итоговая запись, готовая к отправке. Фаза
  * «идёт запись» — внутреннее состояние компонента, наружу не всплывает.
  */
-export function VoiceRecorder({ uri, onRecorded, onDelete, disabled }: Props) {
+export function VoiceRecorder({ uri, onRecorded, onDelete, disabled, compact = false, onRecordingChange }: Props) {
   const [isRecording, setIsRecording] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const recording = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recording);
+  const player = useAudioPlayer(uri);
+  const playbackStatus = useAudioPlayerStatus(player);
+  const elapsedMs = recorderState.durationMillis;
+  const isPlaying = playbackStatus.playing;
 
   useEffect(() => {
-    return () => {
-      void recordingRef.current?.stopAndUnloadAsync().catch(() => {});
-      void soundRef.current?.unloadAsync().catch(() => {});
-    };
-  }, []);
+    if (playbackStatus.didJustFinish) void player.seekTo(0).catch(() => {});
+  }, [player, playbackStatus.didJustFinish]);
 
   const startRecording = async () => {
+    if (compact) Keyboard.dismiss();
     setPermissionError(null);
     try {
-      const permission = await Audio.requestPermissionsAsync();
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
       if (!permission.granted) {
         setPermissionError("Нужен доступ к микрофону, чтобы записать голосовое сообщение.");
         return;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY, (status) => {
-        if (status.isRecording) setElapsedMs(status.durationMillis ?? 0);
-      });
-      recordingRef.current = recording;
-      setElapsedMs(0);
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recording.prepareToRecordAsync();
+      recording.record();
       setIsRecording(true);
+      onRecordingChange?.(true);
     } catch {
       setPermissionError("Не удалось начать запись. Попробуйте ещё раз.");
     }
   };
 
   const stopRecording = async () => {
-    const recording = recordingRef.current;
-    recordingRef.current = null;
-    setIsRecording(false);
-    if (!recording) return;
     try {
-      await recording.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      const recordedUri = recording.getURI();
+      await recording.stop();
+      await setAudioModeAsync({ allowsRecording: false });
+      const recordedUri = recording.uri;
       if (recordedUri) onRecorded(recordedUri);
     } catch {
       setPermissionError("Не удалось сохранить запись. Попробуйте ещё раз.");
+    } finally {
+      setIsRecording(false);
+      onRecordingChange?.(false);
     }
   };
 
   const togglePlayback = async () => {
     if (!uri) return;
     try {
-      if (soundRef.current) {
-        const status = await soundRef.current.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) {
-          await soundRef.current.pauseAsync();
-          setIsPlaying(false);
-          return;
-        }
-        await soundRef.current.playAsync();
-        setIsPlaying(true);
+      if (player.playing) {
+        player.pause();
         return;
       }
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
-      soundRef.current = sound;
-      setIsPlaying(true);
-      sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setIsPlaying(false);
-          void sound.setPositionAsync(0);
-        }
-      });
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      player.play();
     } catch {
       setPermissionError("Не удалось воспроизвести запись.");
     }
@@ -114,10 +99,8 @@ export function VoiceRecorder({ uri, onRecorded, onDelete, disabled }: Props) {
       {
         text: "Удалить",
         style: "destructive",
-        onPress: async () => {
-          await soundRef.current?.unloadAsync().catch(() => {});
-          soundRef.current = null;
-          setIsPlaying(false);
+        onPress: () => {
+          player.pause();
           onDelete();
         },
       },
@@ -127,10 +110,10 @@ export function VoiceRecorder({ uri, onRecorded, onDelete, disabled }: Props) {
   if (uri) {
     return (
       <View style={styles.row}>
-        <Pressable onPress={togglePlayback} disabled={disabled} style={styles.circleButton} accessibilityRole="button">
+        <Pressable onPress={togglePlayback} disabled={disabled} style={[styles.circleButton, compact && styles.compactPlayback]} accessibilityRole="button" accessibilityLabel={isPlaying ? "Приостановить запись" : "Прослушать запись"}>
           <Text style={styles.circleIcon}>{isPlaying ? "❚❚" : "▶"}</Text>
         </Pressable>
-        <Text style={styles.label}>Голосовое сообщение записано</Text>
+        <Text style={styles.label}>{compact ? "Голосовое" : "Голосовое сообщение записано"}</Text>
         <Pressable onPress={handleDelete} disabled={disabled} hitSlop={8} accessibilityRole="button">
           <Text style={styles.deleteText}>Удалить</Text>
         </Pressable>
@@ -141,7 +124,7 @@ export function VoiceRecorder({ uri, onRecorded, onDelete, disabled }: Props) {
   if (isRecording) {
     return (
       <View style={styles.row}>
-        <Pressable onPress={stopRecording} style={[styles.circleButton, styles.circleButtonActive]} accessibilityRole="button">
+        <Pressable onPress={stopRecording} style={[styles.circleButton, styles.circleButtonActive, compact && styles.compactPlayback]} accessibilityRole="button" accessibilityLabel="Остановить запись">
           <Text style={styles.circleIcon}>■</Text>
         </Pressable>
         <Text style={styles.label}>Идёт запись… {formatMs(elapsedMs)}</Text>
@@ -152,18 +135,33 @@ export function VoiceRecorder({ uri, onRecorded, onDelete, disabled }: Props) {
   return (
     <View style={styles.column}>
       <View style={styles.row}>
-        <Pressable onPress={startRecording} disabled={disabled} style={styles.circleButton} accessibilityRole="button">
-          <Text style={styles.circleIcon}>●</Text>
+        <Pressable onPress={startRecording} disabled={disabled} style={[styles.circleButton, compact && styles.compactButton]} accessibilityRole="button" accessibilityLabel="Записать заказ голосом" accessibilityState={{ disabled: !!disabled }}>
+          {compact ? (
+            <View accessible={false} style={styles.microphone}>
+              <View style={styles.micCapsule} />
+              <View style={styles.micCradle} />
+              <View style={styles.micStem} />
+              <View style={styles.micBase} />
+            </View>
+          ) : <Text style={styles.circleIcon}>●</Text>}
         </Pressable>
-        <Text style={styles.label}>Записать голосом</Text>
+        {!compact && <Text style={styles.label}>Записать голосом</Text>}
       </View>
-      {permissionError && <Text style={styles.error}>{permissionError}</Text>}
+      {permissionError && <Text accessibilityRole="alert" style={[styles.error, compact && styles.compactError]}>{permissionError}</Text>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   column: { gap: spacing.xs },
+  compactButton: { backgroundColor: "transparent" },
+  compactError: { position: "absolute", right: 0, bottom: 52, width: 260, padding: 12, borderRadius: 12, backgroundColor: colors.surface },
+  compactPlayback: { backgroundColor: colors.textPrimary },
+  microphone: { width: 24, height: 26, alignItems: "center" },
+  micCapsule: { position: "absolute", top: 1, width: 8, height: 14, borderWidth: 1.8, borderColor: colors.textPrimary, borderRadius: 5 },
+  micCradle: { position: "absolute", top: 9, width: 16, height: 11, borderWidth: 1.8, borderTopWidth: 0, borderColor: colors.textPrimary, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },
+  micStem: { position: "absolute", top: 19, width: 1.8, height: 5, backgroundColor: colors.textPrimary },
+  micBase: { position: "absolute", top: 23, width: 9, height: 1.8, borderRadius: 1, backgroundColor: colors.textPrimary },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   circleButton: {
     width: 44,

@@ -29,6 +29,31 @@ export async function primeTokenCache(): Promise<void> {
   cachedToken = await getAccessToken();
 }
 
+/**
+ * 2026-09-13 fix: самовосстановление после Fast Refresh (только dev).
+ * Любая правка ЭТОГО файла (или чего-то, что его импортирует) заставляет
+ * Metro пересоздать модуль с нуля — верхнеуровневый `cachedToken` обнуляется
+ * до null, а app/_layout.tsx НЕ перемонтируется и не перезапускает свой
+ * useEffect(() => primeTokenCache(), []) (пустой deps-массив выполняется
+ * один раз за жизнь компонента, Fast Refresh это не считает ремонтом).
+ * Результат — пользователь выглядит залогиненным (старый кэш React Query
+ * ещё на экране), но ЛЮБОЙ новый запрос с авторизацией (например загрузка
+ * фото в apiClient.uploadForm(), см. packages/api-client/src/index.ts) тихо
+ * уходит без заголовка Authorization, потому что getAccessToken() снова
+ * вернул null — backend отвечает «Missing bearer token». Раньше это
+ * лечилось только полной перезагрузкой (npx expo start -c + закрыть/открыть
+ * Expo Go). Строка ниже вызывается при КАЖДОЙ (пере)инициализации модуля —
+ * то есть и при обычном старте приложения (безопасно дублирует вызов из
+ * _layout.tsx), и при каждом Fast Refresh, который задел этот модуль — и
+ * сама подтягивает токен из SecureStore, не дожидаясь ремонта RootLayout.
+ */
+void primeTokenCache();
+
+/** Для сборки URL файлов, отдаваемых напрямую (не через apiClient.request), например GET /media/{id} — см. src/api/media.ts. */
+export function getApiBaseUrl(): string {
+  return baseUrl;
+}
+
 export function setCachedAccessToken(token: string | null): void {
   cachedToken = token;
 }

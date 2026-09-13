@@ -55,12 +55,12 @@ export function PhotoPicker({ photos, onChange, disabled, max = MAX_PHOTOS_DEFAU
       const result =
         source === "library"
           ? await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              mediaTypes: ["images"],
               quality: 0.8,
               allowsMultipleSelection: true,
               selectionLimit: remaining,
             })
-          : await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+          : await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
 
       if (result.canceled || result.assets.length === 0) return;
 

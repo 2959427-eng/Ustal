@@ -312,13 +312,19 @@ function CandidateRow({ orderId, candidate, onChanged }: { orderId: string; cand
 function ContactActions({ contact }: { contact: OrderContact }) {
   return (
     <View style={styles.rowActions}>
-      <PrimaryButton label="Позвонить" variant="secondary" onPress={() => Linking.openURL(`tel:${contact.phone}`)} />
+      <Pressable
+        style={({ pressed }) => [styles.contactButton, styles.contactButtonCall, pressed && styles.pressed]}
+        onPress={() => Linking.openURL(`tel:${contact.phone}`)}
+      >
+        <Text style={styles.contactButtonCallText}>Позвонить</Text>
+      </Pressable>
       {contact.whatsappPhone && (
-        <PrimaryButton
-          label="WhatsApp"
-          variant="secondary"
+        <Pressable
+          style={({ pressed }) => [styles.contactButton, styles.contactButtonWhatsapp, pressed && styles.pressed]}
           onPress={() => Linking.openURL(`https://wa.me/${contact.whatsappPhone!.replace(/[^\d]/g, "")}`)}
-        />
+        >
+          <Text style={styles.contactButtonWhatsappText}>WhatsApp</Text>
+        </Pressable>
       )}
     </View>
   );
@@ -606,18 +612,38 @@ const styles = StyleSheet.create({
   label: { ...typography.caption, color: colors.textSecondary },
   matchExplanation: { ...typography.caption, color: colors.primary },
   metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  price: { ...typography.subtitle, color: colors.textPrimary },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
-  sectionTitle: { ...typography.subtitle, color: colors.textPrimary },
+  price: { ...typography.title, fontSize: 20, fontWeight: "800", color: colors.primary },
+  divider: { height: 1, backgroundColor: colors.borderLight, marginVertical: spacing.xs },
+  sectionTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   errorBox: { gap: spacing.xs },
   error: { ...typography.caption, color: colors.danger },
   retry: { ...typography.body, color: colors.primary },
-  mutedLink: { ...typography.caption, color: colors.textSecondary },
-  badge: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 4 },
-  badgeText: { ...typography.caption, color: colors.textPrimary },
-  candidateCard: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.xs },
-  candidateName: { ...typography.subtitle, color: colors.textPrimary },
+  mutedLink: { ...typography.caption, color: colors.textTertiary },
+  badge: { backgroundColor: colors.primaryTintBg, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 5 },
+  badgeText: { ...typography.caption, fontWeight: "700", color: colors.primary },
+  candidateCard: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  candidateName: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   rowActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs },
+  pressed: { opacity: 0.85 },
+  contactButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: radii.button,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+  contactButtonCall: { backgroundColor: colors.primaryTintBg },
+  contactButtonCallText: { ...typography.subtitle, fontWeight: "700", color: colors.primary },
+  contactButtonWhatsapp: { backgroundColor: colors.successTintBg },
+  contactButtonWhatsappText: { ...typography.subtitle, fontWeight: "700", color: colors.success },
   input: {
     ...typography.body,
     borderWidth: 1,
@@ -639,5 +665,5 @@ const styles = StyleSheet.create({
   reviewBox: { gap: spacing.sm, marginTop: spacing.xs },
   starsRow: { flexDirection: "row", gap: spacing.xs },
   star: { fontSize: 28, color: colors.border },
-  starActive: { color: colors.warning },
+  starActive: { color: colors.star },
 });

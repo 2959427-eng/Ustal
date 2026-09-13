@@ -1,50 +1,40 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image } from "react-native";
+import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { AiInputField } from "../../src/components/AiInputField";
 import { PhotoPicker, type PickedPhoto } from "../../src/components/PhotoPicker";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
-import {
-  createOrder,
-  getOrder,
-  editOrderTranscript,
-  confirmOrderTranscript,
-  publishOrder,
-  type OrderDetail,
-} from "../../src/api/orders";
-import { uploadMedia } from "../../src/api/media";
+import { createOrder, getOrder, publishOrder, cancelOrder, type OrderDetail } from "../../src/api/orders";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 45000;
 
-type Step = "compose" | "transcribing" | "transcript_review" | "processing" | "preview" | "publishing" | "published";
+type Step = "compose" | "processing" | "preview" | "publishing" | "published";
 
 /**
- * Создание заказа — текст, голос и фото (разделы 11/12 ТЗ). POST /orders
- * запускает асинхронный пайплайн заказа.
+ * Создание заказа — текст и фото (раздел 11/12 ТЗ). POST /orders запускает
+ * асинхронный пайплайн заказа (extraction → модерация).
  *
- * Пауза «Проверка транскрипции» (экраны 9/11 ТЗ, claude/pipeline-split-design.md):
- * при voice-вводе STT выделен в отдельный job (order-transcribe.ts) — заказ
- * сначала уходит в `step="transcribing"` (поллинг GET /orders/{id} до
- * sourceStatus="awaiting_review"), затем пользователь видит и может
- * поправить распознанный текст (`step="transcript_review"`, PATCH
- * .../transcript) и только явно подтверждает отправку в AI
- * (POST .../confirm-transcript) — это ставит job на extraction. Text-ввод
- * эту паузу не проходит (правка уже в композере до отправки), сразу
- * `step="processing"`, как и раньше.
+ * Голосовой ввод и пауза «Проверка транскрипции» (экран 9/11 ТЗ) убраны из
+ * этого экрана по просьбе пользователя — было неочевидно, что запись
+ * работает как диктовка для AI, а не как голосовое сообщение. Бэкенд
+ * по-прежнему поддерживает voice-заказы (см. src/api/orders.ts
+ * createOrder/CreateOrderVoiceInput) — если решим вернуть, эндпоинты трогать
+ * не придётся, а голосовой ввод для AI-профиля (app/(tabs)/profile.tsx)
+ * этой правки не касается.
  *
- * После extraction клиент поллит GET /orders/{id} до появления решения
- * модерации, затем показывает предпросмотр (раздел 14 ТЗ) с контекстными
- * чипами (раздел 13 ТЗ) и явной кнопкой публикации — публикация никогда не
- * происходит автоматически.
+ * Каждый шаг экрана — с явной кнопкой «✕» в углу (handleClose): раньше
+ * отсюда некуда было выйти, если передумал (нижний таббар скрыт, а у
+ * Tabs-навигатора нет «назад» на скрытый href:null экран). Если к моменту
+ * закрытия заказ уже создан на сервере (submit уже прошёл) — он отменяется
+ * (POST /orders/{id}/cancel), а не остаётся висеть в processing/на
+ * модерации незаметно для пользователя.
  */
 export default function CreateOrderScreen() {
-  const { prefillText, prefillAudioUri } = useLocalSearchParams<{ prefillText?: string; prefillAudioUri?: string }>();
+  const { prefillText } = useLocalSearchParams<{ prefillText?: string }>();
   const [step, setStep] = useState<Step>("compose");
   const [text, setText] = useState(prefillText ?? "");
-  const [audioUri, setAudioUri] = useState<string | null>(prefillAudioUri ?? null);
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const [priceText, setPriceText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -52,10 +42,8 @@ export default function CreateOrderScreen() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-  const [transcriptText, setTranscriptText] = useState("");
 
   const orderIdRef = useRef<string | null>(null);
-  const originalTranscriptRef = useRef("");
   const pollDeadlineRef = useRef<number | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -70,11 +58,10 @@ export default function CreateOrderScreen() {
   // если с главной пришли новые параметры, а композер ещё пуст (ничего не
   // отправлено и не начато заново), подхватываем их и здесь.
   useEffect(() => {
-    if (step !== "compose" || text.trim().length > 0 || audioUri) return;
+    if (step !== "compose" || text.trim().length > 0) return;
     if (prefillText) setText(prefillText);
-    else if (prefillAudioUri) setAudioUri(prefillAudioUri);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefillText, prefillAudioUri]);
+  }, [prefillText]);
 
   const stopPolling = () => {
     if (pollTimerRef.current) {
@@ -103,33 +90,6 @@ export default function CreateOrderScreen() {
     }
   };
 
-  // Пауза «Проверка транскрипции» (voice-заказ): ждём, пока order-transcribe
-  // job закончит STT (sourceStatus 'transcribing' -> 'awaiting_review'), затем
-  // переходим к правке транскрипта — extraction ещё не запущен.
-  const pollTranscribing = async () => {
-    const orderId = orderIdRef.current;
-    if (!orderId) return;
-    try {
-      const detail = await getOrder(orderId);
-      if (detail.sourceStatus === "awaiting_review") {
-        stopPolling();
-        const t = detail.transcript ?? "";
-        originalTranscriptRef.current = t;
-        setTranscriptText(t);
-        setPollTimedOut(false);
-        pollDeadlineRef.current = null;
-        setStep("transcript_review");
-        return;
-      }
-      if (pollDeadlineRef.current && Date.now() > pollDeadlineRef.current) {
-        setPollTimedOut(true);
-        stopPolling();
-      }
-    } catch {
-      // Сеть моргнула — пробуем на следующем тике, дедлайн всё равно остановит.
-    }
-  };
-
   const startExtractionPolling = () => {
     pollDeadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
     setPollTimedOut(false);
@@ -140,52 +100,18 @@ export default function CreateOrderScreen() {
 
   const handleSubmit = async () => {
     const trimmed = text.trim();
-    if (!trimmed && !audioUri) return;
+    if (!trimmed) return;
     setSubmitError(null);
     setSubmitting(true);
     try {
       const priceMinor = priceText.trim() ? Math.round(Number(priceText.trim()) * 100) : undefined;
       const mediaIds = photos.map((p) => p.mediaId);
       const idempotencyKey = generateIdempotencyKey("order-create");
-
-      if (audioUri) {
-        const { mediaId } = await uploadMedia("audio", { uri: audioUri, name: "voice.m4a", type: "audio/m4a" });
-        const accepted = await createOrder(
-          { inputType: "voice", audioMediaId: mediaId, priceMinor, mediaIds },
-          idempotencyKey,
-        );
-        orderIdRef.current = accepted.orderId;
-        pollDeadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
-        setPollTimedOut(false);
-        setStep("transcribing");
-        void pollTranscribing();
-        pollTimerRef.current = setInterval(pollTranscribing, POLL_INTERVAL_MS);
-      } else {
-        const accepted = await createOrder({ inputType: "text", text: trimmed, priceMinor, mediaIds }, idempotencyKey);
-        orderIdRef.current = accepted.orderId;
-        startExtractionPolling();
-      }
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Не удалось создать заказ. Попробуйте ещё раз.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleConfirmTranscript = async () => {
-    const orderId = orderIdRef.current;
-    if (!orderId) return;
-    setSubmitError(null);
-    setSubmitting(true);
-    try {
-      if (transcriptText.trim() !== originalTranscriptRef.current) {
-        await editOrderTranscript(orderId, transcriptText.trim());
-      }
-      const idempotencyKey = generateIdempotencyKey("order-confirm-transcript");
-      await confirmOrderTranscript(orderId, idempotencyKey);
+      const accepted = await createOrder({ inputType: "text", text: trimmed, priceMinor, mediaIds }, idempotencyKey);
+      orderIdRef.current = accepted.orderId;
       startExtractionPolling();
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Не удалось подтвердить транскрипт.");
+      setSubmitError(err instanceof Error ? err.message : "Не удалось создать заказ. Попробуйте ещё раз.");
     } finally {
       setSubmitting(false);
     }
@@ -209,30 +135,47 @@ export default function CreateOrderScreen() {
     stopPolling();
     orderIdRef.current = null;
     pollDeadlineRef.current = null;
-    originalTranscriptRef.current = "";
     setOrder(null);
     setText("");
-    setAudioUri(null);
     setPhotos([]);
     setPriceText("");
-    setTranscriptText("");
     setSubmitError(null);
     setPublishError(null);
     setPollTimedOut(false);
     setStep("compose");
   };
 
+  const handleClose = () => {
+    const orderId = orderIdRef.current;
+    if (orderId && step !== "published") {
+      // Best-effort — не блокируем выход, если отмена не удалась на сервере.
+      void cancelOrder(orderId).catch(() => {});
+    }
+    stopPolling();
+    reset();
+    router.navigate("/(tabs)/orders");
+  };
+
+  const CloseButton = (
+    <View style={styles.topBar}>
+      <Pressable onPress={handleClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Закрыть">
+        <Text style={styles.closeIcon}>✕</Text>
+      </Pressable>
+    </View>
+  );
+
   if (step === "compose") {
     return (
       <View style={styles.container}>
+        {CloseButton}
         <Text style={styles.title}>Что вам нужно?</Text>
-        <AiInputField
+        <TextInput
+          style={styles.textArea}
+          multiline
           value={text}
           onChangeText={setText}
           placeholder="Опишите, что нужно сделать — своими словами"
-          audioUri={audioUri}
-          onAudioRecorded={setAudioUri}
-          onAudioDeleted={() => setAudioUri(null)}
+          placeholderTextColor={colors.textSecondary}
         />
         <Text style={styles.label}>Фотографии (необязательно)</Text>
         <PhotoPicker photos={photos} onChange={setPhotos} disabled={submitting} />
@@ -245,62 +188,7 @@ export default function CreateOrderScreen() {
           placeholder="Например, 2000"
         />
         {submitError && <Text style={styles.error}>{submitError}</Text>}
-        <PrimaryButton
-          label="Продолжить"
-          onPress={handleSubmit}
-          loading={submitting}
-          disabled={text.trim().length === 0 && !audioUri}
-        />
-      </View>
-    );
-  }
-
-  if (step === "transcribing") {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Что вам нужно?</Text>
-        <View style={styles.processingBox}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.processingText}>Распознаём голос…</Text>
-          {pollTimedOut && (
-            <>
-              <Text style={styles.hint}>Это занимает больше времени, чем обычно.</Text>
-              <PrimaryButton
-                label="Проверить снова"
-                variant="secondary"
-                onPress={() => {
-                  pollDeadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
-                  setPollTimedOut(false);
-                  void pollTranscribing();
-                  pollTimerRef.current = setInterval(pollTranscribing, POLL_INTERVAL_MS);
-                }}
-              />
-            </>
-          )}
-        </View>
-      </View>
-    );
-  }
-
-  if (step === "transcript_review") {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Проверьте распознанный текст</Text>
-        <Text style={styles.label}>Можно поправить перед отправкой в AI.</Text>
-        <TextInput
-          style={styles.transcriptArea}
-          value={transcriptText}
-          onChangeText={setTranscriptText}
-          multiline
-        />
-        {submitError && <Text style={styles.error}>{submitError}</Text>}
-        <PrimaryButton
-          label="Отправить AI"
-          onPress={handleConfirmTranscript}
-          loading={submitting}
-          disabled={transcriptText.trim().length === 0}
-        />
-        <PrimaryButton label="Отменить" variant="secondary" onPress={reset} disabled={submitting} />
+        <PrimaryButton label="Продолжить" onPress={handleSubmit} loading={submitting} disabled={text.trim().length === 0} />
       </View>
     );
   }
@@ -308,6 +196,7 @@ export default function CreateOrderScreen() {
   if (step === "processing") {
     return (
       <View style={styles.container}>
+        {CloseButton}
         <Text style={styles.title}>Что вам нужно?</Text>
         <View style={styles.processingBox}>
           <ActivityIndicator color={colors.primary} />
@@ -336,6 +225,7 @@ export default function CreateOrderScreen() {
     if (order.status === "moderation_hold") {
       return (
         <View style={styles.container}>
+          {CloseButton}
           <Text style={styles.title}>Заказ отправлен на проверку</Text>
           <Text style={styles.body}>
             {order.moderationStatus === "reject"
@@ -349,6 +239,7 @@ export default function CreateOrderScreen() {
 
     return (
       <View style={styles.container}>
+        {CloseButton}
         <Text style={styles.title}>Проверьте заказ</Text>
         {order.moderationStatus === "allow_with_warning" && (
           <Text style={styles.warning}>AI отметил этот заказ как требующий внимания при публикации.</Text>
@@ -378,7 +269,7 @@ export default function CreateOrderScreen() {
         </View>
         {publishError && <Text style={styles.error}>{publishError}</Text>}
         <PrimaryButton label="Опубликовать" onPress={handlePublish} loading={step === "publishing"} />
-        <PrimaryButton label="Отменить" variant="secondary" onPress={reset} disabled={step === "publishing"} />
+        <PrimaryButton label="Отменить" variant="secondary" onPress={handleClose} disabled={step === "publishing"} />
       </View>
     );
   }
@@ -404,9 +295,20 @@ export default function CreateOrderScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  topBar: { flexDirection: "row", justifyContent: "flex-end" },
+  closeIcon: { fontSize: 20, color: colors.textSecondary, padding: 4 },
   title: { ...typography.title, color: colors.textPrimary },
   body: { ...typography.body, color: colors.textSecondary },
   label: { ...typography.caption, color: colors.textSecondary },
+  textArea: {
+    ...typography.body,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    minHeight: 120,
+    color: colors.textPrimary,
+    textAlignVertical: "top",
+  },
   priceInput: {
     ...typography.body,
     borderWidth: 1,
@@ -414,16 +316,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     padding: spacing.sm,
     color: colors.textPrimary,
-  },
-  transcriptArea: {
-    ...typography.body,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.sm,
-    padding: spacing.sm,
-    color: colors.textPrimary,
-    minHeight: 96,
-    textAlignVertical: "top",
   },
   error: { ...typography.caption, color: colors.danger },
   warning: { ...typography.caption, color: colors.warning },

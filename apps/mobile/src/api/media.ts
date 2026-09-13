@@ -1,4 +1,5 @@
-import { apiClient } from "./client";
+import { apiClient, getApiBaseUrl } from "./client";
+import { Platform } from "react-native";
 
 export type MediaKind = "photo" | "audio";
 
@@ -12,6 +13,7 @@ export interface UploadableFile {
   uri: string;
   name: string;
   type: string;
+  file?: File;
 }
 
 export interface MediaUploaded {
@@ -26,9 +28,30 @@ export interface MediaUploaded {
  * `Content-Type: application/json`) — boundary должен выставить сам
  * `fetch`/полифилл `FormData` по телу запроса.
  */
-export function uploadMedia(kind: MediaKind, file: UploadableFile): Promise<MediaUploaded> {
+export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promise<MediaUploaded> {
   const form = new FormData();
   form.append("kind", kind);
-  form.append("file", file as unknown as Blob);
+  if (Platform.OS === "web") {
+    let blob: Blob;
+    if (file.file) {
+      blob = file.file;
+    } else {
+      const response = await fetch(file.uri);
+      if (!response.ok) throw new Error("Не удалось прочитать выбранный файл.");
+      blob = await response.blob();
+    }
+    form.append("file", blob, file.name);
+  } else {
+    form.append("file", { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  }
   return apiClient.uploadForm<MediaUploaded>("/media", form);
+}
+
+/**
+ * URL для GET /media/{id} (apps/api/src/routes/media.ts) — используется в
+ * <Image source={{uri: getMediaUrl(id)}}> для аватарки профиля. Не через
+ * apiClient.request — это не JSON-эндпоинт, а прямая ссылка на файл.
+ */
+export function getMediaUrl(mediaId: string): string {
+  return `${getApiBaseUrl()}/media/${mediaId}`;
 }

@@ -37,15 +37,15 @@ export function PrimaryButton({ label, onPress, loading, disabled, variant = "pr
 const styles = StyleSheet.create({
   base: {
     minHeight: 52,
-    borderRadius: radii.md,
+    borderRadius: radii.button,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
   primary: { backgroundColor: colors.primary },
-  secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
-  label: { ...typography.subtitle, color: colors.textInverse },
+  label: { ...typography.subtitle, fontWeight: "600", color: colors.textInverse },
   labelSecondary: { color: colors.textPrimary },
 });

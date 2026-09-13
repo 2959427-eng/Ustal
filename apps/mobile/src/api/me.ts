@@ -7,6 +7,8 @@ export interface Me {
   name: string;
   cityId: string;
   whatsappPhone: string | null;
+  /** Фото профиля — id для GET /media/{id} (src/api/media.ts getMediaUrl), null — фото не задано. */
+  avatarMediaId: string | null;
 }
 
 /** GET /me — данные аккаунта для экрана настроек (раздел 27 ТЗ). */

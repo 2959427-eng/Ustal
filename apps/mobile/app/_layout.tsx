@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { router, Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { primeTokenCache } from "../src/api/client";
 import { isSessionUsable, refreshSession } from "../src/api/auth";
 import { ensurePushRegistered } from "../src/notifications/push";
@@ -51,12 +52,14 @@ export default function RootLayout() {
   if (!ready) return null; // Splash остаётся на экране (expo-splash-screen)
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }

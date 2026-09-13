@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Unit tests must use only their explicit fixtures, never local credentials.
+vi.mock("dotenv", () => ({ config: vi.fn() }));
+
 /**
  * Тестируем только то, что не требует сетевого вызова к OpenAI (реального
  * ключа в этой песочнице нет) — сборку клиента и явную ошибку при отсутствии

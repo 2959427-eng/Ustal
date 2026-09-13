@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, KeyboardAvoidingView, Platform, StyleSheet, FlatList, Pressable, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { OrderCard } from "../../src/components/OrderCard";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { HomeHeader } from "../../src/components/HomeHeader";
 import { getFeed } from "../../src/api/feed";
 import { getMyOrders, type MyOrderItem } from "../../src/api/my";
-import { getCities } from "../../src/api/cities";
 import type { OrderStatus } from "../../src/api/orders";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
-
-type Tab = "feed" | "mine";
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   draft: "Черновик",
@@ -24,105 +22,89 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 };
 
 /**
- * «Заказы»: два режима одного и того же таба (раздел 15/19/26 ТЗ) — тот же
- * аккаунт без выбора роли одновременно и заказчик, и исполнитель
- * (architecture.md §2). «Лента» — GET /feed (подобранные AI заказы, с
- * объяснением совпадения, без счётчика исполнителей — architecture.md §5
- * п.6). «Мои заказы» — GET /my/orders, то, что опубликовал сам.
+ * «Заказы» — то, что опубликовал сам пользователь (раздел 19/26 ТЗ, макет
+ * Main.dc.html). GET /my/orders. Композер «Создать заказ» закреплён над
+ * клавиатурой — переход в app/(tabs)/create.tsx с предзаполнением (раздел 6 ТЗ).
+ * Только текст — голосовой ввод из композера и всего флоу создания заказа
+ * убран по просьбе пользователя (было неочевидно, что запись — это ввод для
+ * AI, а не голосовое сообщение, и путало). Второй из двух главных экранов
+ * нижней навигации — см. app/(tabs)/index.tsx ("Возможности").
  */
 export default function OrdersScreen() {
-  const [tab, setTab] = useState<Tab>("feed");
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.tabBar}>
-        <SegmentButton label="Лента" active={tab === "feed"} onPress={() => setTab("feed")} />
-        <SegmentButton label="Мои заказы" active={tab === "mine"} onPress={() => setTab("mine")} />
-      </View>
-      {tab === "feed" ? <FeedList /> : <MyOrdersList />}
-    </View>
-  );
-}
-
-function SegmentButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable style={[styles.segment, active && styles.segmentActive]} onPress={onPress}>
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function FeedList() {
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["feed"],
-    queryFn: () => getFeed(),
-  });
-  const { data: cities } = useQuery({ queryKey: ["cities"], queryFn: getCities });
-  const cityName = (cityId: string) => cities?.find((c) => c.id === cityId)?.name ?? cityId;
+  const insets = useSafeAreaInsets();
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders() });
+  const { data: feed } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
 
-  if (isLoading) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
-  if (isError) return <ErrorState onRetry={refetch} />;
-  if (!data || data.items.length === 0) {
-    return <Text style={styles.empty}>Пока нет подходящих заказов — как только AI найдёт совпадение, вы увидите его здесь.</Text>;
-  }
+  const [needText, setNeedText] = useState("");
+  const canContinue = needText.trim().length > 0;
+
+  const handlePublish = () => {
+    if (!canContinue) return;
+    router.push({
+      pathname: "/(tabs)/create",
+      params: { prefillText: needText.trim() },
+    });
+  };
 
   return (
-    <FlatList
-      data={data.items}
-      keyExtractor={(item) => item.orderId}
-      contentContainerStyle={styles.list}
-      renderItem={({ item }) => (
-        <Pressable
-          style={styles.cardWrapper}
-          onPress={() =>
-            router.push({
-              pathname: "/order/[id]",
-              params: {
-                id: item.orderId,
-                title: item.title ?? "",
-                description: item.description ?? "",
-                cityName: cityName(item.cityId),
-                priceMinor: item.priceMinor != null ? String(item.priceMinor) : "",
-                matchType: item.matchType,
-                explanation: item.explanation,
-              },
-            })
-          }
-        >
-          <OrderCard
-            title={item.title ?? "Без названия"}
-            description={item.description ?? ""}
-            cityName={cityName(item.cityId)}
-            priceMinor={item.priceMinor}
-            matchType={item.matchType}
-            explanation={item.explanation}
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <FlatList
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        data={data?.items ?? []}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          <View style={[styles.headerPad, { paddingTop: insets.top + spacing.sm }]}>
+            <HomeHeader active="orders" opportunitiesCount={feed?.items.length} ordersCount={data?.items.length} />
+          </View>
+        }
+        ListEmptyComponent={
+          isLoading ? (
+            <ActivityIndicator color={colors.primary} style={styles.spinner} />
+          ) : isError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.error}>Не удалось загрузить список.</Text>
+              <Pressable onPress={() => refetch()}>
+                <Text style={styles.retry}>Повторить</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.empty}>Вы ещё не создавали заказов — опишите, что нужно, ниже.</Text>
+          )
+        }
+        renderItem={({ item }) => <MyOrderRow item={item} />}
+      />
+      <View style={[styles.composerDock, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+        <View style={styles.composer}>
+          <TextInput
+            accessibilityLabel="Создать заказ"
+            style={styles.input}
+            value={needText}
+            onChangeText={setNeedText}
+            placeholder="Создать заказ"
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            autoCapitalize="sentences"
+            textAlignVertical="center"
           />
-        </Pressable>
-      )}
-    />
-  );
-}
-
-function MyOrdersList() {
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["my-orders"],
-    queryFn: () => getMyOrders(),
-  });
-
-  if (isLoading) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
-  if (isError) return <ErrorState onRetry={refetch} />;
-  if (!data || data.items.length === 0) {
-    return <Text style={styles.empty}>Вы ещё не создавали заказов — начните на вкладке «Создать».</Text>;
-  }
-
-  return (
-    <FlatList
-      data={data.items}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={styles.list}
-      renderItem={({ item }) => <MyOrderRow item={item} />}
-    />
+          {canContinue && (
+            <Pressable
+              onPress={handlePublish}
+              style={styles.sendButton}
+              accessibilityRole="button"
+              accessibilityLabel="Продолжить создание заказа"
+            >
+              <View accessible={false} style={styles.arrow}>
+                <View style={styles.arrowStem} />
+                <View style={styles.arrowHead} />
+              </View>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -141,34 +123,45 @@ function MyOrderRow({ item }: { item: MyOrderItem }) {
   );
 }
 
-function ErrorState({ onRetry }: { onRetry: () => void }) {
-  return (
-    <View style={styles.errorBox}>
-      <Text style={styles.error}>Не удалось загрузить список.</Text>
-      <Pressable onPress={onRetry}>
-        <Text style={styles.retry}>Повторить</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.lg },
-  tabBar: { flexDirection: "row", paddingHorizontal: spacing.lg, gap: spacing.xs, marginBottom: spacing.md },
-  segment: { flex: 1, paddingVertical: spacing.sm, borderRadius: radii.pill, backgroundColor: colors.surface, alignItems: "center" },
-  segmentActive: { backgroundColor: colors.primary },
-  segmentText: { ...typography.body, color: colors.textSecondary },
-  segmentTextActive: { color: colors.textInverse, fontWeight: "600" },
-  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
-  cardWrapper: { marginBottom: spacing.sm },
-  empty: { ...typography.body, color: colors.textSecondary, paddingHorizontal: spacing.lg },
-  spinner: { marginTop: spacing.lg },
-  errorBox: { paddingHorizontal: spacing.lg, gap: spacing.xs },
+  container: { flex: 1, backgroundColor: colors.background },
+  headerPad: { marginBottom: spacing.md },
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
+  empty: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.sm },
+  spinner: { marginTop: spacing.lg, marginBottom: spacing.md },
+  errorBox: { gap: spacing.xs, marginBottom: spacing.md },
   error: { ...typography.body, color: colors.danger },
   retry: { ...typography.body, color: colors.primary },
-  myOrderRow: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.sm, gap: spacing.xs },
-  myOrderTitle: { ...typography.subtitle, color: colors.textPrimary },
+  myOrderRow: {
+    backgroundColor: colors.background,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  myOrderTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   myOrderFooter: { flexDirection: "row", justifyContent: "space-between" },
-  myOrderStatus: { ...typography.caption, color: colors.textSecondary },
-  myOrderPrice: { ...typography.caption, color: colors.textPrimary },
+  myOrderStatus: { ...typography.caption, color: colors.textTertiary },
+  myOrderPrice: { ...typography.subtitle, fontWeight: "700", color: colors.primary },
+  composerDock: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.background },
+  composer: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 58,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 29,
+    paddingLeft: 20,
+    paddingRight: 6,
+    paddingVertical: 6,
+    gap: 2,
+  },
+  input: { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingVertical: 11, paddingHorizontal: 0, fontSize: 16, lineHeight: 22, color: colors.textPrimary },
+  sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.textPrimary, alignItems: "center", justifyContent: "center" },
+  arrow: { width: 22, height: 22, alignItems: "center" },
+  arrowStem: { position: "absolute", top: 3, width: 2, height: 17, borderRadius: 1, backgroundColor: colors.textInverse },
+  arrowHead: { position: "absolute", top: 3, width: 11, height: 11, borderTopWidth: 2, borderLeftWidth: 2, borderColor: colors.textInverse, transform: [{ rotate: "45deg" }] },
 });
