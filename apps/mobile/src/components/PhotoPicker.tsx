@@ -65,11 +65,33 @@ export function PhotoPicker({ photos, onChange, disabled, max = MAX_PHOTOS_DEFAU
       if (result.canceled || result.assets.length === 0) return;
 
       setUploading(true);
+      // 2026-09-14 fix: раньше весь батч грузился в одном try — если падало
+      // ХОТЯ БЫ одно фото (например, второе из нескольких выбранных), catch
+      // ловил всё сразу и onChange([...photos, ...uploaded]) вообще не
+      // вызывался — терялись и уже успешно загруженные фото тоже, а
+      // пользователь видел общую ошибку и не понимал, что часть фото на
+      // самом деле загрузилась. Теперь каждое фото грузится в своём try —
+      // успешные добавляются в любом случае, ошибка показывается только по
+      // упавшим.
       const uploaded: PickedPhoto[] = [];
+      let failedCount = 0;
       for (const asset of result.assets.slice(0, remaining)) {
-        uploaded.push(await uploadAsset(asset));
+        try {
+          uploaded.push(await uploadAsset(asset));
+        } catch {
+          failedCount += 1;
+        }
       }
-      onChange([...photos, ...uploaded]);
+      if (uploaded.length > 0) {
+        onChange([...photos, ...uploaded]);
+      }
+      if (failedCount > 0) {
+        setError(
+          uploaded.length > 0
+            ? `Не удалось загрузить ${failedCount} из ${result.assets.length} фото. Остальные добавлены — попробуйте загрузить недостающие ещё раз.`
+            : "Не удалось загрузить фото. Попробуйте ещё раз.",
+        );
+      }
     } catch {
       setError("Не удалось загрузить фото. Попробуйте ещё раз.");
     } finally {

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, TextInput, Linking, Alert } from "react-native";
+import { View, Text, Image, StyleSheet, ScrollView, ActivityIndicator, Pressable, TextInput, Linking, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError } from "@ustal/api-client";
 import { getOrder } from "../../src/api/orders";
+import { getMediaUrl } from "../../src/api/media";
 import type { AssignmentStatus, OrderDetail } from "../../src/api/orders";
 import { getOrderCandidates, createResponse, withdrawResponse } from "../../src/api/responses";
 import type { OrderCandidate } from "../../src/api/responses";
@@ -162,6 +163,26 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
             ? "Заказ отклонён модерацией."
             : "Заказ на ручной проверке модератором."}
         </Text>
+      )}
+
+      {/*
+       * 2026-09-14 fix: «старый заказ появился без фото» — этот экран
+       * (единственное место, где автор видит уже созданный заказ повторно)
+       * вообще не рендерил order.photoMediaIds. Фото были видны только на
+       * шаге "preview" в create.tsx — но там источник картинок не сервер, а
+       * ЛОКАЛЬНОЕ состояние photos (uri из пикера), которое живо только
+       * пока не закрыт экран создания. Как только заказ открывали заново
+       * (из списка "Мои заказы" или после перезапуска приложения) — фото
+       * пропадали не потому, что не загрузились, а потому что их никто не
+       * рисовал. GET /orders/{id} (apps/api/src/routes/orders.ts) уже
+       * отдаёт photoMediaIds — просто рендерим их через GET /media/{id}.
+       */}
+      {order.photoMediaIds.length > 0 && (
+        <View style={styles.photoRow}>
+          {order.photoMediaIds.map((mediaId) => (
+            <Image key={mediaId} source={{ uri: getMediaUrl(mediaId) }} style={styles.photoThumb} />
+          ))}
+        </View>
       )}
 
       {(order.status === "published" || order.status === "negotiating" || order.status === "closed") && (
@@ -614,6 +635,8 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   price: { ...typography.title, fontSize: 20, fontWeight: "800", color: colors.primary },
   divider: { height: 1, backgroundColor: colors.borderLight, marginVertical: spacing.xs },
+  photoRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  photoThumb: { width: 72, height: 72, borderRadius: radii.sm, backgroundColor: colors.surfaceAlt },
   sectionTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   errorBox: { gap: spacing.xs },
   error: { ...typography.caption, color: colors.danger },
