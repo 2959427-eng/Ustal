@@ -171,6 +171,8 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
         catch { setCloseError("Не удалось повторить обработку."); }
         finally { setClosing(false); }
       }} />}
+      {(order.status === "processing_failed" || order.status === "processing") && closeError &&
+        <Text style={styles.error}>{closeError}</Text>}
       {order.status === "moderation_hold" && (
         <Text style={styles.hint}>
           {order.moderationStatus === "reject"
