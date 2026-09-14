@@ -1,5 +1,4 @@
-import Constants from "expo-constants";
-import * as Notifications from "expo-notifications";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import { Platform } from "react-native";
 import { apiClient } from "../api/client";
 
@@ -10,14 +9,6 @@ import { apiClient } from "../api/client";
  * когда приложение открыто на переднем плане — по умолчанию Expo его
  * скрывает, если явно не задать handler.
  */
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
 
 let registrationInFlight = false;
 let lastRegisteredToken: string | null = null;
@@ -33,9 +24,20 @@ let lastRegisteredToken: string | null = null;
 export async function ensurePushRegistered(): Promise<void> {
   if (registrationInFlight) return;
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+  // Importing expo-notifications itself triggers an error in Android Expo Go.
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return;
 
   registrationInFlight = true;
   try {
+    const Notifications = await import("expo-notifications");
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== "granted") {
