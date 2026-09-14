@@ -5,6 +5,7 @@ import { assertOrderTransition } from "@ustal/domain";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
 import { createOrderSchema, editOrderTranscriptSchema } from "@ustal/validation";
 import { withIdempotency } from "../lib/idempotency.js";
+import { notifyUser } from "../lib/notify.js";
 
 /**
  * Заказы (docs/api.md, docs/matching.md пайплайн заказа). `POST /orders`
@@ -276,6 +277,19 @@ export default async function ordersRoutes(app: FastifyInstance) {
     return reply.send({ id: updated?.id, status: updated?.status, publishedAt: updated?.publishedAt });
   });
 
+  /**
+   * 2026-09-14: «Удалить заказ» / «Отменить заказ» на экране заказа
+   * (claude/plan.md) — один и тот же backend-переход (assertOrderTransition
+   * в любом случае допускает только "cancelled", не отдельный "deleted" —
+   * не вводим новый статус), разница между двумя кнопками целиком на
+   * клиенте (подпись/текст подтверждения в зависимости от того, выбран ли
+   * уже исполнитель). Раньше этот эндпоинт существовал в api-клиенте
+   * (src/api/orders.ts), но не был подключён ни к одному экрану и не решал
+   * судьбу активных откликов/назначений — по сути висел бы "заказ отменён,
+   * а отклики остались active". Логика ниже — тот же паттерн, что и
+   * POST /orders/{id}/close (assignments.ts): резолвим хвосты в транзакции,
+   * уведомляем вне неё.
+   */
   app.post("/orders/:id/cancel", { preHandler: app.authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, id) });
@@ -289,7 +303,55 @@ export default async function ordersRoutes(app: FastifyInstance) {
     }
 
     assertOrderTransition(order.status as never, "cancelled");
-    await db.update(schema.orders).set({ status: "cancelled" }).where(eq(schema.orders.id, order.id));
+
+    const { activeResponses, selectedAssignments } = await db.transaction(async (tx) => {
+      const activeResponses = await tx.query.responses.findMany({
+        where: and(eq(schema.responses.orderId, id), eq(schema.responses.status, "active")),
+      });
+      if (activeResponses.length > 0) {
+        await tx
+          .update(schema.responses)
+          .set({ status: "not_selected", updatedAt: new Date() })
+          .where(and(eq(schema.responses.orderId, id), eq(schema.responses.status, "active")));
+      }
+
+      // Выбранный (но ещё не завершённый) исполнитель — если он есть,
+      // именно это и есть случай «Отменить заказ» из ТЗ, а не «Удалить».
+      // completed/not_completed назначения не трогаем — работа уже
+      // состоялась, отменять там нечего (см. domain AssignmentStatus).
+      const selectedAssignments = await tx.query.orderAssignments.findMany({
+        where: and(eq(schema.orderAssignments.orderId, id), eq(schema.orderAssignments.status, "selected")),
+      });
+      if (selectedAssignments.length > 0) {
+        await tx
+          .update(schema.orderAssignments)
+          .set({ status: "cancelled" })
+          .where(and(eq(schema.orderAssignments.orderId, id), eq(schema.orderAssignments.status, "selected")));
+      }
+
+      await tx.update(schema.orders).set({ status: "cancelled" }).where(eq(schema.orders.id, id));
+
+      return { activeResponses, selectedAssignments };
+    });
+
+    for (const r of activeResponses) {
+      await notifyUser(r.executorId, "order_cancelled_response", {
+        orderId: id,
+        responseId: r.id,
+        title: "Заказ отменён",
+        body: order.normalizedTitle ? `Автор отменил заказ «${order.normalizedTitle}»` : "Автор отменил заказ",
+      });
+    }
+    for (const a of selectedAssignments) {
+      await notifyUser(a.executorId, "order_cancelled_assignment", {
+        orderId: id,
+        assignmentId: a.id,
+        title: "Заказ отменён",
+        body: order.normalizedTitle
+          ? `Автор отменил заказ «${order.normalizedTitle}», на который вас выбрали`
+          : "Автор отменил заказ, на который вас выбрали",
+      });
+    }
 
     return reply.code(204).send();
   });

@@ -39,6 +39,15 @@ export default function OrdersScreen() {
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
   const { data: feed } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
 
+  // 2026-09-14: «Мои заказы» — активный список, отменённые (status='cancelled',
+  // см. app/order/[id].tsx — «Удалить заказ»/«Отменить заказ») не должны
+  // висеть в нём вперемешку с текущими. Отдельного экрана истории/архива в
+  // приложении пока нет, поэтому фильтрация — только здесь, только для
+  // отображения списка. GET /my/orders и его использование в других местах
+  // (HomeHeader ordersCount ниже, счётчик "Мои заказы" в account.tsx — оба
+  // читают тот же getMyOrders()) не трогаем, чтобы не менять поведение там.
+  const activeOrders = (data?.items ?? []).filter((item) => item.status !== "cancelled");
+
   const [needText, setNeedText] = useState("");
   const canContinue = needText.trim().length > 0;
 
@@ -57,7 +66,7 @@ export default function OrdersScreen() {
         onRefresh={() => { void refetch(); }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-        data={data?.items ?? []}
+        data={activeOrders}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListHeaderComponent={

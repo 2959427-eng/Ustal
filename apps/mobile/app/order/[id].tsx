@@ -3,14 +3,14 @@ import { View, Text, Image, StyleSheet, ScrollView, ActivityIndicator, Pressable
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError } from "@ustal/api-client";
-import { getOrder, retryOrder, publishOrder } from "../../src/api/orders";
+import { getOrder, retryOrder, publishOrder, cancelOrder } from "../../src/api/orders";
 import { getMediaUrl } from "../../src/api/media";
 import type { AssignmentStatus, OrderDetail } from "../../src/api/orders";
 import { getOrderCandidates, createResponse, withdrawResponse } from "../../src/api/responses";
 import type { OrderCandidate } from "../../src/api/responses";
 import { unlockContact, getOrderContact } from "../../src/api/contacts";
 import type { OrderContact } from "../../src/api/contacts";
-import { selectCandidate, closeOrder, completeAssignment, markAssignmentNotCompleted } from "../../src/api/assignments";
+import { selectCandidate, completeAssignment, markAssignmentNotCompleted } from "../../src/api/assignments";
 import { submitReview } from "../../src/api/reviews";
 import { getMyResponses } from "../../src/api/my";
 import type { MyResponseItem } from "../../src/api/my";
@@ -117,6 +117,7 @@ export default function OrderDetailScreen() {
 // ---------------------------------------------------------------------------
 
 function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
@@ -124,8 +125,24 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
   const candidatesQuery = useQuery({
     queryKey: ["order-candidates", orderId],
     queryFn: () => getOrderCandidates(orderId),
-    enabled: order.status === "published" || order.status === "negotiating" || order.status === "closed",
+    enabled:
+      order.status === "published" ||
+      order.status === "negotiating" ||
+      order.status === "closed" ||
+      order.status === "cancelled",
   });
+
+  const candidates = candidatesQuery.data?.items ?? [];
+  // Простое правило вместо новых статусов (задача явно просила не усложнять):
+  // «выбран исполнитель» = есть активное (ещё не завершённое) назначение —
+  // тогда кнопка снизу «Отменить заказ», иначе, пока ничего не завершено —
+  // «Удалить заказ». Если работа уже завершена/отмечена невыполненной,
+  // отменять/удалять уже нечего — кнопка не показывается вовсе, действие
+  // переходит к существующей логике отзыва в CandidateRow ниже.
+  const hasSelectedAssignment = candidates.some((c) => c.assignmentStatus === "selected");
+  const hasResolvedAssignment = candidates.some(
+    (c) => c.assignmentStatus === "completed" || c.assignmentStatus === "not_completed",
+  );
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["order-candidates", orderId] });
@@ -133,17 +150,59 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
     void queryClient.invalidateQueries({ queryKey: ["my-orders"] });
   };
 
-  const handleClose = async () => {
-    setCloseError(null);
-    setClosing(true);
-    try {
-      await closeOrder(orderId);
-      invalidate();
-    } catch (err) {
-      setCloseError(err instanceof Error ? err.message : "Не удалось закрыть заказ.");
-    } finally {
-      setClosing(false);
-    }
+  /**
+   * Удаление/отмена заказа (claude/plan.md, задача 2026-09-14). Один и тот
+   * же backend-вызов (POST /orders/{id}/cancel — единственный допустимый
+   * переход из published/negotiating, кроме closed/expired, см.
+   * packages/domain/src/order.ts) для обеих кнопок: разница только в тексте
+   * подтверждения и в том, остаёмся ли на экране. «Удалить» — исполнитель
+   * ещё не выбран, поэтому после подтверждения возвращаемся к списку («больше
+   * не показывается» в текущем месте); «Отменить» — исполнитель уже выбран,
+   * поэтому остаёмся на экране, заказ виден дальше со статусом «Отменён»
+   * («остаётся в истории»).
+   */
+  const handleDelete = () => {
+    Alert.alert("Удалить заказ?", "Все отклики будут закрыты.", [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: "Удалить",
+        style: "destructive",
+        onPress: async () => {
+          setCloseError(null);
+          setClosing(true);
+          try {
+            await cancelOrder(orderId);
+            invalidate();
+            router.back();
+          } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "Не удалось удалить заказ.");
+            setClosing(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCancel = () => {
+    Alert.alert("Отменить заказ?", "Исполнитель получит уведомление.", [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: "Отменить заказ",
+        style: "destructive",
+        onPress: async () => {
+          setCloseError(null);
+          setClosing(true);
+          try {
+            await cancelOrder(orderId);
+            invalidate();
+          } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "Не удалось отменить заказ.");
+          } finally {
+            setClosing(false);
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -201,7 +260,10 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
         </View>
       )}
 
-      {(order.status === "published" || order.status === "negotiating" || order.status === "closed") && (
+      {(order.status === "published" ||
+        order.status === "negotiating" ||
+        order.status === "closed" ||
+        order.status === "cancelled") && (
         <>
           <View style={styles.divider} />
           <Text style={styles.sectionTitle}>Кандидаты</Text>
@@ -222,10 +284,14 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
             <CandidateRow key={c.id} orderId={orderId} candidate={c} onChanged={invalidate} />
           ))}
 
-          {(order.status === "published" || order.status === "negotiating") && (
+          {(order.status === "published" || order.status === "negotiating") && !hasResolvedAssignment && (
             <>
               {closeError && <Text style={styles.error}>{closeError}</Text>}
-              <PrimaryButton label="Закрыть заказ" variant="secondary" onPress={handleClose} loading={closing} />
+              {hasSelectedAssignment ? (
+                <PrimaryButton label="Отменить заказ" variant="secondary" onPress={handleCancel} loading={closing} />
+              ) : (
+                <PrimaryButton label="Удалить заказ" variant="secondary" onPress={handleDelete} loading={closing} />
+              )}
             </>
           )}
         </>
