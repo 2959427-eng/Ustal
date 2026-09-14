@@ -4,6 +4,7 @@ import type { AssignmentStatus, ModerationStatus, OrderStatus } from "./orders";
 
 export interface MyOrderItem {
   id: string;
+  photoMediaIds?: string[];
   status: OrderStatus;
   moderationStatus: ModerationStatus;
   normalizedTitle: string | null;

@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { View, Text, TextInput, KeyboardAvoidingView, Platform, StyleSheet, FlatList, Pressable, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import { View, Text, TextInput, KeyboardAvoidingView, Platform, StyleSheet, FlatList, Pressable, ActivityIndicator, Image } from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
+import { getMediaUrl } from "../../src/api/media";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HomeHeader } from "../../src/components/HomeHeader";
@@ -34,7 +35,8 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 export default function OrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders() });
+  const { data, isLoading, isError, isRefetching, refetch } = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders() });
+  useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
   const { data: feed } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
 
   const [needText, setNeedText] = useState("");
@@ -51,6 +53,8 @@ export default function OrdersScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <FlatList
+        refreshing={isRefetching}
+        onRefresh={() => { void refetch(); }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         data={data?.items ?? []}
@@ -113,7 +117,10 @@ function MyOrderRow({ item }: { item: MyOrderItem }) {
   const router = useRouter();
   return (
     <Pressable style={styles.myOrderRow} onPress={() => router.push({ pathname: "/order/[id]", params: { id: item.id } })}>
-      <Text style={styles.myOrderTitle}>{item.normalizedTitle ?? "Обрабатывается…"}</Text>
+      <Text style={styles.myOrderTitle}>{item.normalizedTitle ?? (item.status === "processing_failed" ? "Не удалось обработать заказ" : "Обрабатывается…")}</Text>
+      {!!item.photoMediaIds?.length && <View style={styles.photoRow}>
+        {item.photoMediaIds.slice(0, 4).map((id) => <Image key={id} source={{ uri: getMediaUrl(id) }} style={styles.photo} accessibilityLabel="Фото заказа" />)}
+      </View>}
       <View style={styles.myOrderFooter}>
         <Text style={styles.myOrderStatus}>{STATUS_LABELS[item.status]}</Text>
         {item.priceMinor != null && (
@@ -125,6 +132,8 @@ function MyOrderRow({ item }: { item: MyOrderItem }) {
 }
 
 const styles = StyleSheet.create({
+  photoRow: { flexDirection: "row", gap: spacing.xs },
+  photo: { width: 64, height: 64, borderRadius: radii.md },
   container: { flex: 1, backgroundColor: colors.background },
   headerPad: { marginBottom: spacing.md },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { PhotoPicker, type PickedPhoto } from "../../src/components/PhotoPicker";
@@ -32,6 +33,7 @@ type Step = "compose" | "processing" | "failed" | "preview" | "publishing" | "pu
  * модерации незаметно для пользователя.
  */
 export default function CreateOrderScreen() {
+  const queryClient = useQueryClient();
   const { prefillText } = useLocalSearchParams<{ prefillText?: string }>();
   const [step, setStep] = useState<Step>("compose");
   const [text, setText] = useState(prefillText ?? "");
@@ -133,6 +135,8 @@ export default function CreateOrderScreen() {
     setStep("publishing");
     try {
       await publishOrder(orderId);
+      void queryClient.invalidateQueries({ queryKey: ["my-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["order", orderId] });
       setStep("published");
     } catch (err) {
       setPublishError(err instanceof Error ? err.message : "Не удалось опубликовать. Попробуйте ещё раз.");

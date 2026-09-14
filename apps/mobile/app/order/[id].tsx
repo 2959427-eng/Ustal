@@ -3,7 +3,7 @@ import { View, Text, Image, StyleSheet, ScrollView, ActivityIndicator, Pressable
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError } from "@ustal/api-client";
-import { getOrder } from "../../src/api/orders";
+import { getOrder, retryOrder, publishOrder } from "../../src/api/orders";
 import { getMediaUrl } from "../../src/api/media";
 import type { AssignmentStatus, OrderDetail } from "../../src/api/orders";
 import { getOrderCandidates, createResponse, withdrawResponse } from "../../src/api/responses";
@@ -70,6 +70,7 @@ export default function OrderDetailScreen() {
     queryKey: ["order", id],
     queryFn: () => getOrder(id),
     retry: false,
+    refetchInterval: (query) => query.state.data?.status === "processing" && query.state.data.moderationStatus === "pending" ? 3000 : false,
   });
 
   const isNotAuthor = orderQuery.isError && orderQuery.error instanceof ApiRequestError && orderQuery.error.status === 404;
@@ -155,8 +156,21 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
       </View>
 
       {order.status === "processing" && (
-        <Text style={styles.hint}>Заказ обрабатывается AI — обновите чуть позже.</Text>
+        order.moderationStatus === "pending" ? <Text style={styles.hint}>Заказ обрабатывается AI…</Text> :
+        (order.moderationStatus === "allow" || order.moderationStatus === "allow_with_warning") &&
+        <PrimaryButton label="Опубликовать" loading={closing} onPress={async () => {
+          setClosing(true); setCloseError(null);
+          try { await publishOrder(orderId); invalidate(); }
+          catch { setCloseError("Не удалось опубликовать заказ."); }
+          finally { setClosing(false); }
+        }} />
       )}
+      {order.status === "processing_failed" && <PrimaryButton label="Повторить обработку" loading={closing} onPress={async () => {
+        setClosing(true); setCloseError(null);
+        try { await retryOrder(orderId); invalidate(); }
+        catch { setCloseError("Не удалось повторить обработку."); }
+        finally { setClosing(false); }
+      }} />}
       {order.status === "moderation_hold" && (
         <Text style={styles.hint}>
           {order.moderationStatus === "reject"
@@ -221,6 +235,7 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
 const ORDER_STATUS_LABELS: Record<string, string> = {
   draft: "Черновик",
   processing: "Обрабатывается",
+  processing_failed: "Ошибка обработки",
   moderation_hold: "На проверке",
   published: "Опубликован",
   negotiating: "Идут переговоры",

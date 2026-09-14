@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 
 const DEFAULT_LIMIT = 20;
@@ -31,9 +31,14 @@ export default async function myRoutes(app: FastifyInstance) {
       limit,
       offset,
     });
+    const media = rows.length ? await db.query.orderMedia.findMany({
+      where: inArray(schema.orderMedia.orderId, rows.map((o) => o.id)),
+      orderBy: (t, { asc }) => asc(t.position),
+    }) : [];
     return reply.send({
       items: rows.map((o) => ({
         id: o.id,
+        photoMediaIds: media.filter((m) => m.orderId === o.id && m.position >= 0).map((m) => m.mediaId),
         status: o.status,
         moderationStatus: o.moderationStatus,
         normalizedTitle: o.normalizedTitle,
