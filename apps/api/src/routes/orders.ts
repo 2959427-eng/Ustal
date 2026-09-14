@@ -44,7 +44,10 @@ export default async function ordersRoutes(app: FastifyInstance) {
       const jobId = await boss.send(JOB_TYPES.ORDER_EXTRACTION, { orderId: id }, {
         retryLimit: 0, expireInSeconds: 120,
         db: { executeSql: async (text, values) => {
-          const rows = await tx.unsafe(text, values);
+          // pg-boss uses node-postgres object coercion; postgres.js unsafe needs JSON text.
+          const params = values.map((value) => value !== null && typeof value === "object"
+            ? value instanceof Date ? value.toISOString() : JSON.stringify(value) : value);
+          const rows = await tx.unsafe(text, params);
           return { rows, rowCount: rows.count };
         } },
       });
