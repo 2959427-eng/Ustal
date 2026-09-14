@@ -1,5 +1,5 @@
 import type PgBoss from "pg-boss";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders, moderateWithRules } from "@ustal/ai";
 import { getRuntimeConfig } from "@ustal/config";
 import { getDb, schema } from "@ustal/database";
@@ -39,7 +39,7 @@ const REQUIREMENT_TYPES = {
  * `sourceText` к этому моменту уже заполнен. STT — отдельный job
  * (order-transcribe.ts).
  */
-export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobData>) {
+async function extract(job: PgBoss.Job<OrderExtractionJobData>, stage: (name: string) => void) {
   const db = getDb();
   const ai = getAiProviders();
   const config = getRuntimeConfig();
@@ -59,11 +59,15 @@ export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobDa
 
   const extractionMeta = { operationType: "order_extraction", traceId: job.id, promptVersion: "v1", schemaVersion: "v1" };
   const extractionStarted = new Date();
+  stage("openai:start");
   const extractionResult = await ai.extraction.extractOrder({ text: sourceText }, extractionMeta);
+  stage("openai:done");
   await db.insert(schema.aiRuns).values(buildAiRunRecord(extractionMeta, extractionStarted, { result: extractionResult }));
 
   const extracted = orderExtractionResultSchema.parse(extractionResult.data);
 
+  stage("validation:done");
+  stage("ontology:start");
   const requirementRows: RequirementInsert[] = [];
   for (const [field, requirementType] of Object.entries(REQUIREMENT_TYPES) as [
     keyof typeof REQUIREMENT_TYPES,
@@ -83,13 +87,12 @@ export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobDa
       }
     }
   }
-  if (requirementRows.length > 0) {
-    await db.insert(schema.orderRequirements).values(requirementRows);
-  }
+  stage("ontology:done");
 
   // Risk classification (architecture.md §5 п.7): regulated > requiresQualification > обычная задача.
   const riskLevel = extracted.regulated ? 2 : extracted.requiresQualification ? 1 : 0;
 
+  stage("moderation:start");
   const ruleResult = moderateWithRules(sourceText);
   let moderationDecision: "allow" | "allow_with_warning" | "manual_review" | "reject";
   let moderationReason: string;
@@ -109,11 +112,7 @@ export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobDa
     moderationReason = modResult.data.reason;
   }
 
-  await db.insert(schema.moderationCases).values({
-    orderId: order.id,
-    decision: moderationDecision,
-    reason: moderationReason,
-  });
+  stage("moderation:done");
 
   // "allow" и "allow_with_warning" оставляют заказ в processing — публикация
   // остаётся явным действием автора (POST /orders/{id}/publish, docs/api.md);
@@ -126,39 +125,79 @@ export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobDa
     nextStatus = "moderation_hold";
   }
 
-  await db
-    .update(schema.orders)
-    .set({
-      normalizedTitle: extracted.normalizedTitle,
-      normalizedDescription: extracted.normalizedDescription,
-      riskLevel,
-      moderationStatus: moderationDecision,
-      status: nextStatus,
-    })
-    .where(eq(schema.orders.id, order.id));
-
-  await db.insert(schema.orderAiExtractions).values({
-    orderId: order.id,
-    extractionVersion: "v1",
-    rawResult: extracted,
-  });
-
   const embeddingMeta = { operationType: "order_embedding", traceId: job.id, promptVersion: "v1", schemaVersion: "v1" };
   const embeddingStarted = new Date();
   const embeddingText = `${extracted.normalizedTitle}\n${extracted.normalizedDescription}`;
+  stage("embedding:start");
   const embeddingResult = await ai.embedding.embed([embeddingText], embeddingMeta);
   await db.insert(schema.aiRuns).values(buildAiRunRecord(embeddingMeta, embeddingStarted, { result: embeddingResult }));
 
-  const [vector] = embeddingResult.data.vectors;
-  if (vector) {
-    await db
-      .insert(schema.orderEmbeddings)
-      .values({ orderId: order.id, embedding: vector, embeddingModel: config.ai.models.embedding })
-      .onConflictDoUpdate({
-        target: schema.orderEmbeddings.orderId,
-        set: { embedding: vector, embeddingModel: config.ai.models.embedding },
-      });
-  }
+  stage("embedding:done");
+  stage("db-update:start");
+  await db.transaction(async (tx) => {
+    // Lock the order before committing results; cancellation must win over a late worker.
+    const [current] = await tx.select().from(schema.orders).where(eq(schema.orders.id, order.id)).for("update");
+    if (!current || current.status !== "processing") return;
+    await tx.delete(schema.orderRequirements).where(eq(schema.orderRequirements.orderId, order.id));
+    if (requirementRows.length) await tx.insert(schema.orderRequirements).values(requirementRows);
+    await tx.insert(schema.moderationCases).values({
+      orderId: order.id,
+      decision: moderationDecision,
+      reason: moderationReason,
+    });
+
+    await tx
+      .update(schema.orders)
+      .set({
+        normalizedTitle: extracted.normalizedTitle,
+        normalizedDescription: extracted.normalizedDescription,
+        riskLevel,
+        moderationStatus: moderationDecision,
+        status: nextStatus,
+      })
+      .where(eq(schema.orders.id, order.id));
+
+    await tx.insert(schema.orderAiExtractions).values({
+      orderId: order.id,
+      extractionVersion: "v1",
+      rawResult: extracted,
+    });
+
+    const [vector] = embeddingResult.data.vectors;
+    if (vector) {
+      await tx
+        .insert(schema.orderEmbeddings)
+        .values({ orderId: order.id, embedding: vector, embeddingModel: config.ai.models.embedding })
+        .onConflictDoUpdate({
+          target: schema.orderEmbeddings.orderId,
+          set: { embedding: vector, embeddingModel: config.ai.models.embedding },
+        });
+    }
+
+  });
+  stage("db-update:done");
 
   return { orderId: order.id, moderationDecision, status: nextStatus };
+}
+
+/** Fail explicitly; pg-boss retains the error and the UI can retry this order. */
+export async function handleOrderExtraction(job: PgBoss.Job<OrderExtractionJobData>) {
+  let currentStage = "start";
+  const stage = (name: string) => {
+    currentStage = name;
+    console.info(`[order-extraction:${name}]`, { orderId: job.data.orderId, jobId: job.id, stage: name });
+  };
+  stage("start");
+  try {
+    return await extract(job, stage);
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : "Unknown error")
+      .replace(/https?:\/\/\S+/g, "[URL]").replace(/Bearer \S+|sk-[\w-]+/gi, "[REDACTED]").slice(0, 2000);
+    console.error("[order-extraction:error]", { orderId: job.data.orderId, jobId: job.id,
+      stage: currentStage, errorClass: error instanceof Error ? error.name : "Unknown", message });
+    assertOrderTransition("processing", "processing_failed");
+    await getDb().update(schema.orders).set({ status: "processing_failed" })
+      .where(and(eq(schema.orders.id, job.data.orderId), eq(schema.orders.status, "processing")));
+    throw new Error(`Order extraction failed at ${currentStage}: ${message}`);
+  }
 }

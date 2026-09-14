@@ -3,6 +3,7 @@ import { apiClient } from "./client";
 export type OrderStatus =
   | "draft"
   | "processing"
+  | "processing_failed"
   | "moderation_hold"
   | "published"
   | "negotiating"
@@ -107,6 +108,10 @@ export function createOrder(input: CreateOrderInput, idempotencyKey: string): Pr
 
 export function getOrder(orderId: string): Promise<OrderDetail> {
   return apiClient.request<OrderDetail>(`/orders/${orderId}`);
+}
+
+export function retryOrder(orderId: string): Promise<void> {
+  return apiClient.request(`/orders/${orderId}/retry`, { method: "POST" });
 }
 
 /**

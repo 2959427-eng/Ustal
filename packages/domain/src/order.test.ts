@@ -14,6 +14,12 @@ const ALL_STATUSES: OrderStatus[] = [
 ];
 
 describe("order state machine", () => {
+  it("separates technical failure from moderation and requires reprocessing before publish", () => {
+    expect(canTransitionOrder("processing", "processing_failed")).toBe(true);
+    expect(canTransitionOrder("processing_failed", "processing")).toBe(true);
+    expect(canTransitionOrder("processing_failed", "published")).toBe(false);
+    expect(canTransitionOrder("processing_failed", "cancelled")).toBe(true);
+  });
   it("allows the documented happy path draft -> processing -> published -> negotiating -> closed", () => {
     expect(canTransitionOrder("draft", "processing")).toBe(true);
     expect(canTransitionOrder("processing", "published")).toBe(true);

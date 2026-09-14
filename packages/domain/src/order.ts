@@ -7,6 +7,7 @@
 export type OrderStatus =
   | "draft"
   | "processing"
+  | "processing_failed"
   | "moderation_hold"
   | "published"
   | "negotiating"
@@ -21,7 +22,8 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   // опубликован — независимо от того, идёт ли по нему AI-обработка или он
   // застрял на ручной модерации (иначе застрявший в moderation_hold заказ
   // нельзя было бы снять с публикации до вмешательства админа).
-  processing: ["published", "moderation_hold", "cancelled"],
+  processing: ["published", "moderation_hold", "cancelled", "processing_failed"],
+  processing_failed: ["processing", "cancelled"],
   moderation_hold: ["published", "rejected", "cancelled"],
   published: ["negotiating", "closed", "expired", "cancelled"],
   negotiating: ["closed", "expired", "cancelled"],

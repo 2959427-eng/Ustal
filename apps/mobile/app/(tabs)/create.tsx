@@ -3,14 +3,14 @@ import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image, Pressable 
 import { router, useLocalSearchParams } from "expo-router";
 import { PhotoPicker, type PickedPhoto } from "../../src/components/PhotoPicker";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
-import { createOrder, getOrder, publishOrder, cancelOrder, type OrderDetail } from "../../src/api/orders";
+import { createOrder, getOrder, publishOrder, cancelOrder, retryOrder, type OrderDetail } from "../../src/api/orders";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 45000;
 
-type Step = "compose" | "processing" | "preview" | "publishing" | "published";
+type Step = "compose" | "processing" | "failed" | "preview" | "publishing" | "published";
 
 /**
  * Создание заказа — текст и фото (раздел 11/12 ТЗ). POST /orders запускает
@@ -76,6 +76,11 @@ export default function CreateOrderScreen() {
     try {
       const detail = await getOrder(orderId);
       setOrder(detail);
+      if (detail.status === "processing_failed") {
+        stopPolling();
+        setStep("failed");
+        return;
+      }
       if (detail.moderationStatus !== "pending") {
         stopPolling();
         setStep("preview");
@@ -87,6 +92,10 @@ export default function CreateOrderScreen() {
       }
     } catch {
       // Сеть моргнула — пробуем на следующем тике, дедлайн всё равно остановит.
+      if (pollDeadlineRef.current && Date.now() > pollDeadlineRef.current) {
+        setPollTimedOut(true);
+        stopPolling();
+      }
     }
   };
 
@@ -193,13 +202,29 @@ export default function CreateOrderScreen() {
     );
   }
 
+  if (step === "failed") {
+    return <View style={styles.container}>
+      {CloseButton}
+      <Text style={styles.title}>Не удалось обработать заказ.</Text>
+      {submitError && <Text style={styles.hint}>{submitError}</Text>}
+      <PrimaryButton label="Попробовать снова" loading={submitting} onPress={async () => {
+        if (!orderIdRef.current) return;
+        setSubmitting(true);
+        setSubmitError(null);
+        try { await retryOrder(orderIdRef.current); startExtractionPolling(); }
+        catch { setSubmitError("Не удалось повторить обработку. Попробуйте ещё раз."); }
+        finally { setSubmitting(false); }
+      }} />
+    </View>;
+  }
+
   if (step === "processing") {
     return (
       <View style={styles.container}>
         {CloseButton}
         <Text style={styles.title}>Что вам нужно?</Text>
         <View style={styles.processingBox}>
-          <ActivityIndicator color={colors.primary} />
+          {!pollTimedOut && <ActivityIndicator color={colors.primary} />}
           <Text style={styles.processingText}>AI обрабатывает заказ…</Text>
           {pollTimedOut && (
             <>

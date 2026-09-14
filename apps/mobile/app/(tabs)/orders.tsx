@@ -12,6 +12,7 @@ import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 const STATUS_LABELS: Record<OrderStatus, string> = {
   draft: "Черновик",
   processing: "Обрабатывается",
+  processing_failed: "Ошибка обработки",
   moderation_hold: "На проверке",
   published: "Опубликован",
   negotiating: "Идут переговоры",

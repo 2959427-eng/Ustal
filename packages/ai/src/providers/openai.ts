@@ -121,17 +121,34 @@ async function structuredCompletion<T>(input: {
   schemaName: string;
   zodSchema: { parse(value: unknown): T };
   jsonSchema: Record<string, unknown>;
+  strict?: boolean;
 }): Promise<{ data: T; model: string; tokensInput: number; tokensOutput: number }> {
   const model = "gpt-4o-mini";
   const response = await getClient().chat.completions.create({
     model,
+    // 2026-09-14 fix (продолжение «вечная загрузка»): temperature не был
+    // задан → SDK/API использует дефолт 1.0. В non-strict json_schema режиме
+    // (см. комментарий выше — почему не strict: true) ничего физически не
+    // мешает модели пропустить обязательный ключ схемы или отклониться от
+    // неё сильнее при высокой температуре — это ровно тот класс сбоя,
+    // который приводит к падению zodSchema.parse() ниже и, для заказа, к
+    // вечному "pending"/спиннеру на клиенте. temperature: 0 не даёт строгой
+    // гарантии (её даёт только strict: true, который здесь недоступен из-за
+    // z.record() в схеме профиля — см. выше), но снижает дисперсию ответа и
+    // должно быть строго безопасно: это структурированное извлечение
+    // данных, а не творческая генерация, где нам не нужна вариативность.
+    temperature: 0,
     messages: [
       { role: "system", content: input.systemPrompt },
       { role: "user", content: input.userText },
     ],
     response_format: {
       type: "json_schema",
-      json_schema: { name: input.schemaName, schema: input.jsonSchema },
+      json_schema: { name: input.schemaName, schema: input.strict ? {
+        ...input.jsonSchema,
+        required: Object.keys(input.jsonSchema.properties as Record<string, unknown>),
+        additionalProperties: false,
+      } : input.jsonSchema, strict: input.strict ?? false },
     },
   });
 
@@ -145,7 +162,20 @@ async function structuredCompletion<T>(input: {
     throw new Error(`OpenAI (${input.schemaName}): ответ не является валидным JSON: ${(err as Error).message}`);
   }
 
-  const data = input.zodSchema.parse(parsedJson);
+  let data: T;
+  try {
+    data = input.zodSchema.parse(parsedJson);
+  } catch (error) {
+    // Preserve structure for diagnosis without logging user text or model strings.
+    const shape = (value: unknown): unknown => Array.isArray(value)
+      ? value.map(shape) : value && typeof value === "object"
+        ? Object.fromEntries(Object.entries(value).map(([key, val]) => [key, shape(val)]))
+        : typeof value === "string" ? "[REDACTED_STRING]" : value;
+    console.error("[ai:validation:error]", { schema: input.schemaName,
+      issues: error && typeof error === "object" && "issues" in error ? error.issues : [],
+      sanitizedOutput: shape(parsedJson) });
+    throw error;
+  }
 
   return {
     data,
@@ -155,23 +185,82 @@ async function structuredCompletion<T>(input: {
   };
 }
 
+// 2026-09-14 fix (повторный ввод не убирал старые способности): раньше промпт
+// не объяснял модели, как трактовать блок "Текущий профиль" (см. userText ниже,
+// extractCapabilityProfile) — она просто заново искала упоминания слов в новом
+// тексте, поэтому "могу копать" → потом "не хочу копать, могу сантехнику" всё
+// равно возвращало "копать" (слово встретилось в тексте, отрицание "не хочу"
+// игнорировалось). Явно прописано: (1) ответ должен быть ПОЛНЫМ обновлённым
+// списком (текущий профиль + новое, с учётом правок), а не только тем, что
+// упомянуто в последнем сообщении; (2) отрицание/отказ от способности — это
+// сигнал её УБРАТЬ, а не добавить, даже если сама фраза встречается в тексте.
 const SYSTEM_PROMPT_CAPABILITY_EXTRACTION = `Ты извлекаешь структурированный профиль возможностей человека
 из свободного текста на русском языке (текст или транскрипция голосового сообщения).
 Определи способности (capabilities) и ресурсы (resources), которые человек явно
 упомянул или которые логически следуют из текста. Не придумывай способности,
 которых нет в тексте и не следуют из него напрямую. evidenceType="explicit" —
 только для прямо названного; "inferred" — для логически выведенного. confidence —
-твоя уверенность от 0 до 1. Верни JSON строго по предоставленной схеме.`;
+твоя уверенность от 0 до 1.
 
+Если в сообщении есть блок "Текущий профиль" — это уже сохранённый профиль
+человека, а "Новый ввод пользователя" — правка или дополнение к нему. Твой ответ
+должен быть ПОЛНЫМ обновлённым списком способностей и ресурсов, а не только тем,
+что названо в новом вводе: перенеси в ответ всё из текущего профиля, что новый
+ввод не отменяет, добавь то, что человек сообщил нового, и УБЕРИ из списка всё,
+что новый ввод явно отрицает, отменяет или исправляет — например "не хочу
+копать", "больше не делаю X", "на самом деле не умею X", "это была ошибка".
+Упоминание способности в отрицательном контексте ("не хочу X", "не умею X") —
+это НЕ подтверждение способности, её нельзя включать в ответ. Верни JSON строго
+по предоставленной схеме.`;
+
+// 2026-09-14 note (вечная загрузка «AI обрабатывает заказ»): у
+// orderExtractionResultSchema (packages/validation/src/orders.ts)
+// `estimatedDurationMinutes` — ОБЯЗАТЕЛЬНОЕ поле схемы (`.nullable()`, но не
+// `.optional()` — ключ должен присутствовать в ответе, значением может быть
+// только число или null). Промпт ниже раньше вообще не упоминал это поле —
+// подозрение, что реальная модель (в отличие от mock-провайдера, который его
+// всегда возвращает) могла пропускать ключ или давать не то, что ожидает
+// схема, из-за чего `orderExtractionResultSchema.parse()` в
+// apps/worker/src/handlers/order-extraction.ts падал с исключением, job
+// уходил в retry/fail, `moderationStatus` заказа так и оставался `pending`
+// навсегда — клиент (create.tsx) крутит спиннер «AI обрабатывает заказ…» до
+// 45-секундного таймаута, а повтор ничего не меняет, раз каждый запуск
+// падает одинаково. Добавлена явная инструкция про estimatedDurationMinutes.
+// ВАЖНО: это устраняет один конкретный правдоподобный пробел между промптом
+// и схемой, но не подтверждено логами worker'а/таблицей ai_runs для
+// конкретного зависшего заказа — если после этой правки проблема
+// повторится, нужно смотреть реальную ошибку в логах (мне это недоступно —
+// нет доступа к shell/БД/логам worker'а с этой стороны).
+// 2026-09-14 fix (продолжение): проблема воспроизвелась повторно после
+// первой правки (которая называла только estimatedDurationMinutes) — раз
+// это не отсутствие деплоя/рестарта worker'а, а реальный повторный сбой,
+// вероятная причина шире: schema.parse() падает на ЛЮБОМ из 11 обязательных
+// ключей orderExtractionResultSchema без .optional()/.default() (см.
+// packages/validation/src/orders.ts), а промпт раньше явно называл только
+// один из них. Ниже — явный чек-лист всех обязательных ключей, а не только
+// одного, плюс temperature: 0 в structuredCompletion() (см. выше) как вторая,
+// независимая мера против пропуска полей.
 const SYSTEM_PROMPT_ORDER_EXTRACTION = `Ты извлекаешь структурированное описание заказа на услугу или поручение
 из свободного текста на русском языке (текст или транскрипция голосового сообщения).
 normalizedTitle — короткий заголовок, normalizedDescription — полное описание своими
 словами. requiredCapabilities/requiredResources — то, что обязательно нужно
-исполнителю для этой задачи; desired* — желательно, но не критично. regulated=true
+исполнителю для этой задачи; desired* — желательно, но не критично (если нечего
+перечислить — верни пустой массив [], а не пропускай ключ). regulated=true
 только для работ, требующих официальной лицензии/допуска (электрика, газ, медицина
 и т.п.) — если сомневаешься, ставь false и requiresQualification=true вместо этого.
-complexity оценивай по объёму и сложности задачи. Верни JSON строго по
-предоставленной схеме.`;
+complexity оценивай по объёму и сложности задачи ("low"/"medium"/"high").
+estimatedDurationMinutes — твоя оценка длительности задачи в минутах (целое число),
+либо null, если оценить невозможно.
+
+ОБЯЗАТЕЛЬНО верни JSON, где присутствуют ВСЕ ключи ниже — ни один нельзя пропускать,
+даже если значение пустой массив, false или null:
+normalizedTitle (строка), normalizedDescription (строка), actions (массив строк),
+requiredCapabilities (массив строк), desiredCapabilities (массив строк),
+requiredResources (массив строк), desiredResources (массив строк),
+physicalRequirements (массив строк, можно []), complexity ("low"|"medium"|"high"),
+requiresQualification (true/false), regulated (true/false),
+estimatedDurationMinutes (число или null), contextualChips (массив строк, можно []).
+Верни JSON строго по предоставленной схеме.`;
 
 export const openAiExtraction: StructuredExtractionProvider = {
   async extractCapabilityProfile(input, meta: AiCallMeta) {
@@ -204,6 +293,7 @@ export const openAiExtraction: StructuredExtractionProvider = {
       systemPrompt: SYSTEM_PROMPT_ORDER_EXTRACTION,
       userText: input.text,
       schemaName: "order_extraction",
+      strict: true,
       zodSchema: orderExtractionResultSchema,
       jsonSchema: zodToJsonSchema(orderExtractionResultSchema, "order_extraction").definitions![
         "order_extraction"

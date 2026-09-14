@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq, inArray } from "drizzle-orm";
-import { getDb, schema } from "@ustal/database";
+import { getDb, getSql, schema } from "@ustal/database";
 import { assertOrderTransition } from "@ustal/domain";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
 import { createOrderSchema, editOrderTranscriptSchema } from "@ustal/validation";
@@ -21,6 +21,39 @@ import { withIdempotency } from "../lib/idempotency.js";
  */
 export default async function ordersRoutes(app: FastifyInstance) {
   const db = getDb();
+
+  // Covers terminal jobs from older workers and jobs expired after a worker crash.
+  async function reconcileFailure(orderId: string) {
+    await getSql()`update orders o set status='processing_failed'
+      where o.id=${orderId} and o.status='processing' and o.moderation_status='pending'
+      and (select j.state::text from pgboss.job j where j.name='order_extraction'
+        and j.data->>'orderId'=o.id::text order by j.createdon desc limit 1)='failed'`;
+  }
+
+  app.post("/orders/:id/retry", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const owned = await db.query.orders.findFirst({ where: and(eq(schema.orders.id, id), eq(schema.orders.authorId, request.userId)) });
+    if (!owned) return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
+    await reconcileFailure(id);
+    const boss = await getBoss();
+    assertOrderTransition("processing_failed", "processing");
+    const queued = await getSql().begin(async (tx) => {
+      const claimed = await tx`update orders set status='processing', moderation_status='pending'
+        where id=${id} and status='processing_failed' returning id`;
+      if (!claimed.length) return false;
+      const jobId = await boss.send(JOB_TYPES.ORDER_EXTRACTION, { orderId: id }, {
+        retryLimit: 0, expireInSeconds: 120,
+        db: { executeSql: async (text, values) => {
+          const rows = await tx.unsafe(text, values);
+          return { rows, rowCount: rows.count };
+        } },
+      });
+      if (!jobId) throw new Error("Order extraction was not queued");
+      return true;
+    });
+    if (!queued) return reply.code(409).send({ error: { code: "invalid_status", message: "Заказ уже обрабатывается или завершён" } });
+    return reply.code(202).send({ orderId: id, status: "processing" });
+  });
 
   app.post("/orders", { preHandler: app.authenticate }, async (request, reply) => {
     await withIdempotency(request, reply, "POST /orders", async (): Promise<{
@@ -81,11 +114,16 @@ export default async function ordersRoutes(app: FastifyInstance) {
       assertOrderTransition("draft", "processing");
       await db.update(schema.orders).set({ status: "processing" }).where(eq(schema.orders.id, order.id));
 
+      try {
       const boss = await getBoss();
       if (body.inputType === "voice") {
         await boss.send(JOB_TYPES.ORDER_TRANSCRIBE, { orderId: order.id });
       } else {
-        await boss.send(JOB_TYPES.ORDER_EXTRACTION, { orderId: order.id });
+        await boss.send(JOB_TYPES.ORDER_EXTRACTION, { orderId: order.id }, { retryLimit: 0, expireInSeconds: 120 });
+      }
+      } catch (error) {
+        await db.update(schema.orders).set({ status: "processing_failed" }).where(eq(schema.orders.id, order.id));
+        throw error;
       }
 
       return { status: 201, body: { orderId: order.id, status: "processing" } };
@@ -99,6 +137,9 @@ export default async function ordersRoutes(app: FastifyInstance) {
       // Не раскрываем существование чужого заказа под чужим ID.
       return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
     }
+    await reconcileFailure(id);
+    const refreshed = await db.query.orders.findFirst({ where: eq(schema.orders.id, id) });
+    if (refreshed) order.status = refreshed.status;
 
     const [requirements, latestExtraction, mediaRows] = await Promise.all([
       db.query.orderRequirements.findMany({ where: eq(schema.orderRequirements.orderId, order.id) }),
