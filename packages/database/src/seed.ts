@@ -49,7 +49,25 @@ const ONTOLOGY_NODES: SeedNode[] = [
   // --- Фаза 1: исходные 25 узлов, без изменений ---
   { canonicalKey: "physical_labor", nameRu: "физическая работа", nodeType: "capability" },
   { canonicalKey: "manual_carrying", nameRu: "перенос вещей", nodeType: "action" },
-  { canonicalKey: "loading", nameRu: "погрузка", nodeType: "action" },
+  // 2026-09-14 fix (matching: "Грузчик" не находил заказ "Нужен грузчик"):
+  // findOntologyNodeForPhrase (packages/ontology/src/mapping.ts) — точное
+  // (без учёта регистра) совпадение с name_ru ИЛИ ontology_synonyms.phrase_ru,
+  // без всякой fuzzy/семантической логики на этом уровне. У профессии
+  // "грузчик" не было НИ ОДНОГО узла/синонима во всём справочнике — ни как
+  // отдельное слово, ни как синоним — хотя другие профессии-синонимы уже
+  // заведены по тому же паттерну (электрик -> electrical_work, газовщик ->
+  // gas_work, сантехник -> plumbing_repair, см. ниже). В результате И
+  // capability пользователя ("Грузчик"), И requiredCapability заказа
+  // ("Нужен грузчик") независимо не находили узел, уходили в
+  // ontology_candidates как несовпавший текст, и matching-run.ts оставался
+  // вообще без order_requirements/user_capabilities по этому навыку —
+  // единственным (слабым, вес 0.15) сигналом оставалось semantic similarity
+  // эмбеддингов, которое не гарантированно проходит minimumRelevanceScore.
+  // Добавлены синонимы "грузчик"/"грузчики" на "погрузка" (а не на составную
+  // услугу "переезд под ключ", у которой уже есть синоним "услуги
+  // грузчиков", — "Грузчик" как отдельная способность семантически ближе к
+  // самому действию погрузки/разгрузки, чем к готовому пакету "переезд").
+  { canonicalKey: "loading", nameRu: "погрузка", nodeType: "action", synonyms: ["грузчик", "грузчики"] },
   { canonicalKey: "unloading", nameRu: "разгрузка", nodeType: "action" },
   { canonicalKey: "delivery", nameRu: "доставка", nodeType: "action" },
   { canonicalKey: "driving", nameRu: "вождение", nodeType: "capability" },
