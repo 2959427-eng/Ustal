@@ -10,7 +10,8 @@ export interface FeedItem {
   priceMinor: number | null;
   currency: string;
   createdAt: string;
-  score: number;
+  // score больше не приходит с сервера (UX-аудит, docs/evaluations/matching-ux-audit.md,
+  // MVP-правка 5) — внутренний рейтинг matching, пользователю не показывается.
   matchType: "exact" | "probable" | "new_opportunity";
   explanation: string;
 }

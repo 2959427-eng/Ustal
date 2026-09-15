@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError } from "@ustal/api-client";
 import { getOrder, retryOrder, publishOrder, cancelOrder } from "../../src/api/orders";
 import { getMediaUrl } from "../../src/api/media";
-import type { AssignmentStatus, OrderDetail } from "../../src/api/orders";
+import type { AssignmentStatus, OrderDetail, OrderStatus } from "../../src/api/orders";
 import { getOrderCandidates, createResponse, withdrawResponse } from "../../src/api/responses";
 import type { OrderCandidate } from "../../src/api/responses";
 import { unlockContact, getOrderContact } from "../../src/api/contacts";
@@ -281,7 +281,7 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
             <Text style={styles.hint}>Пока никто не откликнулся.</Text>
           )}
           {candidatesQuery.data?.items.map((c) => (
-            <CandidateRow key={c.id} orderId={orderId} candidate={c} onChanged={invalidate} />
+            <CandidateRow key={c.id} orderId={orderId} orderStatus={order.status} candidate={c} onChanged={invalidate} />
           ))}
 
           {(order.status === "published" || order.status === "negotiating") && !hasResolvedAssignment && (
@@ -313,7 +313,17 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   rejected: "Отклонён",
 };
 
-function CandidateRow({ orderId, candidate, onChanged }: { orderId: string; candidate: OrderCandidate; onChanged: () => void }) {
+function CandidateRow({
+  orderId,
+  orderStatus,
+  candidate,
+  onChanged,
+}: {
+  orderId: string;
+  orderStatus: OrderStatus;
+  candidate: OrderCandidate;
+  onChanged: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [contact, setContact] = useState<OrderContact | null>(null);
@@ -365,7 +375,20 @@ function CandidateRow({ orderId, candidate, onChanged }: { orderId: string; cand
       {candidate.comment && <Text style={styles.body}>{candidate.comment}</Text>}
       {candidate.availabilityText && <Text style={styles.hint}>Доступность: {candidate.availabilityText}</Text>}
       {candidate.status === "withdrawn" && <Text style={styles.hint}>Отклик отозван</Text>}
-      {candidate.status === "not_selected" && <Text style={styles.hint}>Не выбран при закрытии заказа</Text>}
+      {/*
+       * "not_selected" теперь ставится в двух разных случаях: обычное
+       * закрытие заказа с выбором другого кандидата И отмена заказа
+       * (POST /orders/{id}/cancel, см. apps/api/src/routes/orders.ts) —
+       * старая формулировка называла причину только для первого случая
+       * (UX-аудит, docs/evaluations/matching-ux-audit.md, MVP-правка 3).
+       */}
+      {candidate.status === "not_selected" && (
+        <Text style={styles.hint}>
+          {orderStatus === "cancelled" || candidate.assignmentStatus === "cancelled"
+            ? "Отменено"
+            : "Не выбран при закрытии заказа"}
+        </Text>
+      )}
 
       {rowError && <Text style={styles.error}>{rowError}</Text>}
 

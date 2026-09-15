@@ -1,26 +1,18 @@
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
 import { colors, radii, spacing, shadows, typography } from "../theme/tokens";
 
-export type MatchType = "exact" | "probable" | "new_opportunity";
-
-const MATCH_LABELS: Record<MatchType, string> = {
-  exact: "Точное совпадение",
-  probable: "Вероятное совпадение",
-  new_opportunity: "Новая возможность",
-};
-
-const MATCH_COLORS: Record<MatchType, string> = {
-  exact: colors.matchExact,
-  probable: colors.matchProbable,
-  new_opportunity: colors.matchNewOpportunity,
-};
-
 interface Props {
   title: string;
   description: string;
   cityName: string;
   priceMinor: number | null;
-  matchType?: MatchType;
+  /**
+   * Человекочитаемое объяснение с сервера (matching.md §13.4) — единственное,
+   * что показываем пользователю про то, почему заказ подобран. Внутренний
+   * match_type (exact/probable/new_opportunity) сознательно не выводится
+   * пользователю отдельным бейджем (UX-аудит, docs/evaluations/matching-ux-audit.md, MVP-правка 1) —
+   * это внутренняя техническая категория, а не продуктовая коммуникация.
+   */
   explanation?: string;
   /** Раздел 15/17 ТЗ, макет Main.dc.html: прямой отклик с карточки в ленте. */
   responded?: boolean;
@@ -40,7 +32,6 @@ export function OrderCard({
   description,
   cityName,
   priceMinor,
-  matchType,
   explanation,
   responded,
   responding,
@@ -50,11 +41,6 @@ export function OrderCard({
   const showActions = !!onRespond || !!onHide;
   return (
     <View style={[styles.card, shadows.card]}>
-      {matchType && (
-        <View style={[styles.badge, { backgroundColor: MATCH_COLORS[matchType] }]}>
-          <Text style={styles.badgeText}>{MATCH_LABELS[matchType]}</Text>
-        </View>
-      )}
       <Text style={styles.title} numberOfLines={2}>{title}</Text>
       <Text style={styles.description} numberOfLines={3}>{description}</Text>
       <View style={styles.footer}>
@@ -104,8 +90,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-  badge: { alignSelf: "flex-start", borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 4 },
-  badgeText: { ...typography.caption, fontWeight: "600", color: colors.textInverse },
   title: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   description: { ...typography.body, color: colors.textSecondary },
   footer: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },

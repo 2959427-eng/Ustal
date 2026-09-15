@@ -14,7 +14,6 @@ interface FeedRow {
   price_minor: number | null;
   currency: string;
   created_at: string;
-  score: string;
   match_type: string;
   explanation: string;
 }
@@ -43,7 +42,6 @@ export default async function feedRoutes(app: FastifyInstance) {
         o.price_minor,
         o.currency,
         o.created_at,
-        mc.score,
         mc.match_type,
         mc.explanation
       FROM matching_candidates mc
@@ -70,7 +68,10 @@ export default async function feedRoutes(app: FastifyInstance) {
         priceMinor: row.price_minor,
         currency: row.currency,
         createdAt: row.created_at,
-        score: Number(row.score),
+        // score намеренно не отдаётся клиенту — внутренний рейтинг matching,
+        // пользователю не должен быть виден (UX-аудит,
+        // docs/evaluations/matching-ux-audit.md, MVP-правка 5). Сортировка
+        // по score (см. ORDER BY выше) не затронута — это server-side.
         matchType: row.match_type,
         explanation: row.explanation,
       })),

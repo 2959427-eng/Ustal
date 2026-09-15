@@ -54,6 +54,11 @@ export default function ResponsesScreen() {
 
 function ResponseRow({ item }: { item: MyResponseItem }) {
   const router = useRouter();
+  // Отмена заказа (в т.ч. после того, как исполнителя уже выбрали) переводит
+  // отклик в тот же status="not_selected", что и обычное "не выбрали среди
+  // прочих" — без этой проверки пользователь увидит одинаковую подпись для
+  // двух разных по смыслу событий (UX-аудит, docs/evaluations/matching-ux-audit.md, MVP-правка 2).
+  const statusLabel = item.assignmentStatus === "cancelled" ? "Заказ отменён" : STATUS_LABELS[item.status];
   return (
     <Pressable
       style={styles.row}
@@ -63,7 +68,7 @@ function ResponseRow({ item }: { item: MyResponseItem }) {
     >
       <Text style={styles.orderTitle}>{item.orderTitle ?? "Заказ обрабатывается"}</Text>
       <View style={styles.footer}>
-        <Text style={styles.status}>{STATUS_LABELS[item.status]}</Text>
+        <Text style={styles.status}>{statusLabel}</Text>
         {item.offeredPriceMinor != null && (
           <Text style={styles.price}>{(item.offeredPriceMinor / 100).toLocaleString("ru-RU")} ₽</Text>
         )}

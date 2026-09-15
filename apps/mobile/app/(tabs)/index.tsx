@@ -106,7 +106,6 @@ export default function OpportunitiesScreen() {
                 description={item.description ?? ""}
                 cityName={cityName(item.cityId)}
                 priceMinor={item.priceMinor}
-                matchType={item.matchType}
                 explanation={item.explanation}
                 responded={respondedOrderIds.has(item.orderId)}
                 responding={respondingId === item.orderId}
