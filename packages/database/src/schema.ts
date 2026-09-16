@@ -170,6 +170,7 @@ export const capabilityProfiles = pgTable("capability_profiles", {
   profileVersion: integer("profile_version").notNull(),
   extractionVersion: varchar("extraction_version", { length: 50 }).notNull(),
   embeddingModel: varchar("embedding_model", { length: 100 }),
+  sourceInputId: uuid("source_input_id").references(() => profileSourceInputs.id),
   // Пауза «Подтверждение изменений» (экран 10 screens.md,
   // claude/pipeline-split-design.md): draft (extraction только что создал,
   // ещё не текущий профиль) -> applied (текущий) -> superseded (был applied,
@@ -509,6 +510,7 @@ export const matchingRuns = pgTable("matching_runs", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   candidatesCount: integer("candidates_count"),
+  inputHash: varchar("input_hash", { length: 64 }),
 });
 
 export const matchingCandidates = pgTable("matching_candidates", {
@@ -519,6 +521,55 @@ export const matchingCandidates = pgTable("matching_candidates", {
   matchType: varchar("match_type", { length: 20 }).notNull(), // exact|probable|new_opportunity
   explanation: text("explanation").notNull(),
   breakdown: jsonb("breakdown").notNull().default({}),
+}, (t) => ({ runUserUnique: uniqueIndex("matching_candidates_run_user_unique").on(t.matchingRunId, t.userId) }));
+
+/** Immutable processing snapshots; original profile/order text is never overwritten by backfill. */
+export const matchingDocuments = pgTable("matching_documents", {
+  id: id(),
+  profileId: uuid("profile_id").references(() => capabilityProfiles.id, { onDelete: "cascade" }),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+  processingVersion: varchar("processing_version", { length: 100 }).notNull(),
+  sourceHash: varchar("source_hash", { length: 64 }).notNull(),
+  sourceText: text("source_text").notNull(),
+  embeddingModel: varchar("embedding_model", { length: 100 }).notNull(),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
+  processedAt: createdAt(),
+}, (t) => ({
+  profileVersion: uniqueIndex("matching_docs_profile_version").on(t.profileId, t.processingVersion, t.sourceHash),
+  orderVersion: uniqueIndex("matching_docs_order_version").on(t.orderId, t.processingVersion, t.sourceHash),
+}));
+
+export const matchingFacts = pgTable("matching_facts", {
+  id: id(),
+  documentId: uuid("document_id").notNull().references(() => matchingDocuments.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 20 }).notNull(),
+  constraintType: varchar("constraint_type", { length: 30 }).notNull().default("none"),
+  constraintScope: varchar("constraint_scope", { length: 30 }).notNull().default("fact"),
+  resourceRole: varchar("resource_role", { length: 30 }).notNull().default("none"),
+  resourceCapacity: jsonb("resource_capacity").$type<{ value: number | null; unit: string | null; kind: string | null }>().notNull().default({ value: null, unit: null, kind: null }),
+  phrase: text("phrase").notNull(),
+  evidence: text("evidence").notNull(),
+  nodeIds: jsonb("node_ids").$type<string[]>().notNull().default([]),
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+  mandatory: boolean("mandatory").notNull(),
+  startHour: integer("start_hour"),
+  endHour: integer("end_hour"),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
+}, (t) => ({ byDocument: index("matching_facts_document_idx").on(t.documentId) }));
+
+export const matchingTraces = pgTable("matching_traces", {
+  id: id(),
+  matchingRunId: uuid("matching_run_id").notNull().references(() => matchingRuns.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  decision: varchar("decision", { length: 30 }).notNull(),
+  detail: jsonb("detail").notNull(),
+}, (t) => ({ byRun: index("matching_traces_run_idx").on(t.matchingRunId) }));
+
+/** Transactional coalescing outbox: profile changes survive a queue/network failure. */
+export const rematchRequests = pgTable("rematch_requests", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  requestedAt: createdAt(),
+  cursor: uuid("cursor"),
 });
 
 export const auditLogs = pgTable(

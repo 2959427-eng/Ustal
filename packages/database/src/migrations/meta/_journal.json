@@ -43,6 +43,27 @@
       "when": 1788622235581,
       "tag": "0005_dashing_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789381834819,
+      "tag": "0006_semantic_matching",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789394313485,
+      "tag": "0007_matching_retry_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789561249821,
+      "tag": "0008_lame_vulcan",
+      "breakpoints": true
     }
   ]
 }

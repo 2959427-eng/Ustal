@@ -22,6 +22,8 @@ export interface AiCallResult<T> {
   tokensInput: number;
   tokensOutput: number;
   latencyMs: number;
+  /** Successful structured response may include bounded schema/evidence repair attempts. */
+  validationAttempts?: number;
 }
 
 export interface SpeechToTextProvider {
@@ -32,6 +34,11 @@ export interface SpeechToTextProvider {
 }
 
 export interface StructuredExtractionProvider {
+  reviewSemantic(input: { profile: string[]; order: string[] }, meta: AiCallMeta): Promise<AiCallResult<{ compatible: boolean; confidence: number; reason: string }>>;
+  normalizeMatching(
+    input: { kind: "profile" | "order"; text: string; extracted: unknown; ontology: import("@ustal/validation").OntologyOption[] },
+    meta: AiCallMeta,
+  ): Promise<AiCallResult<import("@ustal/validation").SemanticResult>>;
   extractCapabilityProfile(
     input: { text: string; previousProfileSummary?: string },
     meta: AiCallMeta,

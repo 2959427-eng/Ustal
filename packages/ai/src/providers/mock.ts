@@ -24,6 +24,11 @@ export const mockStt: SpeechToTextProvider = {
 };
 
 export const mockExtraction: StructuredExtractionProvider = {
+  async reviewSemantic() { return wrap({ compatible: false, confidence: 0, reason: "No live semantic judgment in mock provider" }); },
+  async normalizeMatching() {
+    // No pretend semantic intelligence. Integration tests inject recorded provider fixtures.
+    return wrap({ facts: [] });
+  },
   async extractCapabilityProfile(input, _meta: AiCallMeta) {
     return wrap({
       summary: `Извлечено из: "${input.text.slice(0, 60)}"`,

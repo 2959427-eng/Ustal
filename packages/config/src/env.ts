@@ -23,9 +23,13 @@ const envSchema = z
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_BASE_URL: z.string().url().optional(),
     AI_MODEL_EXTRACTION: z.string().default("gpt-4o-mini"),
+    AI_MODEL_NORMALIZATION: z.string().default("gpt-4.1-mini"),
+    AI_MODEL_SEMANTIC_REVIEW: z.string().default("gpt-4.1-mini"),
     AI_MODEL_MODERATION: z.string().default("gpt-4o-mini"),
     AI_MODEL_EMBEDDING: z.string().default("text-embedding-3-small"),
     AI_MODEL_STT: z.string().default("whisper-1"),
+    AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(45000),
+    AI_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(1),
 
     OBJECT_STORAGE_ENDPOINT: z.string().optional(),
     OBJECT_STORAGE_BUCKET: z.string().default("ustal-media"),

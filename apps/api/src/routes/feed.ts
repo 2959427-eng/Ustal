@@ -31,7 +31,10 @@ export default async function feedRoutes(app: FastifyInstance) {
 
   app.get("/feed", { preHandler: app.authenticate }, async (request, reply) => {
     const query = request.query as { limit?: string; offset?: string };
-    const limit = Math.min(MAX_LIMIT, Math.max(1, Number(query.limit) || DEFAULT_LIMIT));
+    const limit = Math.min(
+      MAX_LIMIT,
+      Math.max(1, Number(query.limit) || DEFAULT_LIMIT),
+    );
     const offset = Math.max(0, Number(query.offset) || 0);
 
     const rows = await db.execute<FeedRow>(sql`
@@ -51,9 +54,22 @@ export default async function feedRoutes(app: FastifyInstance) {
       JOIN orders o ON o.id = mr.order_id
       WHERE mc.user_id = ${request.userId}
         AND o.status = 'published'
+        AND EXISTS (SELECT 1 FROM users u JOIN user_profiles up ON up.user_id=u.id WHERE u.id=${request.userId} AND u.status='active' AND up.city_id=o.city_id)
+        AND o.author_id<>${request.userId}
+        AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=o.author_id AND b.blocked_id=${request.userId}) OR (b.blocker_id=${request.userId} AND b.blocked_id=o.author_id))
+        AND EXISTS (SELECT 1 FROM capability_profiles cp WHERE cp.user_id=${request.userId} AND cp.status='applied')
+        AND NOT EXISTS (
+          SELECT 1 FROM matching_traces mt WHERE mt.matching_run_id=mr.id AND mt.user_id=${request.userId}
+          AND mt.detail->>'profile_id' IS DISTINCT FROM (
+            SELECT cp.id::text FROM capability_profiles cp WHERE cp.user_id=${request.userId} AND cp.status='applied' ORDER BY cp.profile_version DESC LIMIT 1
+          )
+        )
+        AND NOT EXISTS (SELECT 1 FROM rematch_requests rq WHERE rq.user_id=${request.userId} AND rq.created_at>mr.started_at)
+        AND NOT EXISTS (SELECT 1 FROM matching_documents md WHERE md.order_id=o.id AND md.created_at>mr.started_at)
+        AND NOT EXISTS (SELECT 1 FROM matching_documents md JOIN capability_profiles cp ON cp.id=md.profile_id WHERE cp.user_id=${request.userId} AND cp.status='applied' AND md.created_at>mr.started_at)
         AND mr.id = (
           SELECT mr2.id FROM matching_runs mr2
-          WHERE mr2.order_id = o.id
+          WHERE mr2.order_id = o.id AND mr2.completed_at IS NOT NULL
           ORDER BY mr2.started_at DESC
           LIMIT 1
         )

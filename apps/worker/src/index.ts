@@ -6,6 +6,7 @@ import { handleOrderTranscribe } from "./handlers/order-transcribe.js";
 import { handleOrderExtraction } from "./handlers/order-extraction.js";
 import { handleMatchingRun } from "./handlers/matching-run.js";
 import { handleNotificationDispatch } from "./handlers/notification-dispatch.js";
+import { dispatchRematches } from "./rematch.js";
 
 async function main() {
   loadEnv();
@@ -17,6 +18,20 @@ async function main() {
   await boss.work(JOB_TYPES.ORDER_EXTRACTION, handleOrderExtraction);
   await boss.work(JOB_TYPES.MATCHING_RUN, handleMatchingRun);
   await boss.work(JOB_TYPES.NOTIFICATION_DISPATCH, handleNotificationDispatch);
+  let dispatching = false;
+  setInterval(async () => {
+    if (dispatching) return;
+    dispatching = true;
+    try {
+      await dispatchRematches();
+    } catch {
+      console.error(
+        "Rematch outbox dispatch failed; durable requests retained for retry",
+      );
+    } finally {
+      dispatching = false;
+    }
+  }, 10000);
   // MODERATION/EMBEDDING как отдельные job type не потребовались — вошли
   // внутрь profile/order extraction handlers.
 

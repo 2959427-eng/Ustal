@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
-import { getDb, getSql, schema } from "@ustal/database";
+import { getDb, getSql, schema, assertLocalTestDatabase } from "@ustal/database";
 import { findOntologyNodeForPhrase } from "@ustal/ontology";
 import { handleMatchingRun } from "./matching-run.js";
 
@@ -34,6 +34,7 @@ import { handleMatchingRun } from "./matching-run.js";
  * "loading").
  */
 
+assertLocalTestDatabase();
 const db = getDb();
 const sql = getSql();
 const RUN_ID = Date.now().toString(36);

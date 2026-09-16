@@ -3,8 +3,8 @@ const mocks = vi.hoisted(() => ({
   find: vi.fn(), extract: vi.fn(), set: vi.fn(), where: vi.fn(),
 }));
 vi.mock("@ustal/database", () => ({
-  getDb: () => ({ query: { orders: { findFirst: mocks.find } }, update: () => ({ set: mocks.set }) }),
-  schema: { orders: { id: "id", status: "status" } },
+  getDb: () => ({ query: { orders: { findFirst: mocks.find }, matchingDocuments: { findFirst: async () => undefined } }, update: () => ({ set: mocks.set }) }),
+  schema: { orders: { id: "id", status: "status" }, matchingDocuments: { orderId: "orderId" } },
 }));
 vi.mock("drizzle-orm", () => ({ eq: vi.fn(), and: vi.fn() }));
 vi.mock("@ustal/config", () => ({ getRuntimeConfig: () => ({}) }));

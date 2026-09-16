@@ -46,6 +46,14 @@ interface SeedNode {
 }
 
 const ONTOLOGY_NODES: SeedNode[] = [
+  { canonicalKey: "moving_help", nameRu: "помощь при перемещении вещей", nodeType: "capability" },
+  { canonicalKey: "car", nameRu: "легковой автомобиль", nodeType: "resource", parentKey: "vehicle_use" },
+  { canonicalKey: "van", nameRu: "грузовой фургон", nodeType: "resource", parentKey: "vehicle_use" },
+  { canonicalKey: "drill", nameRu: "дрель", nodeType: "resource", parentKey: "tool_use" },
+  { canonicalKey: "lawn_mower", nameRu: "газонокосилка", nodeType: "resource", parentKey: "tool_use" },
+  { canonicalKey: "ladder", nameRu: "лестница", nodeType: "resource", parentKey: "tool_use" },
+  { canonicalKey: "trailer", nameRu: "прицеп", nodeType: "resource" },
+
   // --- Фаза 1: исходные 25 узлов, без изменений ---
   { canonicalKey: "physical_labor", nameRu: "физическая работа", nodeType: "capability" },
   { canonicalKey: "manual_carrying", nameRu: "перенос вещей", nodeType: "action" },
@@ -389,6 +397,13 @@ async function main() {
   // в Фазе 2/3 вместе с реальным extraction pipeline — здесь только
   // справочники, необходимые для запуска Foundation.
 
+  // Reviewed directional relations, never automatically inferred from arbitrary graph paths.
+  const edges: [string,string][] = [["loading","unloading"],["unloading","loading"],["manual_carrying","loading"],["loading","manual_carrying"],["moving_help","manual_carrying"],["moving_help","loading"],["loading","moving_help"]];
+  const existingEdges=await db.select().from(schema.ontologyRelations);
+  for (const [from,to] of edges) {
+    const fromNodeId=idByKey.get(from),toNodeId=idByKey.get(to);
+    if(fromNodeId&&toNodeId&&!existingEdges.some(r=>r.fromNodeId===fromNodeId&&r.toNodeId===toNodeId&&r.relationType==="related")) await db.insert(schema.ontologyRelations).values({fromNodeId,toNodeId,relationType:"related"});
+  }
   await getSql().end();
 }
 
