@@ -23,6 +23,28 @@ const run = (
     ...extra,
   });
 describe("evidence gates preserve safety while allowing relevant adjacent work", () => {
+  it("does not use customer-supplied profile resources as executor-owned assets", () => {
+    const caps=[f("capability","assembly"),{...f("resource","tool"),resourceRole:"provided_by_customer" as const}];
+    const reqs=[f("capability","assembly"),{...f("resource","tool",true),resourceRole:"required" as const}];
+    expect(run(caps,reqs).reason).toBe("missing_mandatory_resource");
+    expect(run(caps,[reqs[0]!,{...reqs[1]!,resourceRole:"provided_by_customer"}]).matchType).toBe("exact");
+  });
+  it("requires safety review even for identical documents and exact capabilities", () => {
+    const caps=[f("capability","activity")], reqs=[f("capability","activity")];
+    expect(run(caps,reqs,{riskLevel:1}).reason).toBe("safety_review_required");
+    expect(run(caps,reqs,{reviewRequired:true}).reason).toBe("safety_review_required");
+    expect(run(caps,reqs,{riskLevel:1,semanticReview:{compatible:false,confidence:1,reason:"Unsafe means"}}).matchType).toBeNull();
+    expect(run(caps,reqs,{riskLevel:1,semanticReview:{compatible:true,confidence:1,reason:"Suitable"}}).matchType).toBe("exact");
+  });
+  it("never infers capacity compatibility from exact skill or converts floors to metres", () => {
+    const caps=[f("capability","activity"),{...f("resource","access"),resourceRole:"available" as const,resourceCapacity:{value:4,unit:"метр",kind:null}}];
+    const reqs=[f("capability","activity"),{...f("resource","access"),resourceRole:"compatibility" as const,resourceCapacity:{value:7,unit:"этаж",kind:null}}];
+    expect(run(caps,reqs).reason).toBe("physical_compatibility_unverified");
+    expect(run(caps,reqs,{semanticReview:{compatible:false,confidence:1,reason:"Access not established"}}).matchType).toBeNull();
+    // Compatible customer-supplied means can pass without pretending the worker owns them.
+    expect(run([f("capability","activity")],reqs,{semanticReview:{compatible:true,confidence:1,reason:"Customer supplies suitable access"}}).matchType).toBe("exact");
+    expect(run(caps,[...reqs,{...f("resource","other",true),resourceRole:"required"}],{semanticReview:{compatible:true,confidence:1,reason:"Relevant"}}).reason).toBe("missing_mandatory_resource");
+  });
   it("does not treat ordinary riskLevel as an automatic qualification reject", () => {
     const caps = [f("capability", "shared-category")];
     const reqs = [f("capability", "shared-category")];
@@ -131,6 +153,7 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
         [f("capability", "qualified", true)],
         {
           riskLevel: 1,
+          semanticReview: { compatible: true, confidence: 1, reason: "Source supports this qualified task" },
           relations: [
             {
               fromNodeId: "general",
@@ -210,6 +233,7 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
           [f("capability", "faucet-replacement", true)],
           {
             riskLevel: 1,
+            semanticReview: { compatible: true, confidence: 1, reason: "Source supports this qualified task" },
             relations: [
               { fromNodeId: "faucet-replacement", toNodeId: "plumbing-repair", relationType: "is_a" },
             ],
@@ -277,7 +301,7 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
           semanticReview: { compatible: false, confidence: 0.95, reason: "specialist work is unsupported" },
         },
       ).reason,
-    ).toBe("insufficient_capability_evidence"));
+    ).toBe("safety_review_required"));
     it("keeps a truly missing mandatory resource as a hard reject", () =>
       expect(
         run(
@@ -330,4 +354,72 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
   it("compares the requested source time window with evening-only availability",()=>{
     expect(run([f("capability","loading"),{...f("availability",""),startHour:18,endHour:23}], [f("capability","loading"),{...f("availability",""),startHour:8,endHour:12}]).reason).toBe("outside_availability");
   });
+  it("rejects a weekday-only profile against a weekend-requested order", () =>
+    expect(
+      run(
+        [f("capability", "assembly"), { ...f("availability", ""), daysOfWeek: [0, 1, 2, 3, 4] }],
+        [f("capability", "assembly")],
+        { localWeekday: 5 },
+      ).reason,
+    ).toBe("outside_availability"));
+  it("allows a weekday-only profile on a matching weekday", () =>
+    expect(
+      run(
+        [f("capability", "assembly"), { ...f("availability", ""), daysOfWeek: [0, 1, 2, 3, 4] }],
+        [f("capability", "assembly")],
+        { localWeekday: 2 },
+      ).classification,
+    ).not.toBe("reject"));
+  it("does not apply a day-of-week gate when no day is known and none is requested", () =>
+    expect(
+      run(
+        [f("capability", "assembly"), { ...f("availability", ""), daysOfWeek: [0, 1, 2, 3, 4] }],
+        [f("capability", "assembly")],
+      ).classification,
+    ).not.toBe("reject"));
+  it("rejects a mismatched resource subtype (drill vs perforator) even without a numeric capacity", () =>
+    expect(
+      run(
+        [
+          {
+            ...f("resource", "drill"),
+            resourceRole: "available",
+            resourceCapacity: { value: null, unit: null, kind: "дрель" },
+          },
+        ],
+        [
+          {
+            ...f("resource", "drill", true),
+            resourceRole: "required",
+            resourceCapacity: { value: null, unit: null, kind: "перфоратор" },
+          },
+        ],
+      ).reason,
+    ).toBe("missing_mandatory_resource"));
+  it("still matches an exact resource subtype", () =>
+    expect(
+      run(
+        [
+          {
+            ...f("resource", "drill"),
+            resourceRole: "available",
+            resourceCapacity: { value: null, unit: null, kind: "перфоратор" },
+          },
+        ],
+        [
+          {
+            ...f("resource", "drill", true),
+            resourceRole: "required",
+            resourceCapacity: { value: null, unit: null, kind: "перфоратор" },
+          },
+        ],
+      ).reason,
+    ).not.toBe("missing_mandatory_resource"));
+  it("does not let an explicitly missing resource count as owned", () =>
+    expect(
+      run(
+        [{ ...f("resource", "van"), resourceRole: "missing" }],
+        [{ ...f("resource", "van", true), resourceRole: "required" }],
+      ).reason,
+    ).toBe("missing_mandatory_resource"));
 });

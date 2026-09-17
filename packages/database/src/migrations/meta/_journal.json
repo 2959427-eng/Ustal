@@ -64,6 +64,13 @@
       "when": 1789561249821,
       "tag": "0008_lame_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789573621650,
+      "tag": "0009_matching_facts_days_of_week",
+      "breakpoints": true
     }
   ]
 }

@@ -28,7 +28,7 @@ it("rejects a missing actions field instead of accepting malformed model data", 
 });
 it("repairs invalid evidence IDs, restores exact source and accounts for every attempt", async () => {
   const text = "Умею ухаживать за розами и пионами";
-  const fact = { kind: "capability", constraintType: "none", constraintScope: "fact", resourceRole: "none", resourceCapacity: {value:null,unit:null,kind:null}, phrase: "уход за растениями", evidence: "Умею ухаживать за пионами", canonicalKeys: [], confidence: .9, mandatory: false, startHour: null, endHour: null };
+  const fact = { kind: "capability", constraintType: "none", constraintScope: "fact", resourceRole: "none", resourceCapacity: {value:null,unit:null,kind:null}, phrase: "уход за растениями", evidence: "Умею ухаживать за пионами", canonicalKeys: [], confidence: .9, mandatory: false, startHour: null, endHour: null, daysOfWeek: null };
   const response = (evidence: string) => ({ choices: [{ message: { content: JSON.stringify({ facts: [{ ...fact, evidence }] }) } }], usage: { prompt_tokens: 10, completion_tokens: 3 } });
   create.mockResolvedValueOnce(response("source_99")).mockResolvedValueOnce(response("source_0"));
   const before = create.mock.calls.length;
@@ -58,7 +58,7 @@ it("restores the selected later span of a long source without truncating its evi
     expect(spans.length).toBeGreaterThan(1);
     return { choices: [{ message: { content: JSON.stringify({ facts: [{
       kind: "capability", constraintType: "none", constraintScope: "fact", resourceRole: "none", resourceCapacity: {value:null,unit:null,kind:null}, phrase: "садовые работы", evidence: spans[1].id,
-      canonicalKeys: [], confidence: .9, mandatory: false, startHour: null, endHour: null,
+      canonicalKeys: [], confidence: .9, mandatory: false, startHour: null, endHour: null, daysOfWeek: null,
     }] }) } }] };
   });
   const result = await openAiExtraction.normalizeMatching({ kind: "profile", text, extracted: {}, ontology: [] }, meta);
@@ -67,7 +67,7 @@ it("restores the selected later span of a long source without truncating its evi
   expect(text).toContain(result.data.facts[0]!.evidence);
 });
 it("normalizes source only with strict nested kinds and ontology synonyms", async () => {
-  create.mockResolvedValue({ choices: [{ message: { content: '{"facts":[]}' } }] });
+  create.mockResolvedValue({ choices: [{ message: { content: '{"facts":[],"physicalConstraints":[]}' } }] });
   await openAiExtraction.normalizeMatching({ kind: "order", text: "SOURCE only", extracted: { invented: "UNTRUSTED_AI_HINT" },
     ontology: [{canonicalKey:"loading",name:"погрузка",nodeType:"action",description:null,synonyms:["грузчик"]}] }, meta);
   const request = create.mock.lastCall![0], contract = request.response_format.json_schema;
@@ -77,6 +77,28 @@ it("normalizes source only with strict nested kinds and ontology synonyms", asyn
   expect(contract.schema.properties.facts.items.required).toEqual(Object.keys(contract.schema.properties.facts.items.properties));
   expect(request.messages[1].content).not.toContain("UNTRUSTED_AI_HINT");
   expect(request.messages[1].content).toContain("грузчик");
+});
+it("retains source-backed physical limits as compatibility, never inferred ownership", async () => {
+  const text = "Доставка ёмкости 800 литров, доступ через узкие ворота";
+  create.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ facts: [], physicalConstraints: [{
+    kind: "capability", constraintType: "scope", constraintScope: "whole_task", resourceRole: "required",
+    resourceCapacity: { value: 800, unit: "литр", kind: null }, phrase: "доставка ёмкости 800 литров",
+    evidence: "source_0", canonicalKeys: [], confidence: .95, mandatory: true,
+    startHour: null, endHour: null, daysOfWeek: null,
+  }] }) } }] });
+  const r = await openAiExtraction.normalizeMatching({ kind: "order", text, extracted: {}, ontology: [] }, meta);
+  expect(r.data.facts).toHaveLength(1);
+  expect(r.data.facts[0]).toMatchObject({ kind: "resource", resourceRole: "compatibility", mandatory: false,
+    evidence: text, resourceCapacity: { value: 800, unit: "литр", kind: null } });
+  const audit = create.mock.lastCall![0].response_format.json_schema.schema.properties.physicalConstraints;
+  expect(audit.items.properties.evidence.enum).toEqual(["source_0"]);
+});
+it("does not accept an order normalization that skips the physical completeness inventory", async () => {
+  create.mockResolvedValue({ choices: [{ message: { content: '{"facts":[]}' } }] });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await expect(openAiExtraction.normalizeMatching({ kind: "order", text: "Task", extracted: {}, ontology: [] }, meta)).rejects.toThrow();
+  } finally { log.mockRestore(); }
 });
 it("uses the configured semantic reviewer and validates its result", async () => {
   create.mockResolvedValue({ choices: [{ message: { content: '{"compatible":false,"confidence":0.9,"reason":"Different activities"}' } }] });

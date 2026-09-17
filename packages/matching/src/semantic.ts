@@ -7,9 +7,11 @@ export interface Fact {
   confidence: number;
   startHour?: number | null;
   endHour?: number | null;
+  // ISO weekday numbering local to the order's city: 0=Mon..6=Sun. Null/absent = unspecified.
+  daysOfWeek?: number[] | null;
   constraintType?: "none" | "availability" | "exclusion" | "scope";
   constraintScope?: "whole_task" | "fact" | "optional_component";
-  resourceRole?: "none" | "available" | "required" | "provided_by_customer" | "missing";
+  resourceRole?: "none" | "available" | "required" | "provided_by_customer" | "missing" | "compatibility";
   resourceCapacity?: { value: number | null; unit: string | null; kind: string | null };
 }
 export interface Relation {
@@ -18,7 +20,7 @@ export interface Relation {
   relationType: string;
 }
 export const SEMANTIC_POLICY = {
-  version: "semantic-score-v2.7",
+  version: "semantic-score-v2.9",
   shortlist: 150,
   semanticMin: 0.78,
   exclusionMin: 0.8,
@@ -73,6 +75,8 @@ export function evaluateSemantic(input: {
   riskLevel: number;
   regulated: boolean;
   localHour?: number;
+  // ISO weekday numbering local to the order's city: 0=Mon..6=Sun.
+  localWeekday?: number;
   negativePreference?: boolean;
   reviewRequired?: boolean;
   similarCompletedWork?: boolean;
@@ -82,7 +86,14 @@ export function evaluateSemantic(input: {
     (f) => f.kind === "capability" && f.confidence >= 0.5,
   );
   const reqs = input.requirements.filter((f) => f.kind === "capability");
-  const resources = input.capabilities.filter((f) => f.kind === "resource");
+  // A resource fact tagged "missing" is an explicit negative signal (e.g. "no perforator,
+  // only a drill") and must never satisfy a resource requirement, exactly like an exclusion.
+  const resources = input.capabilities.filter(
+    (f) => f.kind === "resource" &&
+      f.resourceRole !== "missing" &&
+      f.resourceRole !== "provided_by_customer" &&
+      f.resourceRole !== "compatibility",
+  );
   const resourceReqs = input.requirements.filter((f) => f.kind === "resource");
   const trace: Record<string, unknown> = {
     policy: SEMANTIC_POLICY.version,
@@ -152,6 +163,37 @@ export function evaluateSemantic(input: {
       }
     }
   }
+  // Day-of-week constraint (e.g. "only weekdays", "not on weekends"). Independent of the
+  // hour-window gate above: both apply when both are stated. Priority over similarity, like
+  // every other constraint in this function — evaluated before any scoring below.
+  const dayWindows = input.capabilities.filter(
+    (f) =>
+      (f.kind === "availability" || f.constraintType === "availability") &&
+      f.daysOfWeek != null &&
+      f.daysOfWeek.length > 0,
+  );
+  if (dayWindows.length) {
+    trace.availability_day = "needs_confirmation";
+    if (input.localWeekday != null) {
+      const available = dayWindows.some((f) => f.daysOfWeek!.includes(input.localWeekday!));
+      if (!available) return reject("outside_availability");
+      trace.availability_day = "compatible";
+    } else {
+      const requestedDays = input.requirements.filter(
+        (f) =>
+          (f.kind === "availability" || f.constraintType === "availability") &&
+          f.daysOfWeek != null &&
+          f.daysOfWeek.length > 0,
+      );
+      if (requestedDays.length) {
+        const overlap = dayWindows.some((f) =>
+          requestedDays.some((r) => r.daysOfWeek!.some((d) => f.daysOfWeek!.includes(d))),
+        );
+        if (!overlap) return reject("outside_availability");
+        trace.availability_day = "compatible";
+      }
+    }
+  }
   let exact = 0,
     relatedHits = 0,
     semanticSum = 0,
@@ -171,7 +213,14 @@ export function evaluateSemantic(input: {
     semanticSum += semantic;
   }
   let resourceHits = 0;
+  let physicalReviewRequired = false;
   for (const req of resourceReqs) {
+    if (req.resourceRole === "compatibility") {
+      // This is suitability of execution, not proof the executor owns an asset. Workload
+      // and access cannot be compared as asset capacities (e.g. floor vs metres).
+      if (req.constraintScope !== "optional_component") physicalReviewRequired = true;
+      continue;
+    }
     // Resources are concrete assets: whole-profile similarity can never prove ownership.
     const required = req.mandatory || req.resourceRole === "required";
     const provided = req.resourceRole === "provided_by_customer";
@@ -182,12 +231,20 @@ export function evaluateSemantic(input: {
       if (!sameResource) return false;
       const requiredCapacity = req.resourceCapacity;
       const availableCapacity = r.resourceCapacity;
+      // A stated subtype/kind (e.g. required "perforator" vs available "drill") is a
+      // mismatch on its own, independent of whether either side also carries a numeric
+      // value — this must not be skipped just because there is no quantity to compare.
+      if (
+        requiredCapacity?.kind &&
+        availableCapacity?.kind &&
+        requiredCapacity.kind !== availableCapacity.kind
+      )
+        return false;
       if (!requiredCapacity?.value || requiredCapacity.value <= 0) return true;
       return (
         availableCapacity?.value != null &&
         availableCapacity.value >= requiredCapacity.value &&
-        availableCapacity.unit === requiredCapacity.unit &&
-        availableCapacity.kind === requiredCapacity.kind
+        availableCapacity.unit === requiredCapacity.unit
       );
     });
     if (!hit && required && !provided) return reject("missing_mandatory_resource");
@@ -207,7 +264,13 @@ export function evaluateSemantic(input: {
     resource_match: resourceHits,
     missing_mandatory_capability: missingMandatoryCapability,
     semantic_review: input.semanticReview ?? null,
+    physical_review_required: physicalReviewRequired,
+    safety_review_required: Boolean(input.reviewRequired || input.riskLevel > 0),
   });
+  if ((physicalReviewRequired || input.reviewRequired || input.riskLevel > 0) &&
+      (!input.semanticReview?.compatible || input.semanticReview.confidence < SEMANTIC_POLICY.reviewConfidence)) {
+    return reject(physicalReviewRequired ? "physical_compatibility_unverified" : "safety_review_required");
+  }
   const weakOverlap =
     input.documentSimilarity < SEMANTIC_POLICY.weakOverlapReviewMaxSimilarity &&
     exactCoverage < 1 &&

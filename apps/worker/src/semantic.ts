@@ -4,7 +4,7 @@ import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
 import { getDb, schema, type Database } from "@ustal/database";
 import { semanticResultSchema, type SemanticFact } from "@ustal/validation";
 
-export const PIPELINE_VERSION = "semantic-v2.3";
+export const PIPELINE_VERSION = "semantic-v2.4";
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export interface PreparedFact extends SemanticFact {
   nodeIds: string[];
@@ -99,6 +99,7 @@ export async function prepareDocument(
     let factKind = f.kind;
     if (
       f.kind === "resource" &&
+      f.resourceRole !== "compatibility" &&
       selectedNodes.length &&
       selectedNodes.every((n) => ["action", "capability"].includes(n.nodeType))
     )
@@ -152,7 +153,19 @@ export async function prepareDocument(
       mandatory: false,
       startHour: null,
       endHour: null,
+      daysOfWeek: null,
     });
+  }
+  // Defensive bridge for providers/older contracts that attach a physical limit to an
+  // action. Preserve that limit as a resource compatibility check without inventing ownership.
+  if (kind === "order") {
+    for (const fact of [...resolved]) {
+      if (fact.kind !== "capability" || fact.constraintScope === "optional_component") continue;
+      const capacity = fact.resourceCapacity;
+      if (capacity.value == null && !capacity.unit && !capacity.kind) continue;
+      if (resolved.some(f => f.resourceRole === "compatibility" && f.evidence === fact.evidence)) continue;
+      resolved.push({ ...fact, kind: "resource", nodeIds: [], canonicalKeys: [], resourceRole: "compatibility", mandatory: false });
+    }
   }
   const excluded = new Set(
     resolved.filter((f) => f.kind === "exclude").flatMap((f) => f.nodeIds),
@@ -252,6 +265,7 @@ export async function persistDocument(
           mandatory: f.mandatory,
           startHour: f.startHour,
           endHour: f.endHour,
+          daysOfWeek: f.daysOfWeek ?? null,
           embedding: f.embedding,
         })),
       );

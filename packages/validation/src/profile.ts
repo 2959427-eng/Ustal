@@ -39,7 +39,17 @@ export const capabilityExtractionResultSchema = z.object({
   capabilities: z.array(
     z.object({
       label: z.string(),
-      proficiency: z.enum(["unknown", "basic", "experienced", "professional"]),
+      // AI structured output for this field is not strict-JSON-schema-guaranteed
+      // (the surrounding object uses z.record() elsewhere, which blocks strict mode),
+      // so a model can occasionally emit a value outside this enum (observed: "inferred",
+      // likely confused with the sibling evidenceType enum). The retry loop in
+      // structuredCompletion (packages/ai/src/providers/openai.ts) already asks the model
+      // to self-correct first; this preprocess is only the last-resort safety net so one
+      // stray enum value degrades to "unknown" instead of throwing and losing the whole case.
+      proficiency: z.preprocess(
+        (v) => (["unknown", "basic", "experienced", "professional"].includes(v as string) ? v : "unknown"),
+        z.enum(["unknown", "basic", "experienced", "professional"]),
+      ),
       evidenceType: z.enum(["explicit", "inferred", "completed_order", "behavior"]),
       confidence: z.number().min(0).max(1),
     }),

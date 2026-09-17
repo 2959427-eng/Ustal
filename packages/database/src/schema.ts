@@ -554,6 +554,8 @@ export const matchingFacts = pgTable("matching_facts", {
   mandatory: boolean("mandatory").notNull(),
   startHour: integer("start_hour"),
   endHour: integer("end_hour"),
+  // ISO weekday numbering local to the order's city: 0=Mon..6=Sun. Null = unspecified.
+  daysOfWeek: jsonb("days_of_week").$type<number[] | null>(),
   embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
 }, (t) => ({ byDocument: index("matching_facts_document_idx").on(t.documentId) }));
 

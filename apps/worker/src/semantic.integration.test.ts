@@ -57,6 +57,7 @@ function fact(
     resourceCapacity: { value: null, unit: null, kind: null },
     startHour: null,
     endHour: null,
+    daysOfWeek: null,
   };
 }
 function fixture(text: string, facts: SemanticFact[], actions: string[] = []) {
@@ -449,14 +450,19 @@ describe("semantic pipeline on real isolated PostgreSQL; fixture AI, no external
     expect((await db.select().from(schema.userCapabilities).where(eq(schema.userCapabilities.capabilityProfileId,legacy!.id))).length).toBe(1);
     expect(await reprocessProfile(legacy!.id,source!.id,true)).toMatchObject({reused:true});
   });
-  it("keeps ordinary exact matches when riskLevel is non-regulated", async () => {
+  it("reviews high-similarity risk cases without treating them as regulated", async () => {
     const a = await user(), u = await user();
     fixture("Qualification profile", [fact("generic activity", ["cleaning"], 12)]);
     fixture("Qualification order", [fact("generic activity", ["cleaning"], 12)]);
     await profile(u, "Qualification profile");
     const oid = await order(a, "Qualification order");
     expect(await matches(oid, u)).toBeDefined();
+    const review = vi.spyOn(mockProviders.extraction, "reviewSemantic").mockResolvedValue(wrap({compatible:false,confidence:1,reason:"Safety not established"}));
     await db.update(schema.orders).set({ riskLevel: 1 }).where(eq(schema.orders.id, oid));
+    expect(await matches(oid, u)).toBeUndefined();
+    expect(review).toHaveBeenCalledWith({profile:["Qualification profile"],order:["Qualification order"]},expect.anything());
+    review.mockResolvedValue(wrap({compatible:true,confidence:1,reason:"Suitable stated means"}));
+    await db.transaction(tx=>requestRematch(tx,u));
     expect(await matches(oid, u)).toBeDefined();
     const latest = await db.query.matchingRuns.findFirst({
       where: eq(schema.matchingRuns.orderId, oid),
@@ -465,6 +471,22 @@ describe("semantic pipeline on real isolated PostgreSQL; fixture AI, no external
     const trace = await db.query.matchingTraces.findFirst({
       where: (t, { and, eq }) => and(eq(t.matchingRunId, latest!.id), eq(t.userId, u)),
     });
-    expect(trace?.detail).toMatchObject({ match_type: "exact" });
+    expect(trace?.detail).toMatchObject({ match_type: "exact", safety_review_required: true });
+    review.mockRestore();
+  });
+  it("persists workload on a capability as a compatibility gate before exact matching", async () => {
+    const a=await user(),u=await user();
+    fixture("Capacity profile",[fact("доставка",["delivery"],14)]);
+    fixture("Capacity order",[{...fact("доставка",["delivery"],14),resourceCapacity:{value:900,unit:"литр",kind:null}}]);
+    await profile(u,"Capacity profile");
+    const oid=await order(a,"Capacity order");
+    const review=vi.spyOn(mockProviders.extraction,"reviewSemantic").mockResolvedValue(wrap({compatible:false,confidence:1,reason:"Suitable capacity not established"}));
+    try {
+      expect(await matches(oid,u)).toBeUndefined();
+      expect(review).toHaveBeenCalledWith({profile:["Capacity profile"],order:["Capacity order"]},expect.anything());
+      const doc=await db.query.matchingDocuments.findFirst({where:eq(schema.matchingDocuments.orderId,oid)});
+      const facts=await db.select().from(schema.matchingFacts).where(eq(schema.matchingFacts.documentId,doc!.id));
+      expect(facts).toEqual(expect.arrayContaining([expect.objectContaining({kind:"resource",resourceRole:"compatibility",mandatory:false,resourceCapacity:{value:900,unit:"литр",kind:null}})]));
+    } finally { review.mockRestore(); }
   });
 });

@@ -147,6 +147,17 @@ export async function handleMatchingRun(
             }).format(order.desiredAt),
           )
         : undefined;
+    // ISO weekday numbering local to the order's city: 0=Mon..6=Sun.
+    const WEEKDAY_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+    const localWeekday =
+      order.desiredAt && city
+        ? WEEKDAY_INDEX[
+            new Intl.DateTimeFormat("en-US", {
+              weekday: "short",
+              timeZone: city.timezone,
+            }).format(order.desiredAt)
+          ]
+        : undefined;
     let candidatesCount = 0;
     const profileIds = shortlist.map((c) => c.profile_id),
       userIds = shortlist.map((c) => c.user_id);
@@ -203,7 +214,7 @@ export async function handleMatchingRun(
       .where(inArray(schema.rematchRequests.userId, userIds)) : [];
     const sorted = (items: unknown[]) => items.map((v) => JSON.stringify(v)).sort();
     const inputHash = createHash("sha256").update(JSON.stringify({
-      policy: SEMANTIC_POLICY, reviewModel: loadEnv().AI_MODEL_SEMANTIC_REVIEW, order, localHour, model, vector, requirements: sorted(requirements),
+      policy: SEMANTIC_POLICY, reviewModel: loadEnv().AI_MODEL_SEMANTIC_REVIEW, order, localHour, localWeekday, model, vector, requirements: sorted(requirements),
       extraction: extracted?.rawResult, nodes: sorted(nodes), relations: sorted(validRelations),
       shortlist: sorted(shortlist), documents: sorted([...currentDocs.values()]),
       facts: sorted(allFacts), capabilities: sorted(allCaps), resources: sorted(allResources),
@@ -272,6 +283,7 @@ export async function handleMatchingRun(
           ? cosine(profileDoc?.embedding ?? pe?.embedding, vector)
           : 0,
         riskLevel: order.riskLevel,
+        localWeekday,
         regulated:
           Boolean(
             (extracted?.rawResult as { regulated?: boolean })?.regulated,
@@ -282,20 +294,17 @@ export async function handleMatchingRun(
             p.signal === "negative" && requiredIds.includes(p.ontologyNodeId),
         ),
         reviewRequired:
-          order.riskLevel > 0 &&
-          cosine(profileDoc?.embedding ?? pe?.embedding, vector) <
-            SEMANTIC_POLICY.weakOverlapReviewMaxSimilarity,
+          order.riskLevel > 0 ||
+          Boolean((extracted?.rawResult as { requiresQualification?: boolean })?.requiresQualification),
       };
       let result = evaluateSemantic(evaluation);
       const needsSourceReview =
-        result.reason === "insufficient_capability_evidence" ||
-        (order.riskLevel > 0 &&
-          Number(result.trace.semantic_similarity ?? 0) < SEMANTIC_POLICY.weakOverlapReviewMaxSimilarity);
+        ["insufficient_capability_evidence", "physical_compatibility_unverified", "safety_review_required"].includes(result.reason);
       if (needsSourceReview &&
         facts.some((f) => f.kind === "capability" && f.confidence >= 0.5) && requirements.some((f) => f.kind === "capability")) {
         if (reviews >= SEMANTIC_POLICY.reviewLimit) throw new Error("Semantic review budget exceeded; run not published");
         reviews++;
-        const meta = { operationType: "semantic_pair_review", traceId: job.id, promptVersion: "semantic-review-v4-source", schemaVersion: "v1" };
+        const meta = { operationType: "semantic_pair_review", traceId: job.id, promptVersion: "semantic-review-v5-safety", schemaVersion: "v1" };
         const started = new Date();
         const reviewed = await getAiProviders().extraction.reviewSemantic({
           profile: profileDoc?.sourceText ? [profileDoc.sourceText] : facts.filter((f) => f.kind === "capability" && f.confidence >= 0.5).map((f) => f.phrase),
