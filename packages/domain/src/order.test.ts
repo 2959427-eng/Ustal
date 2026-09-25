@@ -7,6 +7,9 @@ const ALL_STATUSES: OrderStatus[] = [
   "moderation_hold",
   "published",
   "negotiating",
+  "in_progress",
+  "completed",
+  "not_completed",
   "closed",
   "expired",
   "cancelled",
@@ -37,8 +40,19 @@ describe("order state machine", () => {
     expect(canTransitionOrder("draft", "rejected")).toBe(false);
   });
 
+  it("MVP flow: selection = negotiating (can be cancelled back to published), agreement = in_progress, then completed / not_completed", () => {
+    expect(canTransitionOrder("published", "negotiating")).toBe(true);
+    expect(canTransitionOrder("negotiating", "published")).toBe(true);
+    expect(canTransitionOrder("negotiating", "in_progress")).toBe(true);
+    expect(canTransitionOrder("published", "in_progress")).toBe(false);
+    expect(canTransitionOrder("in_progress", "completed")).toBe(true);
+    expect(canTransitionOrder("in_progress", "not_completed")).toBe(true);
+    expect(canTransitionOrder("in_progress", "published")).toBe(false);
+    expect(canTransitionOrder("negotiating", "completed")).toBe(false);
+  });
+
   it("terminal statuses have no outgoing transitions", () => {
-    for (const terminal of ["closed", "expired", "cancelled", "rejected"] as const) {
+    for (const terminal of ["closed", "expired", "cancelled", "rejected", "completed", "not_completed"] as const) {
       for (const to of ALL_STATUSES) {
         expect(canTransitionOrder(terminal, to)).toBe(false);
       }

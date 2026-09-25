@@ -21,6 +21,7 @@ export default async function meRoutes(app: FastifyInstance) {
       cityId: profile.cityId,
       whatsappPhone: profile.whatsappPhone,
       avatarMediaId: profile.avatarMediaId,
+      about: profile.about,
     });
   });
 }

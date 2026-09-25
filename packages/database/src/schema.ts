@@ -65,19 +65,32 @@ export const userProfiles = pgTable("user_profiles", {
   acceptedRulesAt: timestamp("accepted_rules_at", { withTimezone: true }).notNull(),
   acceptedPdnAt: timestamp("accepted_pdn_at", { withTimezone: true }).notNull(),
   avatarMediaId: uuid("avatar_media_id"),
+  /** «О себе» — короткое описание, видно в публичном профиле. */
+  about: varchar("about", { length: 500 }),
   createdAt: createdAt(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const userSessions = pgTable("user_sessions", {
-  id: id(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  refreshTokenHash: text("refresh_token_hash").notNull(),
-  deviceInfo: text("device_info"),
-  issuedAt: createdAt(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-});
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    refreshTokenHash: text("refresh_token_hash").notNull(),
+    // Цепочка ротации refresh-токенов: у первой сессии (register/login) — новый familyId,
+    // у каждой последующей (после /auth/refresh) — familyId родителя. При обнаружении reuse
+    // (уже отозванный refresh предъявлен снова) отзывается вся family одним запросом — иначе
+    // токен, угнанный и использованный раньше владельца, оставлял бы рабочую сессию у атакующего.
+    familyId: uuid("family_id").notNull(),
+    deviceInfo: text("device_info"),
+    issuedAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    familyIdIdx: index("user_sessions_family_id_idx").on(t.familyId),
+  }),
+);
 
 export const deviceInstallations = pgTable(
   "device_installations",
@@ -300,6 +313,8 @@ export const orders = pgTable("orders", {
   normalizedTitle: text("normalized_title"),
   normalizedDescription: text("normalized_description"),
   priceMinor: integer("price_minor"),
+  // Заказчик готов рассмотреть отклик с другой ценой; если false — поле «ваша цена» у исполнителя не показывается.
+  acceptsPriceOffers: boolean("accepts_price_offers").notNull().default(false),
   currency: varchar("currency", { length: 3 }).notNull().default("RUB"),
   desiredAt: timestamp("desired_at", { withTimezone: true }),
   status: varchar("status", { length: 20 }).notNull().default("draft"),
@@ -396,6 +411,14 @@ export const orderAssignments = pgTable(
     // текстовое поле, см. architecture.md §5. Заполняется только веткой
     // not-completed; для completed остаётся null.
     notCompletedReason: text("not_completed_reason"),
+    // Security-этап «исполнитель не должен зависать в работе» (2026-09-22):
+    // исполнитель может сам отметить, что работа сделана ("completed") или
+    // что выполнить не получилось ("issue") — это ТОЛЬКО сигнал заказчику,
+    // сам заказ/assignment не переводит: окончательное решение (complete /
+    // not-completed, см. routes/assignments.ts) по-прежнему только у
+    // заказчика. Пусто, пока исполнитель ничего не отмечал.
+    executorReport: varchar("executor_report", { length: 20 }),
+    executorReportAt: timestamp("executor_report_at", { withTimezone: true }),
   },
   (t) => ({
     // исполнитель не может быть дважды выбран в один заказ
@@ -424,6 +447,53 @@ export const reviews = pgTable(
   },
   (t) => ({
     onePerDirection: uniqueIndex("reviews_from_to_unique").on(t.fromUserId, t.toUserId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Оценки по заказу (MVP): одна запись = одна сторона закрыла «Оценить».
+// rating NULL = пропуск. to_role — в какой роли оценивают получателя.
+// ---------------------------------------------------------------------------
+
+export const orderRatings = pgTable(
+  "order_ratings",
+  {
+    id: id(),
+    orderId: uuid("order_id").notNull().references(() => orders.id),
+    fromUserId: uuid("from_user_id").notNull().references(() => users.id),
+    toUserId: uuid("to_user_id").notNull().references(() => users.id),
+    toRole: varchar("to_role", { length: 10 }).notNull(),
+    rating: integer("rating"),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    onePerSide: uniqueIndex("order_ratings_order_from_unique").on(t.orderId, t.fromUserId),
+    byRecipient: index("order_ratings_to_user_idx").on(t.toUserId, t.toRole),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Подтверждение телефона (OTP): готово заранее, включается флагом
+// PHONE_VERIFICATION_MODE (packages/config/src/env.ts) без переделки
+// регистрации. Код хранится только хешем; purpose разделяет анонимную
+// регистрацию ("register") и подтверждение уже существующего аккаунта
+// ("existing_user", предлагается постепенно при входе).
+// ---------------------------------------------------------------------------
+
+export const phoneOtpCodes = pgTable(
+  "phone_otp_codes",
+  {
+    id: id(),
+    phone: varchar("phone", { length: 20 }).notNull(),
+    purpose: varchar("purpose", { length: 20 }).notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    byPhonePurpose: index("phone_otp_codes_phone_purpose_idx").on(t.phone, t.purpose, t.createdAt),
   }),
 );
 
@@ -518,7 +588,7 @@ export const matchingCandidates = pgTable("matching_candidates", {
   matchingRunId: uuid("matching_run_id").notNull().references(() => matchingRuns.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id),
   score: numeric("score", { precision: 5, scale: 2 }).notNull(),
-  matchType: varchar("match_type", { length: 20 }).notNull(), // exact|probable|new_opportunity
+  matchType: varchar("match_type", { length: 20 }).notNull(), // exact|probable (legacy rows may hold other values; varchar, no enum)
   explanation: text("explanation").notNull(),
   breakdown: jsonb("breakdown").notNull().default({}),
 }, (t) => ({ runUserUnique: uniqueIndex("matching_candidates_run_user_unique").on(t.matchingRunId, t.userId) }));

@@ -1,6 +1,8 @@
+import { authorTitle } from "../lib/order-text.js";
 import type { FastifyInstance } from "fastify";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb, getSql, schema } from "@ustal/database";
+import { getRuntimeConfig } from "@ustal/config";
 import { assertOrderTransition } from "@ustal/domain";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
 import { createOrderSchema, editOrderTranscriptSchema } from "@ustal/validation";
@@ -72,34 +74,78 @@ export default async function ordersRoutes(app: FastifyInstance) {
         return { status: 404, body: { error: { code: "not_found", message: "Профиль пользователя не найден" } } };
       }
 
+      // Анти-abuse: без лимита создание заказа можно скриптом гонять сколько угодно раз в
+      // минуту (под общим 100/мин на IP) — каждый реальный запуск стоит денег на AI-провайдере
+      // (extraction + embedding + модерация), поэтому нужен отдельный per-user потолок.
+      const config = getRuntimeConfig();
+      const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const mediaIdsToCheck = [...body.mediaIds, ...(body.audioMediaId ? [body.audioMediaId] : [])];
-      if (mediaIdsToCheck.length > 0) {
-        const owned = await db.query.media.findMany({
-          where: and(inArray(schema.media.id, mediaIdsToCheck), eq(schema.media.ownerId, request.userId)),
-        });
-        if (owned.length !== mediaIdsToCheck.length) {
-          return {
-            status: 400,
-            body: { error: { code: "media_not_found", message: "Один или несколько mediaId не найдены или принадлежат другому пользователю" } },
-          };
-        }
-      }
 
-      // Пауза «Проверка транскрипции» (экран 9/11, claude/pipeline-split-design.md):
-      // voice-заказ сначала уходит только на STT (ORDER_TRANSCRIBE) и ждёт
-      // подтверждения — sourceText остаётся пустым до confirm-transcript.
-      // text-заказ — без изменений, sourceText заполнен сразу, extraction сразу.
-      const [order] = await db
-        .insert(schema.orders)
-        .values({
-          authorId: request.userId,
-          cityId: authorProfile.cityId,
-          sourceText: body.inputType === "text" ? (body.text ?? null) : null,
-          sourceStatus: body.inputType === "voice" ? "transcribing" : "confirmed",
-          priceMinor: body.priceMinor ?? null,
-          status: "draft",
-        })
-        .returning();
+      // Security-фикс (2026-09-22): count (лимит ORDERS_PER_HOUR) и insert шли
+      // отдельными запросами вне транзакции — под параллельными запросами
+      // одного автора оба (и больше) могли пройти проверку лимита до того, как
+      // хоть один insert зафиксируется, и лимит превышался на гонке (тот же
+      // класс бага, что был у contact-unlocks, см. pg_advisory_xact_lock в
+      // routes/contacts.ts). pg_advisory_xact_lock по userId сериализует
+      // конкурентные запросы одного и того же автора на время транзакции.
+      let rateLimited = false;
+      let mediaInvalid = false;
+      const order = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${request.userId}))`);
+
+        const recentOrders = await tx.query.orders.findMany({
+          where: and(eq(schema.orders.authorId, request.userId), gt(schema.orders.createdAt, hourAgo)),
+        });
+        if (recentOrders.length >= config.rateLimits.ordersPerHour) {
+          rateLimited = true;
+          return undefined;
+        }
+
+        if (mediaIdsToCheck.length > 0) {
+          const owned = await tx.query.media.findMany({
+            where: and(inArray(schema.media.id, mediaIdsToCheck), eq(schema.media.ownerId, request.userId)),
+          });
+          if (owned.length !== mediaIdsToCheck.length) {
+            mediaInvalid = true;
+            return undefined;
+          }
+        }
+
+        // Пауза «Проверка транскрипции» (экран 9/11, claude/pipeline-split-design.md):
+        // voice-заказ сначала уходит только на STT (ORDER_TRANSCRIBE) и ждёт
+        // подтверждения — sourceText остаётся пустым до confirm-transcript.
+        // text-заказ — без изменений, sourceText заполнен сразу, extraction сразу.
+        const [row] = await tx
+          .insert(schema.orders)
+          .values({
+            authorId: request.userId,
+            cityId: authorProfile.cityId,
+            sourceText: body.inputType === "text" ? (body.text ?? null) : null,
+            sourceStatus: body.inputType === "voice" ? "transcribing" : "confirmed",
+            priceMinor: body.priceMinor ?? null,
+            acceptsPriceOffers: body.acceptsPriceOffers ?? false,
+            status: "draft",
+          })
+          .returning();
+        return row;
+      });
+      if (rateLimited) {
+        return {
+          status: 429,
+          body: {
+            error: {
+              code: "rate_limited",
+              message: `Не более ${config.rateLimits.ordersPerHour} заказов в час`,
+            },
+          },
+        };
+      }
+      if (mediaInvalid) {
+        return {
+          status: 400,
+          body: { error: { code: "media_not_found", message: "Один или несколько mediaId не найдены или принадлежат другому пользователю" } },
+        };
+      }
       if (!order) throw new Error("Failed to create order");
 
       const mediaRows: (typeof schema.orderMedia.$inferInsert)[] = body.mediaIds.map((mediaId, position) => ({
@@ -159,9 +205,12 @@ export default async function ordersRoutes(app: FastifyInstance) {
       id: order.id,
       status: order.status,
       cityId: order.cityId,
-      normalizedTitle: order.normalizedTitle,
-      normalizedDescription: order.normalizedDescription,
+      // Заголовок и описание — из текста автора, не придуманные AI.
+      normalizedTitle: authorTitle(order.sourceText) ?? order.normalizedTitle,
+      // Показываем текст автора, а не пересказ AI: AI ничего не должен дописывать.
+      normalizedDescription: order.sourceText ?? order.normalizedDescription,
       priceMinor: order.priceMinor,
+      acceptsPriceOffers: order.acceptsPriceOffers,
       currency: order.currency,
       riskLevel: order.riskLevel,
       moderationStatus: order.moderationStatus,
@@ -288,8 +337,26 @@ export default async function ordersRoutes(app: FastifyInstance) {
         .send({ error: { code: "invalid_status", message: `Нельзя отменить заказ из статуса "${order.status}"` } });
     }
 
+    // «Удалить заказ» = отмена: пока по заказу есть выбранный исполнитель, удалять нельзя
+    // (это уже договорённость — её закрывают/завершают штатным путём).
+    const assignment = await db.query.orderAssignments.findFirst({
+      where: eq(schema.orderAssignments.orderId, order.id),
+    });
+    if (assignment) {
+      return reply.code(409).send({
+        error: { code: "has_assignment", message: "По заказу уже выбран исполнитель — удалить его нельзя" },
+      });
+    }
+
     assertOrderTransition(order.status as never, "cancelled");
-    await db.update(schema.orders).set({ status: "cancelled" }).where(eq(schema.orders.id, order.id));
+    await db.transaction(async (tx) => {
+      await tx.update(schema.orders).set({ status: "cancelled" }).where(eq(schema.orders.id, order.id));
+      // Активные отклики закрываем, чтобы исполнители не ждали решения по удалённому заказу.
+      await tx
+        .update(schema.responses)
+        .set({ status: "not_selected", updatedAt: new Date() })
+        .where(and(eq(schema.responses.orderId, order.id), eq(schema.responses.status, "active")));
+    });
 
     return reply.code(204).send();
   });

@@ -1,9 +1,12 @@
+import { authorTitle } from "../lib/order-text.js";
 import type { FastifyInstance } from "fastify";
-import { and, eq, gt, or } from "drizzle-orm";
+import { and, eq, gt, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { getRuntimeConfig } from "@ustal/config";
 import { contactUnlockSchema } from "@ustal/validation";
 import { notifyUser } from "../lib/notify.js";
+import { areBlocked } from "../lib/blocks.js";
+import { canUnlockContactsForOrder, isContactAccessOpen } from "../lib/contact-access.js";
 
 /**
  * «Обсудить заказ» → contact_unlock (docs/api.md, docs/matching.md,
@@ -30,6 +33,20 @@ export default async function contactsRoutes(app: FastifyInstance) {
     if (!response || response.orderId !== orderId) {
       return reply.code(404).send({ error: { code: "not_found", message: "Отклик не найден" } });
     }
+    if (!canUnlockContactsForOrder(order.status)) {
+      return reply.code(409).send({
+        error: { code: "invalid_status", message: `Контакт нельзя раскрыть: заказ в статусе "${order.status}"` },
+      });
+    }
+
+    if (await areBlocked(db, request.userId, response.executorId)) {
+      return reply.code(404).send({ error: { code: "not_found", message: "Отклик не найден" } });
+    }
+
+    const executor = await db.query.users.findFirst({ where: eq(schema.users.id, response.executorId), columns: { status: true } });
+    if (executor?.status !== "active") {
+      return reply.code(409).send({ error: { code: "invalid_status", message: "Исполнитель недоступен — контакт нельзя раскрыть" } });
+    }
 
     const existing = await db.query.contactUnlocks.findFirst({
       where: and(eq(schema.contactUnlocks.orderId, orderId), eq(schema.contactUnlocks.executorId, response.executorId)),
@@ -48,10 +65,33 @@ export default async function contactsRoutes(app: FastifyInstance) {
 
     const config = getRuntimeConfig();
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const recentUnlocks = await db.query.contactUnlocks.findMany({
-      where: and(eq(schema.contactUnlocks.customerId, request.userId), gt(schema.contactUnlocks.unlockedAt, hourAgo)),
+
+    // Раньше count и insert шли отдельными запросами вне транзакции — под
+    // параллельными запросами одного заказчика оба могли пройти проверку лимита
+    // до того, как хоть один insert зафиксируется, и лимит превышался на гонке.
+    // pg_advisory_xact_lock по customerId сериализует конкурентные запросы одного
+    // и того же заказчика на время транзакции (снимается сам при commit/rollback),
+    // не блокируя запросы разных заказчиков друг с другом.
+    let rateLimited = false;
+    const created = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${request.userId}))`);
+
+      const recentUnlocks = await tx
+        .select({ id: schema.contactUnlocks.id })
+        .from(schema.contactUnlocks)
+        .where(and(eq(schema.contactUnlocks.customerId, request.userId), gt(schema.contactUnlocks.unlockedAt, hourAgo)));
+      if (recentUnlocks.length >= config.rateLimits.contactUnlocksPerHour) {
+        rateLimited = true;
+        return undefined;
+      }
+
+      const [row] = await tx
+        .insert(schema.contactUnlocks)
+        .values({ orderId, customerId: request.userId, executorId: response.executorId, responseId: response.id })
+        .returning();
+      return row;
     });
-    if (recentUnlocks.length >= config.rateLimits.contactUnlocksPerHour) {
+    if (rateLimited) {
       return reply.code(429).send({
         error: {
           code: "rate_limited",
@@ -59,18 +99,13 @@ export default async function contactsRoutes(app: FastifyInstance) {
         },
       });
     }
-
-    const [created] = await db
-      .insert(schema.contactUnlocks)
-      .values({ orderId, customerId: request.userId, executorId: response.executorId, responseId: response.id })
-      .returning();
     if (!created) throw new Error("Failed to create contact_unlock");
 
     await notifyUser(response.executorId, "contact_unlocked", {
       orderId,
       responseId: response.id,
       title: "Заказчик открыл ваш контакт",
-      body: order.normalizedTitle ? `Можно обсудить «${order.normalizedTitle}»` : "Заказчик готов обсудить заказ",
+      body: (authorTitle(order.sourceText) ?? order.normalizedTitle) ? `Можно обсудить «${(authorTitle(order.sourceText) ?? order.normalizedTitle)}»` : "Заказчик готов обсудить заказ",
     });
 
     return reply.code(201).send({ id: created.id, orderId, executorId: created.executorId, unlockedAt: created.unlockedAt });
@@ -88,7 +123,19 @@ export default async function contactsRoutes(app: FastifyInstance) {
         ),
       ),
     });
-    if (!unlock) {
+    if (!unlock || (await areBlocked(db, request.userId, otherUserId))) {
+      return reply.code(404).send({ error: { code: "not_found", message: "Контакт не раскрыт для этой пары" } });
+    }
+
+    // Запись раскрытия — только история. Доступ есть, пока отношения живые (lib/contact-access.ts).
+    const [order, assignment, unlockedResponse] = await Promise.all([
+      db.query.orders.findFirst({ where: eq(schema.orders.id, orderId) }),
+      db.query.orderAssignments.findFirst({
+        where: and(eq(schema.orderAssignments.orderId, orderId), eq(schema.orderAssignments.executorId, unlock.executorId)),
+      }),
+      db.query.responses.findFirst({ where: eq(schema.responses.id, unlock.responseId) }),
+    ]);
+    if (!isContactAccessOpen({ orderStatus: order?.status, assignmentStatus: assignment?.status, responseStatus: unlockedResponse?.status })) {
       return reply.code(404).send({ error: { code: "not_found", message: "Контакт не раскрыт для этой пары" } });
     }
 
@@ -96,7 +143,7 @@ export default async function contactsRoutes(app: FastifyInstance) {
       db.query.users.findFirst({ where: eq(schema.users.id, otherUserId) }),
       db.query.userProfiles.findFirst({ where: eq(schema.userProfiles.userId, otherUserId) }),
     ]);
-    if (!user || !profile) {
+    if (!user || !profile || user.status !== "active") {
       return reply.code(404).send({ error: { code: "not_found", message: "Пользователь не найден" } });
     }
 

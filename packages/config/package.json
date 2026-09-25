@@ -7,7 +7,8 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "echo \"(no-op) lint @ustal/config\""
+    "lint": "echo \"(no-op) lint @ustal/config\"",
+    "test": "vitest run"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

@@ -1,5 +1,6 @@
+import { diffByNode, diffUnmapped, pickUnmappedFacts } from "../lib/profile-diff.js";
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { getRuntimeConfig } from "@ustal/config";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
@@ -27,6 +28,19 @@ import { withIdempotency } from "../lib/idempotency.js";
 export default async function profileRoutes(app: FastifyInstance) {
   const db = getDb();
 
+  /** Фразы последнего matching-документа профиля, не сопоставленные с онтологией. */
+  async function loadUnmapped(profileId: string, mappedLabels: string[]) {
+    const doc = await db.query.matchingDocuments.findFirst({
+      where: eq(schema.matchingDocuments.profileId, profileId),
+      orderBy: desc(schema.matchingDocuments.processedAt),
+    });
+    if (!doc) return [];
+    const facts = await db.query.matchingFacts.findMany({
+      where: eq(schema.matchingFacts.documentId, doc.id),
+    });
+    return pickUnmappedFacts(facts, mappedLabels);
+  }
+
   async function loadAppliedProfile(userId: string) {
     const latest = await db.query.capabilityProfiles.findFirst({
       where: and(
@@ -46,6 +60,8 @@ export default async function profileRoutes(app: FastifyInstance) {
       }),
     ]);
 
+    const unmapped = await loadUnmapped(latest.id, [...capabilities, ...resources].map((i) => i.label));
+
     return {
       profile: {
         id: latest.id,
@@ -56,6 +72,7 @@ export default async function profileRoutes(app: FastifyInstance) {
       },
       capabilities,
       resources,
+      unmapped,
     };
   }
 
@@ -65,7 +82,7 @@ export default async function profileRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const result = await loadAppliedProfile(request.userId);
       return reply.send(
-        result ?? { profile: null, capabilities: [], resources: [] },
+        result ?? { profile: null, capabilities: [], resources: [], unmapped: [] },
       );
     },
   );
@@ -108,6 +125,7 @@ export default async function profileRoutes(app: FastifyInstance) {
         updates.whatsappPhone = body.whatsappPhone;
       if (body.avatarMediaId !== undefined)
         updates.avatarMediaId = body.avatarMediaId;
+      if (body.about !== undefined) updates.about = body.about ? body.about : null;
 
       const updated = await db.transaction(async (tx) => {
         const [row] = await tx
@@ -136,6 +154,7 @@ export default async function profileRoutes(app: FastifyInstance) {
         cityId: updated.cityId,
         whatsappPhone: updated.whatsappPhone,
         avatarMediaId: updated.avatarMediaId,
+        about: updated.about,
       });
     },
   );
@@ -156,15 +175,59 @@ export default async function profileRoutes(app: FastifyInstance) {
 
           const config = getRuntimeConfig();
           const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-          const recentInputs = await db.query.profileSourceInputs.findMany({
-            where: and(
-              eq(schema.profileSourceInputs.userId, request.userId),
-              gt(schema.profileSourceInputs.createdAt, hourAgo),
-            ),
+
+          // Security-фикс (2026-09-22): тот же класс гонки, что и в POST /orders
+          // (routes/orders.ts) — count (PROFILE_FREEFORM_EDITS_PER_HOUR) и insert
+          // раньше шли отдельными запросами вне транзакции. pg_advisory_xact_lock
+          // по userId сериализует конкурентные запросы одного пользователя.
+          let rateLimited = false;
+          let mediaInvalid = false;
+          const input = await db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${request.userId}))`);
+
+            const recentInputs = await tx.query.profileSourceInputs.findMany({
+              where: and(
+                eq(schema.profileSourceInputs.userId, request.userId),
+                gt(schema.profileSourceInputs.createdAt, hourAgo),
+              ),
+            });
+            if (
+              recentInputs.length >= config.rateLimits.profileFreeformEditsPerHour
+            ) {
+              rateLimited = true;
+              return undefined;
+            }
+
+            if (body.inputType === "voice" && body.audioMediaId) {
+              const owned = await tx.query.media.findFirst({
+                where: and(
+                  eq(schema.media.id, body.audioMediaId),
+                  eq(schema.media.ownerId, request.userId),
+                ),
+              });
+              if (!owned) {
+                mediaInvalid = true;
+                return undefined;
+              }
+            }
+
+            // Пауза «Проверка транскрипции» (экран 9): voice-ввод сначала уходит
+            // только на STT (PROFILE_TRANSCRIBE) и ждёт подтверждения — text-ввод
+            // нечего разделять, правка уже произошла в композере, сразу extraction.
+            const [row] = await tx
+              .insert(schema.profileSourceInputs)
+              .values({
+                userId: request.userId,
+                inputType: body.inputType,
+                rawText: body.inputType === "text" ? (body.text ?? null) : null,
+                audioMediaId:
+                  body.inputType === "voice" ? (body.audioMediaId ?? null) : null,
+                status: body.inputType === "voice" ? "transcribing" : "confirmed",
+              })
+              .returning();
+            return row;
           });
-          if (
-            recentInputs.length >= config.rateLimits.profileFreeformEditsPerHour
-          ) {
+          if (rateLimited) {
             return {
               status: 429 as const,
               body: {
@@ -175,42 +238,18 @@ export default async function profileRoutes(app: FastifyInstance) {
               },
             };
           }
-
-          if (body.inputType === "voice" && body.audioMediaId) {
-            const owned = await db.query.media.findFirst({
-              where: and(
-                eq(schema.media.id, body.audioMediaId),
-                eq(schema.media.ownerId, request.userId),
-              ),
-            });
-            if (!owned) {
-              return {
-                status: 400 as const,
-                body: {
-                  error: {
-                    code: "media_not_found",
-                    message:
-                      "audioMediaId не найден или принадлежит другому пользователю",
-                  },
+          if (mediaInvalid) {
+            return {
+              status: 400 as const,
+              body: {
+                error: {
+                  code: "media_not_found",
+                  message:
+                    "audioMediaId не найден или принадлежит другому пользователю",
                 },
-              };
-            }
+              },
+            };
           }
-
-          // Пауза «Проверка транскрипции» (экран 9): voice-ввод сначала уходит
-          // только на STT (PROFILE_TRANSCRIBE) и ждёт подтверждения — text-ввод
-          // нечего разделять, правка уже произошла в композере, сразу extraction.
-          const [input] = await db
-            .insert(schema.profileSourceInputs)
-            .values({
-              userId: request.userId,
-              inputType: body.inputType,
-              rawText: body.inputType === "text" ? (body.text ?? null) : null,
-              audioMediaId:
-                body.inputType === "voice" ? (body.audioMediaId ?? null) : null,
-              status: body.inputType === "voice" ? "transcribing" : "confirmed",
-            })
-            .returning();
           if (!input)
             throw new Error("Failed to create profile_source_inputs row");
 
@@ -380,19 +419,16 @@ export default async function profileRoutes(app: FastifyInstance) {
           loadAppliedProfile(request.userId),
         ]);
 
+      // Older pending drafts must not reappear after a newer version was applied.
+      if (appliedResult && appliedResult.profile.profileVersion >= draft.profileVersion)
+        return reply.send({ draft: null });
+
       // Экран 10 ТЗ: «подтверждения удаления значимых пунктов» — дифф считаем
       // здесь, ДО применения, а не постфактум на клиенте (был временный
       // компромисс в slice 7 этой ветки, теперь заменяется этим эндпоинтом).
-      const appliedCapabilityLabels = new Set(
-        (appliedResult?.capabilities ?? []).map((c) => c.label),
-      );
-      const appliedResourceLabels = new Set(
-        (appliedResult?.resources ?? []).map((r) => r.label),
-      );
-      const draftCapabilityLabels = new Set(
-        draftCapabilities.map((c) => c.label),
-      );
-      const draftResourceLabels = new Set(draftResources.map((r) => r.label));
+      const capDiff = diffByNode(appliedResult?.capabilities ?? [], draftCapabilities);
+      const resDiff = diffByNode(appliedResult?.resources ?? [], draftResources);
+      const draftUnmapped = await loadUnmapped(draft.id, [...draftCapabilities, ...draftResources].map((i) => i.label));
 
       return reply.send({
         draft: {
@@ -403,19 +439,13 @@ export default async function profileRoutes(app: FastifyInstance) {
         },
         capabilities: draftCapabilities,
         resources: draftResources,
+        unmapped: draftUnmapped,
         diff: {
-          addedCapabilities: draftCapabilities
-            .filter((c) => !appliedCapabilityLabels.has(c.label))
-            .map((c) => c.label),
-          removedCapabilities: (appliedResult?.capabilities ?? [])
-            .filter((c) => !draftCapabilityLabels.has(c.label))
-            .map((c) => c.label),
-          addedResources: draftResources
-            .filter((r) => !appliedResourceLabels.has(r.label))
-            .map((r) => r.label),
-          removedResources: (appliedResult?.resources ?? [])
-            .filter((r) => !draftResourceLabels.has(r.label))
-            .map((r) => r.label),
+          addedCapabilities: capDiff.added,
+          removedCapabilities: capDiff.removed,
+          addedResources: resDiff.added,
+          removedResources: resDiff.removed,
+          addedUnmapped: diffUnmapped(appliedResult?.unmapped ?? [], draftUnmapped),
         },
       });
     },
@@ -445,15 +475,22 @@ export default async function profileRoutes(app: FastifyInstance) {
         });
       }
 
-      await db.transaction(async (tx) => {
+      const applied = await db.transaction(async (tx) => {
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtextextended(${request.userId},0))`,
         );
         const current = await tx.query.capabilityProfiles.findFirst({
           where: eq(schema.capabilityProfiles.id, id),
         });
-        if (current?.status !== "draft")
-          throw new Error("Draft changed while applying");
+        if (current?.status !== "draft") return false;
+        const newerApplied = await tx.query.capabilityProfiles.findFirst({
+          where: and(
+            eq(schema.capabilityProfiles.userId, request.userId),
+            eq(schema.capabilityProfiles.status, "applied"),
+            gt(schema.capabilityProfiles.profileVersion, current.profileVersion),
+          ),
+        });
+        if (newerApplied) return false;
         await tx
           .update(schema.capabilityProfiles)
           .set({ status: "superseded" })
@@ -468,14 +505,26 @@ export default async function profileRoutes(app: FastifyInstance) {
           .set({ status: "applied" })
           .where(eq(schema.capabilityProfiles.id, id));
         await tx
+          .update(schema.capabilityProfiles)
+          .set({ status: "superseded" })
+          .where(and(
+            eq(schema.capabilityProfiles.userId, request.userId),
+            eq(schema.capabilityProfiles.status, "draft"),
+            lt(schema.capabilityProfiles.profileVersion, current.profileVersion),
+          ));
+        await tx
           .insert(schema.rematchRequests)
           .values({ userId: request.userId })
           .onConflictDoUpdate({
             target: schema.rematchRequests.userId,
             set: { requestedAt: sql`now()`, cursor: null },
           });
+        return true;
       });
 
+      if (!applied) return reply.code(409).send({
+        error: { code: "stale_draft", message: "Черновик устарел. Обновите профиль." },
+      });
       return reply.send({ profileId: draft.id, status: "applied" as const });
     },
   );

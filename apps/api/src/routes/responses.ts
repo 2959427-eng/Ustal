@@ -1,8 +1,11 @@
+import { authorTitle } from "../lib/order-text.js";
 import type { FastifyInstance } from "fastify";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { createResponseSchema, updateResponseSchema } from "@ustal/validation";
 import { notifyUser } from "../lib/notify.js";
+import { areBlocked, blockedCounterparts } from "../lib/blocks.js";
+import { isContactAccessOpen } from "../lib/contact-access.js";
 
 /**
  * Отклики (docs/api.md «Заказы», docs/data-model.md `responses`). Executor-
@@ -29,6 +32,13 @@ export default async function responsesRoutes(app: FastifyInstance) {
     if (!order) {
       return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
     }
+    const author = await db.query.users.findFirst({ where: eq(schema.users.id, order.authorId), columns: { status: true } });
+    if (author?.status !== "active") {
+      return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
+    }
+    if (await areBlocked(db, order.authorId, request.userId)) {
+      return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
+    }
     if (order.authorId === request.userId) {
       return reply
         .code(403)
@@ -43,6 +53,13 @@ export default async function responsesRoutes(app: FastifyInstance) {
     if (!["published", "negotiating"].includes(order.status)) {
       return reply.code(409).send({
         error: { code: "invalid_status", message: `Заказ не принимает отклики в статусе "${order.status}"` },
+      });
+    }
+
+    // Встречная цена возможна только если заказчик разрешил её при создании заказа.
+    if (body.offeredPriceMinor != null && !order.acceptsPriceOffers) {
+      return reply.code(400).send({
+        error: { code: "price_offers_disabled", message: "Заказчик не принимает предложения с другой ценой" },
       });
     }
 
@@ -76,7 +93,7 @@ export default async function responsesRoutes(app: FastifyInstance) {
       orderId,
       responseId: created.id,
       title: "Новый отклик на ваш заказ",
-      body: order.normalizedTitle ? `Откликнулись на «${order.normalizedTitle}»` : "У вас новый отклик",
+      body: (authorTitle(order.sourceText) ?? order.normalizedTitle) ? `Откликнулись на «${(authorTitle(order.sourceText) ?? order.normalizedTitle)}»` : "У вас новый отклик",
     });
 
     return reply.code(201).send({
@@ -99,7 +116,8 @@ export default async function responsesRoutes(app: FastifyInstance) {
     }
 
     const responseRows = await db.query.responses.findMany({
-      where: eq(schema.responses.orderId, orderId),
+      // Отозванные отклики остаются в БД для истории, но заказчику не показываются.
+      where: and(eq(schema.responses.orderId, orderId), ne(schema.responses.status, "withdrawn")),
       orderBy: (t, { desc }) => desc(t.createdAt),
     });
 
@@ -115,22 +133,36 @@ export default async function responsesRoutes(app: FastifyInstance) {
     // Полный assignment (не только status) — id нужен клиенту-автору для
     // POST /orders/{id}/assignments/{assignmentId}/complete и .../not-completed.
     const assignmentByExecutor = new Map(assignments.map((a) => [a.executorId, a]));
+    // Заблокированные не показываются кандидатами; исключение — исполнитель с назначением (в работе/завершено):
+    // заказчик должен иметь возможность довести заказ до «Выполнено / Не выполнено».
+    const blocked = await blockedCounterparts(db, request.userId);
+    const visibleRows = responseRows.filter((r) => !blocked.has(r.executorId) || assignmentByExecutor.has(r.executorId));
 
     return reply.send({
-      items: responseRows.map((r) => {
+      items: visibleRows.map((r) => {
         const assignment = assignmentByExecutor.get(r.executorId);
         return {
           id: r.id,
           executorId: r.executorId,
           executorName: profileByUser.get(r.executorId)?.name ?? null,
+          executorAvatarMediaId: profileByUser.get(r.executorId)?.avatarMediaId ?? null,
           status: r.status,
           offeredPriceMinor: r.offeredPriceMinor,
           comment: r.comment,
           availabilityText: r.availabilityText,
           createdAt: r.createdAt,
-          isContactUnlocked: unlockedExecutorIds.has(r.executorId),
+          isContactUnlocked:
+            unlockedExecutorIds.has(r.executorId) &&
+            !blocked.has(r.executorId) &&
+            isContactAccessOpen({ orderStatus: order.status, assignmentStatus: assignment?.status, responseStatus: r.status }),
           assignmentId: assignment?.id ?? null,
           assignmentStatus: assignment?.status ?? null,
+          // Отметка исполнителя "работа выполнена"/"не получилось" — только
+          // сигнал заказчику рядом с кнопками «Выполнено»/«Не выполнено»,
+          // сама она заказ не завершает (routes/assignments.ts
+          // executor-report-*).
+          executorReport: assignment?.executorReport ?? null,
+          executorReportAt: assignment?.executorReportAt ?? null,
         };
       }),
     });
@@ -141,24 +173,44 @@ export default async function responsesRoutes(app: FastifyInstance) {
     const body = updateResponseSchema.parse(request.body);
     const guard = await loadEditableResponse(db, id, request.userId);
     if ("error" in guard) return reply.code(guard.status).send({ error: guard.error });
+    if (body.offeredPriceMinor != null && !guard.acceptsPriceOffers) {
+      return reply.code(400).send({
+        error: { code: "price_offers_disabled", message: "Заказчик не принимает предложения с другой ценой" },
+      });
+    }
 
     const updates: Partial<typeof schema.responses.$inferInsert> = { updatedAt: new Date() };
     if (body.offeredPriceMinor !== undefined) updates.offeredPriceMinor = body.offeredPriceMinor;
     if (body.comment !== undefined) updates.comment = body.comment;
     if (body.availabilityText !== undefined) updates.availabilityText = body.availabilityText;
 
-    const [updated] = await db
-      .update(schema.responses)
-      .set(updates)
-      .where(eq(schema.responses.id, id))
-      .returning();
+    // Race-фикс (2026-09-22, второй security-проход): UPDATE был безусловным,
+    // без замка и без повторной проверки статуса — в отличие от DELETE ниже,
+    // который уже берёт SELECT ... FOR UPDATE. PATCH, проигравший гонку с
+    // параллельным DELETE (withdraw), мог молча записать правки поверх уже
+    // отозванного отклика. Теперь: тот же замок + повторная проверка status
+    // под ним, и сам UPDATE условный (WHERE status='active').
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM responses WHERE id = ${id} FOR UPDATE`);
+      const [current] = await tx.select().from(schema.responses).where(eq(schema.responses.id, id));
+      if (!current || current.status !== "active") return undefined;
+      const [row] = await tx
+        .update(schema.responses)
+        .set(updates)
+        .where(and(eq(schema.responses.id, id), eq(schema.responses.status, "active")))
+        .returning();
+      return row;
+    });
+    if (!updated) {
+      return reply.code(409).send({ error: { code: "invalid_status", message: "Отклик уже нельзя изменить" } });
+    }
 
     return reply.send({
-      id: updated?.id,
-      status: updated?.status,
-      offeredPriceMinor: updated?.offeredPriceMinor,
-      comment: updated?.comment,
-      availabilityText: updated?.availabilityText,
+      id: updated.id,
+      status: updated.status,
+      offeredPriceMinor: updated.offeredPriceMinor,
+      comment: updated.comment,
+      availabilityText: updated.availabilityText,
     });
   });
 
@@ -167,10 +219,31 @@ export default async function responsesRoutes(app: FastifyInstance) {
     const guard = await loadEditableResponse(db, id, request.userId);
     if ("error" in guard) return reply.code(guard.status).send({ error: guard.error });
 
-    await db
-      .update(schema.responses)
-      .set({ status: "withdrawn", updatedAt: new Date() })
-      .where(eq(schema.responses.id, id));
+    // Блокируем строку отклика: заказчик выбирает исполнителя под тем же
+    // FOR UPDATE, поэтому «выбрали» и «отозвал» не могут пройти одновременно.
+    const withdrawn = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM responses WHERE id = ${id} FOR UPDATE`);
+      const [current] = await tx.select().from(schema.responses).where(eq(schema.responses.id, id));
+      if (!current || current.status !== "active") return "invalid_status" as const;
+      const [assignment] = await tx
+        .select({ id: schema.orderAssignments.id })
+        .from(schema.orderAssignments)
+        .where(and(eq(schema.orderAssignments.orderId, current.orderId), eq(schema.orderAssignments.executorId, current.executorId)));
+      if (assignment) return "already_selected" as const;
+      await tx
+        .update(schema.responses)
+        .set({ status: "withdrawn", updatedAt: new Date() })
+        .where(eq(schema.responses.id, id));
+      return "ok" as const;
+    });
+    if (withdrawn === "already_selected") {
+      return reply.code(409).send({
+        error: { code: "already_selected", message: "Вас уже выбрали по этому заказу — отклик отозвать нельзя" },
+      });
+    }
+    if (withdrawn === "invalid_status") {
+      return reply.code(409).send({ error: { code: "invalid_status", message: "Отклик уже нельзя отозвать" } });
+    }
 
     return reply.code(204).send();
   });
@@ -187,7 +260,7 @@ async function loadEditableResponse(
   db: ReturnType<typeof getDb>,
   responseId: string,
   userId: string,
-): Promise<{ id: string } | { status: number; error: { code: string; message: string } }> {
+): Promise<{ id: string; acceptsPriceOffers: boolean } | { status: number; error: { code: string; message: string } }> {
   const response = await db.query.responses.findFirst({ where: eq(schema.responses.id, responseId) });
   if (!response || response.executorId !== userId) {
     return { status: 404, error: { code: "not_found", message: "Отклик не найден" } };
@@ -211,5 +284,5 @@ async function loadEditableResponse(
       error: { code: "already_selected", message: "Вас уже выбрали по этому заказу — отклик больше нельзя менять" },
     };
   }
-  return { id: response.id };
+  return { id: response.id, acceptsPriceOffers: order.acceptsPriceOffers };
 }

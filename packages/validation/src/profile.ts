@@ -9,6 +9,8 @@ export const updateProfileSchema = z
     whatsappPhone: ruPhoneSchema.nullable().optional(),
     /** Фото профиля — id из POST /media (kind: "photo"), null снимает аватар. */
     avatarMediaId: z.string().uuid().nullable().optional(),
+    /** «О себе» — короткое описание, null очищает. */
+    about: z.string().trim().max(500).nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "Нужно указать хотя бы одно поле" });
 export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
@@ -61,6 +63,7 @@ export const capabilityExtractionResultSchema = z.object({
         "vehicle",
         "tool",
         "equipment",
+        "material",
         "property",
         "space",
         "audience",

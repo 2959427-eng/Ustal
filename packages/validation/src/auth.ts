@@ -12,6 +12,9 @@ export const registerSchema = z.object({
   cityId: z.string().uuid(),
   acceptedRules: z.literal(true),
   acceptedPdn: z.literal(true),
+  // Заполняется, только когда PHONE_VERIFICATION_MODE=required_for_new (POST /auth/otp/verify
+  // выдаёт токен). Пока флаг выключен, поле игнорируется — регистрация не меняется.
+  phoneVerificationToken: z.string().optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 

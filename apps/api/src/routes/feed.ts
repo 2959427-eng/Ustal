@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { sql } from "drizzle-orm";
 import { getDb } from "@ustal/database";
+import { authorTitle } from "../lib/order-text.js";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -10,6 +11,8 @@ interface FeedRow {
   order_id: string;
   normalized_title: string | null;
   normalized_description: string | null;
+  source_text: string | null;
+  accepts_price_offers: boolean;
   city_id: string;
   price_minor: number | null;
   currency: string;
@@ -17,6 +20,9 @@ interface FeedRow {
   score: string;
   match_type: string;
   explanation: string;
+  photo_media_ids: string[] | null;
+  assignment_status: string | null;
+  contact_author_id: string | null;
 }
 
 /**
@@ -42,20 +48,43 @@ export default async function feedRoutes(app: FastifyInstance) {
         o.id AS order_id,
         o.normalized_title,
         o.normalized_description,
+        o.source_text,
+        o.accepts_price_offers,
         o.city_id,
         o.price_minor,
         o.currency,
         o.created_at,
         mc.score,
         mc.match_type,
-        mc.explanation
+        mc.explanation,
+        COALESCE((SELECT array_agg(om.media_id::text ORDER BY om.position) FROM order_media om WHERE om.order_id = o.id AND om.position >= 0), ARRAY[]::text[]) AS photo_media_ids,
+        (SELECT oa.status FROM order_assignments oa WHERE oa.order_id = o.id AND oa.executor_id = ${request.userId} AND oa.status IN ('selected','in_progress') LIMIT 1) AS assignment_status,
+        -- Контакт показываем, только пока отношения живые: заказ в работе/переговорах и (назначение selected/in_progress
+        -- либо назначения нет, а отклик активен). После «Выполнено»/отмены/выбора другого кнопки связи исчезают.
+        (SELECT o.author_id::text FROM contact_unlocks cu WHERE cu.order_id = o.id AND cu.executor_id = ${request.userId}
+           AND o.status IN ('published','negotiating','in_progress')
+           AND (
+             EXISTS (SELECT 1 FROM order_assignments oa WHERE oa.order_id = o.id AND oa.executor_id = ${request.userId} AND oa.status IN ('selected','in_progress'))
+             OR (
+               NOT EXISTS (SELECT 1 FROM order_assignments oa WHERE oa.order_id = o.id AND oa.executor_id = ${request.userId})
+               AND EXISTS (SELECT 1 FROM responses rr WHERE rr.order_id = o.id AND rr.executor_id = ${request.userId} AND rr.status = 'active')
+             )
+           )
+         LIMIT 1) AS contact_author_id
       FROM matching_candidates mc
       JOIN matching_runs mr ON mr.id = mc.matching_run_id
       JOIN orders o ON o.id = mr.order_id
       WHERE mc.user_id = ${request.userId}
-        AND o.status = 'published'
+        AND (
+          -- «Опубликован» и «Идут переговоры» видны всем подходящим исполнителям (в переговорах откликаться ещё можно);
+          -- «В работе» закрывает заказ для остальных.
+          o.status IN ('published', 'negotiating')
+          -- Выбранный исполнитель не теряет заказ в «Возможностях»: он остаётся, пока идут переговоры / работа.
+          OR EXISTS (SELECT 1 FROM order_assignments oa WHERE oa.order_id = o.id AND oa.executor_id = ${request.userId} AND oa.status IN ('selected','in_progress'))
+        )
         AND EXISTS (SELECT 1 FROM users u JOIN user_profiles up ON up.user_id=u.id WHERE u.id=${request.userId} AND u.status='active' AND up.city_id=o.city_id)
         AND o.author_id<>${request.userId}
+        AND EXISTS (SELECT 1 FROM users au WHERE au.id=o.author_id AND au.status='active')
         AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=o.author_id AND b.blocked_id=${request.userId}) OR (b.blocker_id=${request.userId} AND b.blocked_id=o.author_id))
         AND EXISTS (SELECT 1 FROM capability_profiles cp WHERE cp.user_id=${request.userId} AND cp.status='applied')
         AND NOT EXISTS (
@@ -80,15 +109,22 @@ export default async function feedRoutes(app: FastifyInstance) {
     return reply.send({
       items: [...rows].map((row) => ({
         orderId: row.order_id,
-        title: row.normalized_title,
-        description: row.normalized_description,
+        // Заголовок — из текста автора, не придуманный AI.
+        title: authorTitle(row.source_text) ?? row.normalized_title,
+        // Показываем текст автора, а не пересказ AI: AI ничего не должен дописывать.
+        description: row.source_text ?? row.normalized_description,
         cityId: row.city_id,
         priceMinor: row.price_minor,
+        acceptsPriceOffers: row.accepts_price_offers,
         currency: row.currency,
         createdAt: row.created_at,
         score: Number(row.score),
         matchType: row.match_type,
         explanation: row.explanation,
+        photoMediaIds: row.photo_media_ids ?? [],
+        // Заполнено, только если вас выбрали: карточка показывает статус и кнопки связи.
+        assignmentStatus: row.assignment_status,
+        contactAuthorId: row.contact_author_id,
       })),
       limit,
       offset,

@@ -71,6 +71,48 @@
       "when": 1789573621650,
       "tag": "0009_matching_facts_days_of_week",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789840139741,
+      "tag": "0010_conscious_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789926539741,
+      "tag": "0011_profile_about",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790012939741,
+      "tag": "0012_order_ratings",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790099999741,
+      "tag": "0013_phone_otp_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790186399741,
+      "tag": "0014_refresh_token_family",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790272859741,
+      "tag": "0015_executor_assignment_report",
+      "breakpoints": true
     }
   ]
 }

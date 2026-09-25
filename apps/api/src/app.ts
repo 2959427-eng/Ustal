@@ -5,8 +5,11 @@ import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { loadEnv } from "@ustal/config";
+import { getSql } from "@ustal/database";
 import authenticatePlugin from "./plugins/authenticate.js";
 import authRoutes from "./routes/auth.js";
+import otpRoutes from "./routes/otp.js";
+import phoneVerificationRoutes from "./routes/phone-verification.js";
 import meRoutes from "./routes/me.js";
 import citiesRoutes from "./routes/cities.js";
 import profileRoutes from "./routes/profile.js";
@@ -22,10 +25,13 @@ import blocksRoutes from "./routes/blocks.js";
 import myRoutes from "./routes/my.js";
 import notificationsRoutes from "./routes/notifications.js";
 import devicesRoutes from "./routes/devices.js";
+import usersRoutes from "./routes/users.js";
 
 export async function buildApp() {
   const env = loadEnv();
-  const app = Fastify({ logger: { level: env.LOG_LEVEL } });
+  // За Caddy без trustProxy request.ip — адрес самого Caddy, и лимиты считаются ОДНИМ счётчиком на всех клиентов.
+  // Число хопов, а не `true`: иначе клиент подделывает IP заголовком X-Forwarded-For.
+  const app = Fastify({ logger: { level: env.LOG_LEVEL }, trustProxy: env.TRUST_PROXY_HOPS > 0 ? env.TRUST_PROXY_HOPS : false });
 
   // CORS в основном имеет смысл для браузерных клиентов (Origin-заголовок) —
   // мобильное приложение (fetch из React Native) и админка (прямой доступ к
@@ -66,9 +72,18 @@ export async function buildApp() {
 
   await app.register(authenticatePlugin);
 
-  app.get("/health", async () => ({ status: "ok" }));
+  app.get("/health", async (_request, reply) => {
+    try {
+      await getSql()`SELECT 1`;
+      return { status: "ok" };
+    } catch {
+      return reply.code(503).send({ status: "unavailable" });
+    }
+  });
 
   await app.register(authRoutes);
+  await app.register(otpRoutes);
+  await app.register(phoneVerificationRoutes);
   await app.register(meRoutes);
   await app.register(citiesRoutes);
   await app.register(profileRoutes);
@@ -84,6 +99,7 @@ export async function buildApp() {
   await app.register(myRoutes);
   await app.register(notificationsRoutes);
   await app.register(devicesRoutes);
+  await app.register(usersRoutes);
   // Админка НЕ проходит через этот Fastify-инстанс: apps/admin (Next.js)
   // обращается к БД напрямую через @ustal/database (server components/
   // actions), со своей сессионной авторизацией admin_users — так было

@@ -118,6 +118,45 @@ it("serves a completed match and ignores an unfinished newer run", async () => {
     .values({ orderId, startedAt: new Date() });
   expect((await feed()).some((o) => o.orderId === orderId)).toBe(true);
 });
+it("hides orders of a blocked author from the feed (users.status)", async () => {
+  expect((await feed()).some((o) => o.orderId === orderId)).toBe(true);
+  await db.update(schema.users).set({ status: "blocked" }).where(eq(schema.users.id, author));
+  expect((await feed()).some((o) => o.orderId === orderId)).toBe(false);
+  await db.update(schema.users).set({ status: "active" }).where(eq(schema.users.id, author));
+  expect((await feed()).some((o) => o.orderId === orderId)).toBe(true);
+});
+
+it("keeps the order in the feed for the selected executor (with status and contact author)", async () => {
+  const find = async () => {
+    const r = await app.inject({ method: "GET", url: "/feed" });
+    return (r.json().items as { orderId: string; assignmentStatus: string | null; contactAuthorId: string | null }[]).find((o) => o.orderId === orderId);
+  };
+  await db.update(schema.orders).set({ status: "negotiating" }).where(eq(schema.orders.id, orderId));
+  // «Идут переговоры»: остальные исполнители всё ещё видят заказ и могут откликаться
+  expect(await find()).toBeDefined();
+
+  const [resp] = await db.insert(schema.responses).values({ orderId, executorId: executor }).returning();
+  await db.insert(schema.contactUnlocks).values({ orderId, customerId: author, executorId: executor, responseId: resp!.id });
+  const [asg] = await db.insert(schema.orderAssignments).values({ orderId, executorId: executor, responseId: resp!.id }).returning();
+
+  const selected = await find();
+  expect(selected?.assignmentStatus).toBe("selected");
+  expect(selected?.contactAuthorId).toBe(author);
+
+  await db.update(schema.orderAssignments).set({ status: "in_progress" }).where(eq(schema.orderAssignments.id, asg!.id));
+  await db.update(schema.orders).set({ status: "in_progress" }).where(eq(schema.orders.id, orderId));
+  expect((await find())?.assignmentStatus).toBe("in_progress");
+
+  // «В работе» закрывает заказ для остальных: без выбора этого исполнителя заказ из ленты уходит
+  await db.update(schema.orderAssignments).set({ status: "cancelled" }).where(eq(schema.orderAssignments.id, asg!.id));
+  expect(await find()).toBeUndefined();
+  await db.update(schema.orderAssignments).set({ status: "in_progress" }).where(eq(schema.orderAssignments.id, asg!.id));
+
+  // после «Выполнено» заказ из «Возможностей» уходит
+  await db.update(schema.orderAssignments).set({ status: "completed" }).where(eq(schema.orderAssignments.id, asg!.id));
+  expect(await find()).toBeUndefined();
+});
+
 it("rechecks city and blocks at read time", async () => {
   await db
     .update(schema.userProfiles)
