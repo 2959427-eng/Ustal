@@ -4,6 +4,12 @@ import { apiClient } from "./client";
 import { uploadMedia } from "./media";
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
+vi.mock("expo-file-system", () => ({
+  File: class extends Blob {
+    exists = true;
+    constructor(public uri: string) { super(["x"]); }
+  },
+}));
 vi.mock("./client", () => ({ apiClient: { uploadForm: vi.fn(async () => ({ mediaId: "test" })) }, getApiBaseUrl: () => "" }));
 
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals(); Platform.OS = "web"; });
@@ -63,4 +69,15 @@ it("uses the picker-supplied mime type, not whatever fetch guesses for a local f
   const uploaded = form.get("file") as File;
   expect(uploaded.type).toBe("image/jpeg");
   expect(await uploaded.text()).toBe("jpeg-bytes");
+});
+
+it("android: reads local files through expo-file-system instead of fetch(file://)", async () => {
+  Platform.OS = "android";
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  await uploadMedia("photo", { uri: "file:///cache/ExperienceData/%2540anonymous/ImagePicker/a.jpeg", name: "a.jpeg", type: "image/jpeg" });
+  expect(fetchMock).not.toHaveBeenCalled();
+  const form = vi.mocked(apiClient.uploadForm).mock.calls[0]![1];
+  expect(form.get("kind")).toBe("photo");
+  expect(form.has("file")).toBe(true);
 });

@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getMyResponses, type MyResponseItem } from "../../src/api/my";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
@@ -19,13 +20,18 @@ const STATUS_LABELS: Record<MyResponseItem["status"], string> = {
  * в двух местах.
  */
 export default function ResponsesScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["my-responses"],
     queryFn: () => getMyResponses(),
   });
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
+      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12}>
+        <Text style={styles.backText}>← Назад</Text>
+      </Pressable>
       <Text style={styles.title}>Мои отклики</Text>
 
       {isLoading && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
@@ -69,7 +75,8 @@ function ResponseRow({ item }: { item: MyResponseItem }) {
         )}
       </View>
       {item.isContactUnlocked && <Text style={styles.unlocked}>Контакты открыты</Text>}
-      {item.assignmentStatus === "selected" && <Text style={styles.unlocked}>Вас выбрали</Text>}
+      {item.assignmentStatus === "selected" && <Text style={styles.unlocked}>Идут переговоры</Text>}
+      {item.assignmentStatus === "in_progress" && <Text style={styles.unlocked}>В работе</Text>}
       {item.assignmentStatus === "completed" && <Text style={styles.reviewHint}>Работа завершена — оставьте отзыв</Text>}
       {item.assignmentStatus === "not_completed" && <Text style={styles.error}>Отмечено как невыполненное</Text>}
     </Pressable>
@@ -77,7 +84,9 @@ function ResponseRow({ item }: { item: MyResponseItem }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  back: { marginBottom: spacing.xs },
+  backText: { ...typography.body, color: colors.primary },
   title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
   empty: { ...typography.body, color: colors.textSecondary },
   spinner: { marginTop: spacing.lg },

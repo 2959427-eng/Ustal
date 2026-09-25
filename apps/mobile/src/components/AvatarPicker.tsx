@@ -71,7 +71,7 @@ export function AvatarPicker({ avatarMediaId, initial, onChange, saving, size = 
     } catch (cause) {
       if (cause instanceof ApiRequestError) {
         setError(cause.status === 401
-          ? "Сессия истекла. Войдите снова и повторите загрузку."
+          ? `Сессия истекла. Войдите снова и повторите загрузку. (${cause.message})`
           : cause.code === "invalid_mime_type"
             ? "Этот формат фото не поддерживается. Выберите JPEG, PNG или WebP."
             : cause.status === 413 || cause.code === "file_too_large"

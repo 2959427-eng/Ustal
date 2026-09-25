@@ -1,3 +1,4 @@
+import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useState } from "react";
 import { ActivityIndicator, Text, TextInput, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
@@ -27,7 +28,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoid style={styles.container}>
       <Text style={styles.title}>Вход</Text>
       <TextInput
         style={styles.input}
@@ -52,7 +53,7 @@ export default function LoginScreen() {
       ) : (
         <PrimaryButton label="Войти" onPress={onSubmit} />
       )}
-    </View>
+    </KeyboardAvoid>
   );
 }
 

@@ -1,11 +1,14 @@
+import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useEffect, useState } from "react";
 import { Text, TextInput, StyleSheet, ScrollView, View, Pressable } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { CityPicker } from "../../src/components/CityPicker";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 import { getCities, type City } from "../../src/api/cities";
 import { register } from "../../src/api/auth";
+import { passwordConfirmError } from "../../src/lib/password-confirm";
 import { ensurePushRegistered } from "../../src/notifications/push";
 
 const PHONE_PATTERN = /^\+7\d{10}$/;
@@ -21,13 +24,16 @@ const PHONE_PATTERN = /^\+7\d{10}$/;
  * не импортируется — пароль намеренно не шёл через query-параметры роута)
  * и переходила дальше отдельным шагом. Пользователь попросил город прямо
  * здесь и одну кнопку регистрации. Паттерн выбора города — тот же, что и
- * «Личные данные» в `app/settings.tsx`: поле-кнопка открывает `CityPicker`
+ * в `app/edit-profile.tsx`: поле-кнопка открывает `CityPicker`
  * на весь экран, выбор возвращает обратно в форму.
  */
 export default function RegisterScreen() {
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+7");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [cityId, setCityId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [cities, setCities] = useState<City[]>([]);
@@ -50,6 +56,10 @@ export default function RegisterScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Ошибку под полем показываем, как только пользователь начал вводить повтор, либо после попытки отправки.
+  const confirmError = passwordConfirmError(password, confirm);
+  const showConfirmError = confirmError !== null && (confirm.length > 0 || submitAttempted);
+
   const cityName = cities.find((c) => c.id === cityId)?.name ?? "Выбрать город";
 
   const onRegister = async () => {
@@ -63,6 +73,11 @@ export default function RegisterScreen() {
     }
     if (password.length < 8) {
       setError("Пароль должен быть не короче 8 символов");
+      return;
+    }
+    if (confirmError) {
+      setSubmitAttempted(true);
+      setError(null);
       return;
     }
     if (!cityId) {
@@ -84,7 +99,7 @@ export default function RegisterScreen() {
 
   if (cityPickerOpen) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable style={styles.back} onPress={() => setCityPickerOpen(false)} hitSlop={12}>
           <Text style={styles.backText}>← Назад</Text>
         </Pressable>
@@ -105,7 +120,11 @@ export default function RegisterScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAvoid>
+    <ScrollView contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.sm }]} keyboardShouldPersistTaps="handled">
+      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12}>
+        <Text style={styles.backText}>← Назад</Text>
+      </Pressable>
       <Text style={styles.title}>Регистрация</Text>
 
       <Text style={styles.label}>Имя</Text>
@@ -125,6 +144,17 @@ export default function RegisterScreen() {
       <Text style={styles.label}>Пароль</Text>
       <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
 
+      <Text style={styles.label}>Повторите пароль</Text>
+      <TextInput
+        style={[styles.input, showConfirmError && styles.inputError]}
+        value={confirm}
+        onChangeText={setConfirm}
+        secureTextEntry
+        autoCapitalize="none"
+        accessibilityLabel="Повторите пароль"
+      />
+      {showConfirmError ? <Text style={styles.error}>{confirmError}</Text> : null}
+
       <Text style={styles.label}>Город</Text>
       <Pressable style={styles.input} onPress={() => setCityPickerOpen(true)} accessibilityRole="button">
         <Text style={cityId ? styles.value : styles.placeholder}>{cityName}</Text>
@@ -134,11 +164,14 @@ export default function RegisterScreen() {
 
       <PrimaryButton label="Зарегистрироваться" onPress={onRegister} loading={submitting} />
     </ScrollView>
+    </KeyboardAvoid>
   );
 }
 
 const styles = StyleSheet.create({
   container: { padding: spacing.lg, gap: spacing.xs, backgroundColor: colors.background, flexGrow: 1 },
+  back: { marginBottom: spacing.xs },
+  backText: { ...typography.body, color: colors.primary },
   title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
   label: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },
   input: {
@@ -149,10 +182,9 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     color: colors.textPrimary,
   },
+  inputError: { borderColor: colors.danger },
   value: { ...typography.body, color: colors.textPrimary },
   placeholder: { ...typography.body, color: colors.textSecondary },
   hint: { ...typography.caption, color: colors.warning, marginBottom: spacing.sm },
   error: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
-  back: { marginBottom: spacing.xs },
-  backText: { ...typography.body, color: colors.primary },
 });

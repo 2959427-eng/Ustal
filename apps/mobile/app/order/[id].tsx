@@ -1,26 +1,41 @@
-import { useState } from "react";
+import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
+import { OrderHeaderBlock } from "../../src/components/OrderHeaderBlock";
+import { useEffect, useState } from "react";
 import { View, Text, Image, StyleSheet, ScrollView, ActivityIndicator, Pressable, TextInput, Linking, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError } from "@ustal/api-client";
-import { getOrder, retryOrder, publishOrder } from "../../src/api/orders";
+import { getOrder, retryOrder, publishOrder, cancelOrder } from "../../src/api/orders";
+import { canDeleteOrder } from "../../src/lib/order-delete";
 import { getMediaUrl } from "../../src/api/media";
 import type { AssignmentStatus, OrderDetail } from "../../src/api/orders";
-import { getOrderCandidates, createResponse, withdrawResponse } from "../../src/api/responses";
+import { getOrderCandidates, createResponse, withdrawResponse, updateResponse } from "../../src/api/responses";
 import type { OrderCandidate } from "../../src/api/responses";
 import { unlockContact, getOrderContact } from "../../src/api/contacts";
 import type { OrderContact } from "../../src/api/contacts";
-import { selectCandidate, closeOrder, completeAssignment, markAssignmentNotCompleted } from "../../src/api/assignments";
-import { submitReview } from "../../src/api/reviews";
+import {
+  selectCandidate,
+  startAssignment,
+  cancelSelection,
+  completeAssignment,
+  markAssignmentNotCompleted,
+  reportAssignmentCompleted,
+  reportAssignmentIssue,
+} from "../../src/api/assignments";
+import { RatingCard } from "../../src/components/RatingCard";
 import { getMyResponses } from "../../src/api/my";
 import type { MyResponseItem } from "../../src/api/my";
 import { blockUser } from "../../src/api/blocks";
+import { getOrderAuthor } from "../../src/api/users";
+import { AuthorAvatar } from "../../src/components/AuthorAvatar";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { ReportModal } from "../../src/components/ReportModal";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
 const ASSIGNMENT_LABELS: Record<AssignmentStatus, string> = {
-  selected: "Выбран",
+  selected: "Идут переговоры",
+  in_progress: "В работе",
   completed: "Выполнено",
   not_completed: "Не выполнено",
   cancelled: "Отменено",
@@ -55,7 +70,7 @@ function formatPrice(priceMinor: number | null | undefined): string {
  * автора заказа (вид кандидата).
  */
 export default function OrderDetailScreen() {
-  const { id, title, description, cityName, priceMinor, matchType, explanation } = useLocalSearchParams<{
+  const { id, title, description, cityName, priceMinor, matchType, explanation, photoMediaIds, acceptsPriceOffers } = useLocalSearchParams<{
     id: string;
     title?: string;
     description?: string;
@@ -63,8 +78,11 @@ export default function OrderDetailScreen() {
     priceMinor?: string;
     matchType?: string;
     explanation?: string;
+    photoMediaIds?: string;
+    acceptsPriceOffers?: string;
   }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const orderQuery = useQuery({
     queryKey: ["order", id],
@@ -77,10 +95,13 @@ export default function OrderDetailScreen() {
   const isOtherError = orderQuery.isError && !isNotAuthor;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAvoid>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.sm }]} keyboardShouldPersistTaps="handled">
       <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12}>
         <Text style={styles.backText}>← Назад</Text>
       </Pressable>
+
+      <RatingCard orderId={id} />
 
       {orderQuery.isLoading && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
 
@@ -95,6 +116,8 @@ export default function OrderDetailScreen() {
 
       {orderQuery.data && <AuthorView orderId={id} order={orderQuery.data} />}
 
+      {isNotAuthor && <AuthorHeader orderId={id} />}
+
       {isNotAuthor && (
         <CandidateView
           orderId={id}
@@ -103,12 +126,35 @@ export default function OrderDetailScreen() {
             description: description ?? null,
             cityName: cityName ?? null,
             priceMinor: priceMinor ? Number(priceMinor) : null,
-            matchType: (matchType as "exact" | "probable" | "new_opportunity" | undefined) || undefined,
+            matchType: (matchType as "exact" | "probable" | undefined) || undefined,
             explanation: explanation || undefined,
+            photoMediaIds: photoMediaIds ? photoMediaIds.split(",").filter(Boolean) : [],
+            acceptsPriceOffers: acceptsPriceOffers === "1",
           }}
         />
       )}
     </ScrollView>
+    </KeyboardAvoid>
+  );
+}
+
+/** Аватарка и имя заказчика; по нажатию — его профиль. */
+function AuthorHeader({ orderId }: { orderId: string }) {
+  const router = useRouter();
+  const q = useQuery({ queryKey: ["order-author", orderId], queryFn: () => getOrderAuthor(orderId), retry: false });
+  if (!q.data) return null;
+  const a = q.data;
+  return (
+    <Pressable
+      style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+      onPress={() => router.push({ pathname: "/user/[id]", params: { id: a.id, orderId } })}
+    >
+      <AuthorAvatar name={a.name} avatarMediaId={a.avatarMediaId} size={44} />
+      <View>
+        <Text style={{ fontWeight: "600", fontSize: 16, color: colors.textPrimary }}>{a.name}</Text>
+        <Text style={{ fontSize: 13, color: colors.textSecondary }}>Заказчик · посмотреть профиль</Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -124,32 +170,43 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
   const candidatesQuery = useQuery({
     queryKey: ["order-candidates", orderId],
     queryFn: () => getOrderCandidates(orderId),
-    enabled: order.status === "published" || order.status === "negotiating" || order.status === "closed",
+    enabled: HAS_CANDIDATES.includes(order.status),
   });
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["order-candidates", orderId] });
     void queryClient.invalidateQueries({ queryKey: ["order", orderId] });
     void queryClient.invalidateQueries({ queryKey: ["my-orders"] });
+    void queryClient.invalidateQueries({ queryKey: ["order-rating", orderId] });
   };
 
-  const handleClose = async () => {
-    setCloseError(null);
-    setClosing(true);
-    try {
-      await closeOrder(orderId);
-      invalidate();
-    } catch (err) {
-      setCloseError(err instanceof Error ? err.message : "Не удалось закрыть заказ.");
-    } finally {
-      setClosing(false);
-    }
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+  const handleDelete = () => {
+    Alert.alert("Удалить заказ?", "Заказ пропадёт из ленты исполнителей и из вашего списка.", [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: "Удалить",
+        style: "destructive",
+        onPress: async () => {
+          setCloseError(null);
+          setDeleting(true);
+          try {
+            await cancelOrder(orderId);
+            void queryClient.invalidateQueries({ queryKey: ["my-orders"] });
+            router.back();
+          } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "Не удалось удалить заказ.");
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
   };
 
   return (
     <View style={styles.gap}>
-      <Text style={styles.title}>{order.normalizedTitle ?? "Заказ"}</Text>
-      {order.normalizedDescription && <Text style={styles.description}>{order.normalizedDescription}</Text>}
+      <OrderHeaderBlock title={order.normalizedTitle} description={order.normalizedDescription} photoMediaIds={order.photoMediaIds} />
       <View style={styles.metaRow}>
         <Text style={styles.price}>{formatPrice(order.priceMinor)}</Text>
         <StatusBadge label={ORDER_STATUS_LABELS[order.status]} />
@@ -193,18 +250,13 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
        * рисовал. GET /orders/{id} (apps/api/src/routes/orders.ts) уже
        * отдаёт photoMediaIds — просто рендерим их через GET /media/{id}.
        */}
-      {order.photoMediaIds.length > 0 && (
-        <View style={styles.photoRow}>
-          {order.photoMediaIds.map((mediaId) => (
-            <Image key={mediaId} source={{ uri: getMediaUrl(mediaId) }} style={styles.photoThumb} />
-          ))}
-        </View>
-      )}
 
-      {(order.status === "published" || order.status === "negotiating" || order.status === "closed") && (
+      {HAS_CANDIDATES.includes(order.status) && (
         <>
           <View style={styles.divider} />
-          <Text style={styles.sectionTitle}>Кандидаты</Text>
+          <Text style={styles.sectionTitle}>
+            {candidatesQuery.data ? `Кандидаты (${candidatesQuery.data.items.filter((c) => c.status === "active").length})` : "Кандидаты"}
+          </Text>
 
           {candidatesQuery.isLoading && <ActivityIndicator color={colors.primary} />}
           {candidatesQuery.isError && (
@@ -219,20 +271,23 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
             <Text style={styles.hint}>Пока никто не откликнулся.</Text>
           )}
           {candidatesQuery.data?.items.map((c) => (
-            <CandidateRow key={c.id} orderId={orderId} candidate={c} onChanged={invalidate} />
+            <CandidateRow key={c.id} orderId={orderId} orderStatus={order.status} candidate={c} onChanged={invalidate} />
           ))}
-
-          {(order.status === "published" || order.status === "negotiating") && (
-            <>
-              {closeError && <Text style={styles.error}>{closeError}</Text>}
-              <PrimaryButton label="Закрыть заказ" variant="secondary" onPress={handleClose} loading={closing} />
-            </>
-          )}
         </>
+      )}
+
+      {canDeleteOrder(order.status) && (
+        <PrimaryButton label="Удалить заказ" variant="secondary" onPress={handleDelete} loading={deleting} />
+      )}
+      {order.status === "moderation_hold" && closeError && (
+        <Text style={styles.error}>{closeError}</Text>
       )}
     </View>
   );
 }
+
+/** Статусы заказа, при которых автору показываются кандидаты. */
+const HAS_CANDIDATES = ["published", "negotiating", "in_progress", "completed", "not_completed", "closed"];
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   draft: "Черновик",
@@ -241,17 +296,34 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   moderation_hold: "На проверке",
   published: "Опубликован",
   negotiating: "Идут переговоры",
+  in_progress: "В работе",
+  completed: "Выполнен",
+  not_completed: "Не выполнен",
   closed: "Закрыт",
   expired: "Истёк",
   cancelled: "Отменён",
   rejected: "Отклонён",
 };
 
-function CandidateRow({ orderId, candidate, onChanged }: { orderId: string; candidate: OrderCandidate; onChanged: () => void }) {
+function CandidateRow({ orderId, orderStatus, candidate, onChanged }: { orderId: string; orderStatus: string; candidate: OrderCandidate; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [contact, setContact] = useState<OrderContact | null>(null);
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const router = useRouter();
+
+  // Контакт подгружается сам, как только раскрыт (после начала переговоров с кандидатом): кнопки «Показать» нет.
+  useEffect(() => {
+    if (!candidate.isContactUnlocked) return;
+    let cancelled = false;
+    getOrderContact(orderId, candidate.executorId)
+      .then((c) => {
+        if (!cancelled) setContact(c);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, candidate.executorId, candidate.isContactUnlocked]);
 
   const run = async (action: () => Promise<unknown>) => {
     setRowError(null);
@@ -266,13 +338,28 @@ function CandidateRow({ orderId, candidate, onChanged }: { orderId: string; cand
     }
   };
 
-  const handleUnlock = () => run(() => unlockContact(orderId, candidate.id));
-  const handleReveal = () =>
+  // Отдельной кнопки «Раскрыть контакт» нет: API требует раскрытый контакт перед
+  // созданием назначения, поэтому раскрываем его автоматически в том же нажатии
+  // «Начать переговоры». Это НЕ финальный выбор исполнителя: назначение сразу
+  // получает статус "selected" (идут переговоры) и может существовать одновременно
+  // у нескольких кандидатов — единственного исполнителя фиксирует только отдельное
+  // действие «Договорились» (handleStart ниже, POST .../start).
+  const handleStartNegotiation = () =>
     run(async () => {
-      const c = await getOrderContact(orderId, candidate.executorId);
-      setContact(c);
+      if (!candidate.isContactUnlocked) await unlockContact(orderId, candidate.id);
+      await selectCandidate(orderId, candidate.id);
     });
-  const handleSelect = () => run(() => selectCandidate(orderId, candidate.id));
+  const handleCancelNegotiation = () => {
+    if (!candidate.assignmentId) return;
+    Alert.alert("Прекратить переговоры?", "Контакт закроется — сможете снова начать переговоры с этим или другим кандидатом.", [
+      { text: "Нет", style: "cancel" },
+      { text: "Прекратить переговоры", style: "destructive", onPress: () => run(() => cancelSelection(orderId, candidate.assignmentId!)) },
+    ]);
+  };
+  const handleStart = () => {
+    if (!candidate.assignmentId) return;
+    return run(() => startAssignment(orderId, candidate.assignmentId!));
+  };
   const handleComplete = () => {
     if (!candidate.assignmentId) return;
     return run(() => completeAssignment(orderId, candidate.assignmentId!));
@@ -292,54 +379,61 @@ function CandidateRow({ orderId, candidate, onChanged }: { orderId: string; cand
   return (
     <View style={styles.candidateCard}>
       <View style={styles.metaRow}>
-        <Text style={styles.candidateName}>{candidate.executorName ?? "Исполнитель"}</Text>
+        <Pressable
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 }}
+          onPress={() => router.push({ pathname: "/user/[id]", params: { id: candidate.executorId, orderId } })}
+        >
+          <AuthorAvatar name={candidate.executorName ?? "Исполнитель"} avatarMediaId={candidate.executorAvatarMediaId ?? null} size={44} />
+          <Text style={styles.candidateName}>{candidate.executorName ?? "Исполнитель"}</Text>
+        </Pressable>
         {candidate.assignmentStatus && <StatusBadge label={ASSIGNMENT_LABELS[candidate.assignmentStatus]} />}
       </View>
       {candidate.offeredPriceMinor != null && <Text style={styles.body}>Предложил: {formatPrice(candidate.offeredPriceMinor)}</Text>}
       {candidate.comment && <Text style={styles.body}>{candidate.comment}</Text>}
-      {candidate.availabilityText && <Text style={styles.hint}>Доступность: {candidate.availabilityText}</Text>}
       {candidate.status === "withdrawn" && <Text style={styles.hint}>Отклик отозван</Text>}
-      {candidate.status === "not_selected" && <Text style={styles.hint}>Не выбран при закрытии заказа</Text>}
+      {candidate.status === "not_selected" && <Text style={styles.hint}>Выбран другой исполнитель</Text>}
 
       {rowError && <Text style={styles.error}>{rowError}</Text>}
 
-      {candidate.status === "active" && !candidate.assignmentId && (
+      {/*
+       * Security-этап «исполнитель не должен зависать в работе»
+       * (2026-09-22): исполнитель может сам отметить "работа выполнена" или
+       * "не получилось" (пока заказ in_progress) — заказчику здесь только
+       * показывается эта отметка рядом с его собственными кнопками
+       * «Выполнено»/«Не выполнено» ниже, сама отметка ничего не завершает.
+       */}
+      {candidate.assignmentStatus === "in_progress" && candidate.executorReport === "completed" && (
+        <Text style={styles.reportHintSuccess}>Исполнитель отметил: работа выполнена. Подтвердите результат ниже.</Text>
+      )}
+      {candidate.assignmentStatus === "in_progress" && candidate.executorReport === "issue" && (
+        <Text style={styles.reportHintIssue}>Исполнитель сообщил, что не может выполнить заказ. Примите решение ниже.</Text>
+      )}
+
+      {candidate.status === "active" && !candidate.assignmentId && ["published", "negotiating"].includes(orderStatus) && (
         <View style={styles.rowActions}>
-          {!candidate.isContactUnlocked && (
-            <PrimaryButton label="Раскрыть контакт" variant="secondary" onPress={handleUnlock} loading={busy} />
-          )}
-          {candidate.isContactUnlocked && (
-            <PrimaryButton label="Выбрать исполнителя" onPress={handleSelect} loading={busy} />
-          )}
+          <PrimaryButton label="Начать переговоры" onPress={handleStartNegotiation} loading={busy} />
         </View>
       )}
 
-      {candidate.isContactUnlocked && (
-        <>
-          {!contact ? (
-            <Pressable onPress={handleReveal} disabled={busy}>
-              <Text style={styles.retry}>Показать контакт</Text>
-            </Pressable>
-          ) : (
-            <ContactActions contact={contact} />
-          )}
-        </>
+      {candidate.isContactUnlocked && contact && <ContactActions contact={contact} />}
+
+      {candidate.assignmentStatus === "selected" && (
+        <View style={styles.rowActions}>
+          <PrimaryButton label="Договорились — начать выполнение" onPress={handleStart} loading={busy} />
+        </View>
       )}
 
       {candidate.assignmentStatus === "selected" && (
         <View style={styles.rowActions}>
-          <PrimaryButton label="Выполнено" onPress={handleComplete} loading={busy} />
-          <PrimaryButton label="Не выполнено" variant="secondary" onPress={handleNotCompleted} loading={busy} />
+          <PrimaryButton label="Прекратить переговоры" variant="secondary" onPress={handleCancelNegotiation} loading={busy} />
         </View>
       )}
 
-      {candidate.assignmentStatus === "completed" && (
-        <>
-          <Pressable onPress={() => setReviewOpen((v) => !v)}>
-            <Text style={styles.retry}>{reviewOpen ? "Скрыть отзыв" : "Оставить отзыв"}</Text>
-          </Pressable>
-          {reviewOpen && <ReviewForm orderId={orderId} toUserId={candidate.executorId} onDone={() => setReviewOpen(false)} />}
-        </>
+      {candidate.assignmentStatus === "in_progress" && (
+        <View style={styles.rowActions}>
+          <PrimaryButton label="Выполнено" onPress={handleComplete} loading={busy} />
+          <PrimaryButton label="Не выполнено" variant="secondary" onPress={handleNotCompleted} loading={busy} />
+        </View>
       )}
 
       <ReportAndBlockRow userId={candidate.executorId} />
@@ -356,14 +450,13 @@ function ContactActions({ contact }: { contact: OrderContact }) {
       >
         <Text style={styles.contactButtonCallText}>Позвонить</Text>
       </Pressable>
-      {contact.whatsappPhone && (
-        <Pressable
-          style={({ pressed }) => [styles.contactButton, styles.contactButtonWhatsapp, pressed && styles.pressed]}
-          onPress={() => Linking.openURL(`https://wa.me/${contact.whatsappPhone!.replace(/[^\d]/g, "")}`)}
-        >
-          <Text style={styles.contactButtonWhatsappText}>WhatsApp</Text>
-        </Pressable>
-      )}
+      {/* Если отдельный номер WhatsApp не указан, пишем на основной номер телефона. */}
+      <Pressable
+        style={({ pressed }) => [styles.contactButton, styles.contactButtonWhatsapp, pressed && styles.pressed]}
+        onPress={() => Linking.openURL(`https://wa.me/${(contact.whatsappPhone ?? contact.phone).replace(/[^\d]/g, "")}`)}
+      >
+        <Text style={styles.contactButtonWhatsappText}>WhatsApp</Text>
+      </Pressable>
     </View>
   );
 }
@@ -419,51 +512,6 @@ function StatusBadge({ label }: { label: string }) {
   );
 }
 
-function ReviewForm({ orderId, toUserId, onDone }: { orderId: string; toUserId: string; onDone: () => void }) {
-  const [rating, setRating] = useState(5);
-  const [text, setText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-
-  const handleSubmit = async () => {
-    setError(null);
-    setSubmitting(true);
-    try {
-      await submitReview({ toUserId, orderId, rating, text: text.trim() || undefined });
-      setDone(true);
-      onDone();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось отправить отзыв.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (done) return <Text style={styles.hint}>Отзыв отправлен, спасибо.</Text>;
-
-  return (
-    <View style={styles.reviewBox}>
-      <View style={styles.starsRow}>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <Pressable key={n} onPress={() => setRating(n)} hitSlop={6}>
-            <Text style={[styles.star, n <= rating && styles.starActive]}>★</Text>
-          </Pressable>
-        ))}
-      </View>
-      <TextInput
-        style={styles.textArea}
-        value={text}
-        onChangeText={setText}
-        placeholder="Комментарий (необязательно)"
-        multiline
-      />
-      {error && <Text style={styles.error}>{error}</Text>}
-      <PrimaryButton label="Отправить отзыв" onPress={handleSubmit} loading={submitting} />
-    </View>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Кандидат / исполнитель
 // ---------------------------------------------------------------------------
@@ -473,8 +521,10 @@ interface FeedFallback {
   description: string | null;
   cityName: string | null;
   priceMinor: number | null;
-  matchType?: "exact" | "probable" | "new_opportunity";
+  matchType?: "exact" | "probable";
   explanation?: string;
+  photoMediaIds?: string[];
+  acceptsPriceOffers?: boolean;
 }
 
 function CandidateView({ orderId, fallback }: { orderId: string; fallback: FeedFallback }) {
@@ -486,34 +536,43 @@ function CandidateView({ orderId, fallback }: { orderId: string; fallback: FeedF
 
   const myResponse: MyResponseItem | undefined = responsesQuery.data?.items.find((r) => r.orderId === orderId);
 
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["my-responses"] });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["my-responses"] });
+    void queryClient.invalidateQueries({ queryKey: ["order-candidates", orderId] });
+  };
 
   if (responsesQuery.isLoading) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
 
   return (
     <View style={styles.gap}>
-      <Text style={styles.title}>{myResponse?.orderTitle ?? fallback.title ?? "Заказ"}</Text>
-      {fallback.description && <Text style={styles.description}>{fallback.description}</Text>}
+      <OrderHeaderBlock
+        title={fallback.title ?? myResponse?.orderTitle ?? null}
+        description={fallback.description}
+        photoMediaIds={fallback.photoMediaIds}
+      />
       <View style={styles.metaRow}>
         <Text style={styles.price}>{formatPrice(fallback.priceMinor)}</Text>
         {fallback.cityName && <Text style={styles.hint}>{fallback.cityName}</Text>}
       </View>
-      {fallback.explanation && <Text style={styles.matchExplanation}>{fallback.explanation}</Text>}
       <ReportOrderLink orderId={orderId} />
 
       <View style={styles.divider} />
 
-      {!myResponse && <ResponseForm orderId={orderId} onCreated={invalidate} />}
+      {myResponse?.status === "withdrawn" && !myResponse.assignmentStatus && (
+        <Text style={styles.hint}>Вы отозвали отклик. Можно откликнуться снова.</Text>
+      )}
+      {(!myResponse || (myResponse.status === "withdrawn" && !myResponse.assignmentStatus)) && <ResponseForm orderId={orderId} onCreated={invalidate} acceptsPriceOffers={!!fallback.acceptsPriceOffers} />}
 
-      {myResponse && <MyResponsePanel orderId={orderId} response={myResponse} onChanged={invalidate} />}
+      {myResponse && myResponse.status !== "withdrawn" && (
+        <MyResponsePanel orderId={orderId} response={myResponse} onChanged={invalidate} acceptsPriceOffers={!!fallback.acceptsPriceOffers} />
+      )}
     </View>
   );
 }
 
-function ResponseForm({ orderId, onCreated }: { orderId: string; onCreated: () => void }) {
+function ResponseForm({ orderId, onCreated, acceptsPriceOffers }: { orderId: string; onCreated: () => void; acceptsPriceOffers: boolean }) {
   const [priceText, setPriceText] = useState("");
   const [comment, setComment] = useState("");
-  const [availabilityText, setAvailabilityText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -521,11 +580,10 @@ function ResponseForm({ orderId, onCreated }: { orderId: string; onCreated: () =
     setError(null);
     setSubmitting(true);
     try {
-      const offeredPriceMinor = priceText.trim() ? Math.round(Number(priceText.trim()) * 100) : undefined;
+      const offeredPriceMinor = acceptsPriceOffers && priceText.trim() ? Math.round(Number(priceText.trim()) * 100) : undefined;
       await createResponse(orderId, {
         offeredPriceMinor,
         comment: comment.trim() || undefined,
-        availabilityText: availabilityText.trim() || undefined,
       });
       onCreated();
     } catch (err) {
@@ -538,23 +596,44 @@ function ResponseForm({ orderId, onCreated }: { orderId: string; onCreated: () =
   return (
     <View style={styles.gap}>
       <Text style={styles.sectionTitle}>Откликнуться</Text>
-      <Text style={styles.label}>Ваша цена, ₽ (необязательно)</Text>
-      <TextInput style={styles.input} value={priceText} onChangeText={setPriceText} keyboardType="numeric" placeholder="Например, 2000" />
+      {acceptsPriceOffers && (
+        <>
+          <Text style={styles.label}>Ваша цена, ₽ (необязательно)</Text>
+          <TextInput style={styles.input} value={priceText} onChangeText={setPriceText} keyboardType="numeric" placeholder="Например, 2000" />
+        </>
+      )}
       <Text style={styles.label}>Комментарий</Text>
-      <TextInput style={styles.textArea} value={comment} onChangeText={setComment} multiline placeholder="Почему вы подходите" />
-      <Text style={styles.label}>Доступность</Text>
-      <TextInput style={styles.input} value={availabilityText} onChangeText={setAvailabilityText} placeholder="Например, сегодня после 18:00" />
+      <TextInput style={styles.textArea} value={comment} onChangeText={setComment} multiline />
       {error && <Text style={styles.error}>{error}</Text>}
       <PrimaryButton label="Отправить отклик" onPress={handleSubmit} loading={submitting} />
     </View>
   );
 }
 
-function MyResponsePanel({ orderId, response, onChanged }: { orderId: string; response: MyResponseItem; onChanged: () => void }) {
+function MyResponsePanel({
+  orderId,
+  response,
+  onChanged,
+  acceptsPriceOffers,
+}: {
+  orderId: string;
+  response: MyResponseItem;
+  onChanged: () => void;
+  acceptsPriceOffers: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contact, setContact] = useState<OrderContact | null>(null);
-  const [reviewOpen, setReviewOpen] = useState(false);
+
+  // UX-аудит 2026-09-22, п.3: раньше поправить уже отправленный отклик
+  // (например, быстрый пустой отклик из ленты) можно было только отозвав
+  // его и создав заново — теперь редактируем на месте через PATCH
+  // /responses/{id} (бэкенд уже это умел, мобильный клиент не пользовался).
+  const [editing, setEditing] = useState(false);
+  const [editPriceText, setEditPriceText] = useState(response.offeredPriceMinor != null ? String(response.offeredPriceMinor / 100) : "");
+  const [editComment, setEditComment] = useState(response.comment ?? "");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const handleWithdraw = () => {
     Alert.alert("Отозвать отклик?", undefined, [
@@ -578,19 +657,87 @@ function MyResponsePanel({ orderId, response, onChanged }: { orderId: string; re
     ]);
   };
 
-  const handleReveal = async () => {
-    if (!response.orderAuthorId) return;
-    setError(null);
-    setBusy(true);
+  const openEdit = () => {
+    setEditError(null);
+    setEditPriceText(response.offeredPriceMinor != null ? String(response.offeredPriceMinor / 100) : "");
+    setEditComment(response.comment ?? "");
+    setEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    setEditError(null);
+    setEditBusy(true);
     try {
-      const c = await getOrderContact(orderId, response.orderAuthorId);
-      setContact(c);
+      const offeredPriceMinor = acceptsPriceOffers && editPriceText.trim() ? Math.round(Number(editPriceText.trim()) * 100) : null;
+      await updateResponse(response.id, {
+        offeredPriceMinor,
+        comment: editComment.trim() || null,
+      });
+      setEditing(false);
+      onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось получить контакт.");
+      setEditError(err instanceof Error ? err.message : "Не удалось сохранить изменения.");
     } finally {
-      setBusy(false);
+      setEditBusy(false);
     }
   };
+
+  // Security-этап «исполнитель не должен зависать в работе» (2026-09-22):
+  // отметка не завершает заказ — только сигнал заказчику, окончательное
+  // решение по-прежнему за ним (кнопки «Выполнено»/«Не выполнено»).
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const handleReportCompleted = async () => {
+    if (!response.assignmentId) return;
+    setReportError(null);
+    setReportBusy(true);
+    try {
+      await reportAssignmentCompleted(orderId, response.assignmentId);
+      onChanged();
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Не удалось отправить отметку.");
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
+  const handleReportIssue = () => {
+    Alert.alert("Сообщить, что не получилось выполнить?", "Заказчик увидит это и примет решение по заказу.", [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: "Сообщить",
+        style: "destructive",
+        onPress: async () => {
+          if (!response.assignmentId) return;
+          setReportError(null);
+          setReportBusy(true);
+          try {
+            await reportAssignmentIssue(orderId, response.assignmentId);
+            onChanged();
+          } catch (err) {
+            setReportError(err instanceof Error ? err.message : "Не удалось отправить сообщение.");
+          } finally {
+            setReportBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  // Контакт заказчика подгружается сам, как только раскрыт: «Позвонить / WhatsApp» — как у заказчика.
+  useEffect(() => {
+    if (!response.isContactUnlocked || !response.orderAuthorId) return;
+    let cancelled = false;
+    getOrderContact(orderId, response.orderAuthorId)
+      .then((c) => {
+        if (!cancelled) setContact(c);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, response.isContactUnlocked, response.orderAuthorId]);
 
   return (
     <View style={styles.gap}>
@@ -603,33 +750,53 @@ function MyResponsePanel({ orderId, response, onChanged }: { orderId: string; re
         />
         {response.assignmentStatus && <StatusBadge label={ASSIGNMENT_LABELS[response.assignmentStatus]} />}
       </View>
-      {response.offeredPriceMinor != null && <Text style={styles.body}>Ваша цена: {formatPrice(response.offeredPriceMinor)}</Text>}
-      {response.comment && <Text style={styles.body}>{response.comment}</Text>}
+
+      {!editing && response.offeredPriceMinor != null && <Text style={styles.body}>Ваша цена: {formatPrice(response.offeredPriceMinor)}</Text>}
+      {!editing && response.comment && <Text style={styles.body}>{response.comment}</Text>}
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      {response.status === "active" && !response.assignmentStatus && (
-        <PrimaryButton label="Отозвать отклик" variant="secondary" onPress={handleWithdraw} loading={busy} />
-      )}
-
-      {response.isContactUnlocked && (
-        <>
-          {!contact ? (
-            <PrimaryButton label="Показать контакт заказчика" variant="secondary" onPress={handleReveal} loading={busy} />
-          ) : (
-            <ContactActions contact={contact} />
+      {editing && (
+        <View style={styles.gap}>
+          {acceptsPriceOffers && (
+            <>
+              <Text style={styles.label}>Ваша цена, ₽ (необязательно)</Text>
+              <TextInput style={styles.input} value={editPriceText} onChangeText={setEditPriceText} keyboardType="numeric" placeholder="Например, 2000" />
+            </>
           )}
-        </>
+          <Text style={styles.label}>Комментарий</Text>
+          <TextInput style={styles.textArea} value={editComment} onChangeText={setEditComment} multiline />
+          {editError && <Text style={styles.error}>{editError}</Text>}
+          <View style={styles.rowActions}>
+            <PrimaryButton label="Сохранить" onPress={handleSaveEdit} loading={editBusy} />
+            <PrimaryButton label="Отмена" variant="secondary" onPress={() => setEditing(false)} disabled={editBusy} />
+          </View>
+        </View>
       )}
 
-      {response.assignmentStatus === "completed" && response.orderAuthorId && (
-        <>
-          <Pressable onPress={() => setReviewOpen((v) => !v)}>
-            <Text style={styles.retry}>{reviewOpen ? "Скрыть отзыв" : "Оставить отзыв"}</Text>
-          </Pressable>
-          {reviewOpen && <ReviewForm orderId={orderId} toUserId={response.orderAuthorId} onDone={() => setReviewOpen(false)} />}
-        </>
+      {!editing && response.status === "active" && !response.assignmentStatus && (
+        <View style={styles.rowActions}>
+          <PrimaryButton label="Изменить" variant="secondary" onPress={openEdit} />
+          <PrimaryButton label="Отозвать отклик" variant="secondary" onPress={handleWithdraw} loading={busy} />
+        </View>
       )}
+
+      {response.isContactUnlocked && contact && <ContactActions contact={contact} />}
+
+      {/* Security-этап 2026-09-22: см. комментарий в CandidateRow выше — та же идея, с другой стороны. */}
+      {response.assignmentStatus === "in_progress" && !response.executorReport && (
+        <View style={styles.rowActions}>
+          <PrimaryButton label="Работа выполнена" onPress={handleReportCompleted} loading={reportBusy} />
+          <PrimaryButton label="Не получилось выполнить" variant="secondary" onPress={handleReportIssue} loading={reportBusy} />
+        </View>
+      )}
+      {response.assignmentStatus === "in_progress" && response.executorReport === "completed" && (
+        <Text style={styles.hint}>Вы отметили работу выполненной. Ждём подтверждения заказчика.</Text>
+      )}
+      {response.assignmentStatus === "in_progress" && response.executorReport === "issue" && (
+        <Text style={styles.hint}>Вы сообщили, что не получилось выполнить. Заказчик примет решение по заказу.</Text>
+      )}
+      {reportError && <Text style={styles.error}>{reportError}</Text>}
 
       {response.orderAuthorId && <ReportAndBlockRow userId={response.orderAuthorId} />}
     </View>
@@ -658,6 +825,8 @@ const styles = StyleSheet.create({
   errorBox: { gap: spacing.xs },
   error: { ...typography.caption, color: colors.danger },
   retry: { ...typography.body, color: colors.primary },
+  reportHintSuccess: { ...typography.caption, fontWeight: "600", color: colors.success },
+  reportHintIssue: { ...typography.caption, fontWeight: "600", color: colors.danger },
   mutedLink: { ...typography.caption, color: colors.textTertiary },
   badge: { backgroundColor: colors.primaryTintBg, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 5 },
   badgeText: { ...typography.caption, fontWeight: "700", color: colors.primary },

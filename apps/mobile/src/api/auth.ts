@@ -13,6 +13,10 @@ interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   userId: string;
+  // true — сервер предлагает подтвердить номер (PHONE_VERIFICATION_MODE != disabled и
+  // телефон ещё не подтверждён). Необязательное поле: отсутствует, пока фича выключена
+  // на бэкенде (значение по умолчанию). Ничего не блокирует — просто сигнал для UI.
+  phoneVerificationSuggested?: boolean;
 }
 
 /**
@@ -25,13 +29,20 @@ interface RefreshResponse {
   refreshToken: string;
 }
 
-export async function login(phone: string, password: string): Promise<void> {
+export interface LoginResult {
+  // Пробрасываем наружу, чтобы будущий экран «подтвердите телефон» подключался без
+  // изменения сигнатуры login() — сейчас всегда false, пока фича выключена на бэкенде.
+  phoneVerificationSuggested: boolean;
+}
+
+export async function login(phone: string, password: string): Promise<LoginResult> {
   const res = await apiClient.request<AuthResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ phone, password }),
   });
   await saveTokens(res.accessToken, res.refreshToken);
   setCachedAccessToken(res.accessToken);
+  return { phoneVerificationSuggested: res.phoneVerificationSuggested ?? false };
 }
 
 export interface RegisterPayload {
@@ -39,6 +50,10 @@ export interface RegisterPayload {
   phone: string;
   password: string;
   cityId: string;
+  // Заполняется только когда бэкенд включит обязательное подтверждение для новых
+  // регистраций (POST /auth/otp/verify → phoneVerificationToken). Пока фича выключена,
+  // поле не передаётся, и сервер его игнорирует.
+  phoneVerificationToken?: string;
 }
 
 export async function register(payload: RegisterPayload): Promise<void> {

@@ -7,6 +7,9 @@ export type OrderStatus =
   | "moderation_hold"
   | "published"
   | "negotiating"
+  | "in_progress"
+  | "completed"
+  | "not_completed"
   | "closed"
   | "expired"
   | "cancelled"
@@ -16,7 +19,7 @@ export type ModerationStatus = "pending" | "allow" | "allow_with_warning" | "man
 
 export type ResponseStatus = "active" | "withdrawn" | "not_selected";
 
-export type AssignmentStatus = "selected" | "completed" | "not_completed" | "cancelled";
+export type AssignmentStatus = "selected" | "in_progress" | "completed" | "not_completed" | "cancelled";
 
 /**
  * Пауза «Проверка транскрипции» (экран 9/11, claude/pipeline-split-design.md):
@@ -39,6 +42,7 @@ export interface OrderDetail {
   normalizedTitle: string | null;
   normalizedDescription: string | null;
   priceMinor: number | null;
+  acceptsPriceOffers: boolean;
   currency: string;
   riskLevel: number;
   moderationStatus: ModerationStatus;
@@ -56,6 +60,7 @@ export interface CreateOrderTextInput {
   inputType: "text";
   text: string;
   priceMinor?: number;
+  acceptsPriceOffers?: boolean;
   mediaIds?: string[];
 }
 

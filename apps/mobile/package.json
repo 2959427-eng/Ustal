@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@expo/ngrok": "^4.1.0",
     "@types/react": "~19.2.4",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~57.0.2",

@@ -44,7 +44,15 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (!ready || !authenticated) return;
+    if (!ready) return;
+    if (!authenticated) {
+      // Нет годной сессии (токены не найдены или backend отклонил refresh) — не оставляем
+      // пользователя на (tabs): корневой маршрут "/" — это (tabs)/index, и без этого редиректа
+      // приложение открывалось на пустом кабинете, где каждый запрос уходил без токена
+      // («Missing bearer token»: профиль, имя, «Мои заказы», сохранение, загрузка фото).
+      router.replace("/onboarding");
+      return;
+    }
     router.replace("/(tabs)");
     void ensurePushRegistered();
   }, [ready, authenticated]);

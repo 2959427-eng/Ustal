@@ -1,6 +1,6 @@
 import { apiClient } from "./client";
 import { toQuery } from "../lib/query-string";
-import type { ModerationStatus, OrderStatus } from "./orders";
+import type { AssignmentStatus, ModerationStatus, OrderStatus } from "./orders";
 
 export interface FeedItem {
   orderId: string;
@@ -8,11 +8,17 @@ export interface FeedItem {
   description: string | null;
   cityId: string;
   priceMinor: number | null;
+  acceptsPriceOffers: boolean;
   currency: string;
   createdAt: string;
   score: number;
-  matchType: "exact" | "probable" | "new_opportunity";
+  matchType: "exact" | "probable";
   explanation: string;
+  photoMediaIds: string[];
+  /** Заполнено, если с исполнителем начали переговоры: selected (идут переговоры) / in_progress (в работе, договорились). */
+  assignmentStatus?: AssignmentStatus | null;
+  /** Автор заказа, контакт которого раскрыт для этого исполнителя. */
+  contactAuthorId?: string | null;
 }
 
 export interface FeedResponse {

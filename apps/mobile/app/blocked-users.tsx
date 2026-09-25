@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Alert } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBlocks, unblockUser } from "../src/api/blocks";
 import type { BlockedUser } from "../src/api/blocks";
@@ -8,6 +9,7 @@ import { colors, spacing, typography, radii } from "../src/theme/tokens";
 /** Заблокированные пользователи (раздел 29 ТЗ). GET/DELETE /blocks. */
 export default function BlockedUsersScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["blocks"],
@@ -32,7 +34,7 @@ export default function BlockedUsersScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
       <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12}>
         <Text style={styles.backText}>← Назад</Text>
       </Pressable>

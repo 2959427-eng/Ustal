@@ -25,10 +25,29 @@ export interface ProfileSummary {
   createdAt: string;
 }
 
+/** Фраза, распознанная AI, но не сопоставленная с онтологией (matching использует её через embedding). */
+export interface UnmappedFact {
+  kind: "capability" | "resource";
+  phrase: string;
+}
+
 export interface ProfileResponse {
   profile: ProfileSummary | null;
   capabilities: ProfileCapability[];
   resources: ProfileResource[];
+  /** Необязательно — старый API его не отдавал. */
+  unmapped?: UnmappedFact[];
+}
+
+/** Все распознанные навыки/ресурсы для показа: сопоставленные с онтологией + нераспознанные онтологией фразы. */
+export function recognizedLabels(p: Pick<ProfileResponse, "capabilities" | "resources" | "unmapped"> | undefined): {
+  capabilities: string[];
+  resources: string[];
+} {
+  const capabilities = (p?.capabilities ?? []).map((c) => c.label);
+  const resources = (p?.resources ?? []).map((r) => r.label);
+  for (const f of p?.unmapped ?? []) (f.kind === "resource" ? resources : capabilities).push(f.phrase);
+  return { capabilities: [...new Set(capabilities)], resources: [...new Set(resources)] };
 }
 
 /** GET /profile — текущий применённый (status='applied') AI-профиль возможностей (раздел 7 ТЗ). */
@@ -128,6 +147,8 @@ export interface ProfileDraftDiff {
   removedCapabilities: string[];
   addedResources: string[];
   removedResources: string[];
+  /** Новые фразы без ontology-узла; необязательно — старый API его не отдавал. */
+  addedUnmapped?: string[];
 }
 
 export interface ProfileDraftApplied {
@@ -139,7 +160,7 @@ export interface ProfileDraftApplied {
 // в ответе отсутствуют, а не пустые массивы/объект (см. apps/api/src/routes/profile.ts).
 export type ProfileDraftResponse =
   | { draft: null }
-  | { draft: ProfileDraft; capabilities: ProfileCapability[]; resources: ProfileResource[]; diff: ProfileDraftDiff };
+  | { draft: ProfileDraft; capabilities: ProfileCapability[]; resources: ProfileResource[]; unmapped?: UnmappedFact[]; diff: ProfileDraftDiff };
 
 /**
  * Клиент поллит это после confirmProfileInput (voice) или сразу после
@@ -164,6 +185,8 @@ export interface UpdateProfileInput {
   whatsappPhone?: string | null;
   /** mediaId из uploadMedia("photo", ...) (src/api/media.ts) — см. AvatarPicker.tsx. */
   avatarMediaId?: string | null;
+  /** «О себе»; null или пустая строка очищают. */
+  about?: string | null;
 }
 
 export interface UpdateProfileResult {
@@ -171,6 +194,7 @@ export interface UpdateProfileResult {
   cityId: string;
   whatsappPhone: string | null;
   avatarMediaId: string | null;
+  about: string | null;
 }
 
 /** PATCH /profile (раздел 27 ТЗ, экран настроек) — точечные правки без AI: имя, город, WhatsApp. */

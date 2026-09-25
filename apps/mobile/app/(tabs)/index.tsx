@@ -4,12 +4,31 @@ import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HomeHeader } from "../../src/components/HomeHeader";
+import { ArchiveLink } from "../../src/components/ArchiveLink";
+import { ResponsesLink } from "../../src/components/ResponsesLink";
 import { OrderCard } from "../../src/components/OrderCard";
+import { ContactButtons } from "../../src/components/ContactButtons";
 import { getFeed } from "../../src/api/feed";
 import { getMyOrders, getMyResponses } from "../../src/api/my";
 import { getCities } from "../../src/api/cities";
 import { createResponse } from "../../src/api/responses";
+import { ApiRequestError } from "@ustal/api-client";
 import { colors, spacing, typography } from "../../src/theme/tokens";
+
+/**
+ * UX-аудит 2026-09-22, «Важно» №4: раньше любая ошибка отклика из ленты
+ * (не только ожидаемое "уже откликался") молча проглатывалась — кнопка
+ * просто переставала крутиться, без единого слова пользователю. Теперь
+ * код ошибки от API превращается в понятный текст под карточкой.
+ */
+const RESPOND_ERROR_MESSAGES: Record<string, string> = {
+  already_responded: "Вы уже откликнулись на этот заказ.",
+  not_found: "Этот заказ больше недоступен.",
+  invalid_status: "Заказ больше не принимает отклики.",
+  price_offers_disabled: "Заказчик не принимает предложения с другой ценой.",
+  forbidden: "Нельзя откликнуться на этот заказ.",
+};
+const RESPOND_ERROR_FALLBACK = "Не удалось откликнуться. Попробуйте ещё раз.";
 
 /**
  * «Возможности» — лента подобранных AI заказов для исполнителя (раздел 15/26
@@ -29,6 +48,7 @@ export default function OpportunitiesScreen() {
   const queryClient = useQueryClient();
   const [hiddenIds, setHiddenIds] = useState<Record<string, true>>({});
   const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [respondErrors, setRespondErrors] = useState<Record<string, string>>({});
 
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
   const { data: cities } = useQuery({ queryKey: ["cities"], queryFn: getCities });
@@ -41,12 +61,22 @@ export default function OpportunitiesScreen() {
 
   const handleRespond = async (orderId: string) => {
     setRespondingId(orderId);
+    setRespondErrors((prev) => {
+      if (!(orderId in prev)) return prev;
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
     try {
       await createResponse(orderId, {});
-      void queryClient.invalidateQueries({ queryKey: ["my-responses"] });
-    } catch {
-      // Тихо игнорируем (например, "уже откликался") — состояние подтянется из GET /my/responses.
+    } catch (err) {
+      const code = err instanceof ApiRequestError ? err.code : undefined;
+      const message = (code && RESPOND_ERROR_MESSAGES[code]) || RESPOND_ERROR_FALLBACK;
+      setRespondErrors((prev) => ({ ...prev, [orderId]: message }));
     } finally {
+      // Инвалидируем и при ошибке: например, "уже откликался" — состояние
+      // должно подтянуться из GET /my/responses, а не просто скрыть ошибку.
+      void queryClient.invalidateQueries({ queryKey: ["my-responses"] });
       setRespondingId(null);
     }
   };
@@ -59,8 +89,19 @@ export default function OpportunitiesScreen() {
         <HomeHeader
           active="opportunities"
           opportunitiesCount={visibleItems.length}
-          ordersCount={myOrders?.items.length}
+          ordersCount={myOrders?.items.filter((o) => !o.archived).length}
         />
+      </View>
+
+      {/*
+       * Упрощение рейтинга (2026-09-22): раньше здесь был баннер «Оценить»
+       * для исполнителя (оценка заказчика) — исполнитель заказчика больше
+       * не оценивает, баннер убран вместе с полем ratingPending в
+       * MyResponseItem (apps/mobile/src/api/my.ts).
+       */}
+      <View style={styles.extras}>
+        <ResponsesLink />
+        <ArchiveLink label="История →" />
       </View>
 
       {isLoading && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
@@ -97,6 +138,8 @@ export default function OpportunitiesScreen() {
                     priceMinor: item.priceMinor != null ? String(item.priceMinor) : "",
                     matchType: item.matchType,
                     explanation: item.explanation,
+                    photoMediaIds: (item.photoMediaIds ?? []).join(","),
+                    acceptsPriceOffers: item.acceptsPriceOffers ? "1" : "",
                   },
                 })
               }
@@ -108,8 +151,18 @@ export default function OpportunitiesScreen() {
                 priceMinor={item.priceMinor}
                 matchType={item.matchType}
                 explanation={item.explanation}
+                photoMediaIds={item.photoMediaIds}
+                statusLabel={
+                  item.assignmentStatus === "in_progress"
+                    ? "В работе"
+                    : item.assignmentStatus === "selected"
+                      ? "Идут переговоры"
+                      : undefined
+                }
+                contactSlot={item.contactAuthorId ? <ContactButtons orderId={item.orderId} userId={item.contactAuthorId} /> : undefined}
                 responded={respondedOrderIds.has(item.orderId)}
                 responding={respondingId === item.orderId}
+                respondError={respondErrors[item.orderId] ?? null}
                 onRespond={() => handleRespond(item.orderId)}
                 onHide={() => handleHide(item.orderId)}
               />
@@ -123,6 +176,7 @@ export default function OpportunitiesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  extras: { paddingHorizontal: spacing.lg, gap: spacing.xs, marginBottom: spacing.sm },
   headerPad: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
   cardWrapper: { marginBottom: spacing.sm },
