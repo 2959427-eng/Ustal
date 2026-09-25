@@ -2,13 +2,10 @@ services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
     volumes:
       - ustal_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +14,22 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate:
+    build:
+      context: ../../..
+      dockerfile: apps/api/Dockerfile
+    restart: "no"
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    command: ["npm", "run", "db:migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     build:
       context: ../../..
@@ -24,15 +37,23 @@ services:
     restart: unless-stopped
     env_file:
       - path: .env
-        required: false
+        required: true
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Перед API стоит ровно один прокси (Caddy) — иначе rate-limit видит IP Caddy у всех клиентов.
+      TRUST_PROXY_HOPS: "1"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     expose:
       - "4000"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -41,13 +62,19 @@ services:
     restart: unless-stopped
     env_file:
       - path: .env
-        required: false
+        required: true
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "node", "-e", "const fs=require('fs');const p=require('path').join(require('os').tmpdir(),'ustal-worker-heartbeat');process.exit(Date.now()-fs.statSync(p).mtimeMs<45000?0:1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   admin:
     build:
@@ -56,22 +83,29 @@ services:
     restart: unless-stopped
     env_file:
       - path: .env
-        required: false
+        required: true
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
     expose:
       - "4100"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?required}
+      API_DOMAIN: ${API_DOMAIN:?required}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?required}
     ports:
       - "80:80"
       - "443:443"
@@ -80,8 +114,10 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
-      - admin
+      api:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
 
 volumes:
   ustal_db_data:

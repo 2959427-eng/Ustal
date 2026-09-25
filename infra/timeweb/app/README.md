@@ -1,3 +1,5 @@
+> Current first-deploy procedure and env contract: [production-readiness.md](../../../docs/production-readiness.md). Follow that runbook; do not run old unpinned deployment commands.
+
 # USTAL app on Timeweb VPS
 
 This compose stack runs the main USTAL backend:

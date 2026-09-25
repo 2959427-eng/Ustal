@@ -162,7 +162,7 @@ ai_runs             id, operation_type, provider, model, prompt_version,
                     estimated_cost_minor, trace_id
 matching_runs       id, order_id, started_at, completed_at, candidates_count
 matching_candidates id, matching_run_id, user_id, score, match_type
-                    ('exact'|'probable'|'new_opportunity'), explanation, breakdown jsonb
+                    ('exact'|'probable'), explanation, breakdown jsonb
 audit_logs          id, actor_type ('user'|'admin'|'system'), actor_id nullable,
                     action, target_type, target_id, metadata jsonb, created_at
 background_jobs     -- тонкий слой поверх pg-boss для читаемого статуса/аудита

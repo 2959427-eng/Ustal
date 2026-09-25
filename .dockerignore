@@ -1,0 +1,15 @@
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example
+.git
+**/.next
+**/dist
+**/coverage
+**/*.log
+**/*.dump
+**/*.bak
+**/*.tmp
+**/data
+docs/evaluations
+.ai-bridge

@@ -46,34 +46,39 @@ canonical capability/resource match — точные структурные со
 
 ## 13.3 Scoring (объяснимый score 0–100)
 
+Единственная боевая реализация — `evaluateSemantic` в `packages/matching/src/semantic.ts`
+(вызывается из `apps/worker/src/handlers/matching-run.ts`), пороги — `SEMANTIC_POLICY`.
+Сначала жёсткие гейты (явный отказ, время/доступность, объективная несовместимость
+ресурса, недостаточно evidence без LLM-ревью), затем score:
+
 ```
-explicit capability match     30%
-inferred capability match     15%
-resource match                15%
-semantic similarity           15%
-similar completed work        10%
-behavioral preference         15%
-minus: missing requirement penalty
-minus: negative preference penalty
-minus: risk penalty
+max(80·exactCoverage + 60·relatedCoverage, 60·semantic)   (semantic — при ≥ semanticMin или semantic-only)
++ до 10 за ресурсы, +5 совместимая доступность
++5 similarCompletedWork — зарезервировано, пока НЕ подключено в matching-run
+−20 negative preference, −5 soft-несовпадение вида ресурса
 ```
 
-Инвариант, закреплённый в коде и тестах: в формуле и в структуре `matching_candidates`
-нет и не может появиться поля, связанного с оплатой пользователя. Совпадение города —
-обязательный фильтр (этап 13.1), а не весовой компонент.
+Инвариант: ни во входе `evaluateSemantic`, ни в `matching_candidates` нет полей,
+связанных с оплатой. Совпадение города — фильтр retrieval, а не вес.
+
+(Прежняя весовая формула 30/15/15/15/10/15 и модули `scoring.ts`/`requirements.ts`/
+`explanation.ts` удалены 2026-09-24 как мёртвый код.)
 
 ## 13.4 Тип совпадения
 
+Внутренняя классификация `evaluateSemantic`: `exact | strong | probable | semantic-only | reject`.
+В `matching_candidates.match_type` пишется только:
+
 | Тип | Условие |
 |---|---|
-| `exact` | явное совпадение способности или подтверждено похожими выполненными заказами |
-| `probable` | точной услуги нет, но способности/ресурсы подходят |
-| `new_opportunity` | задача простая, низкорисковая, нерегулируемая, без лицензии, соответствует общим возможностям человека |
+| `exact` | все требуемые способности покрыты точным canonical-совпадением |
+| `probable` | `strong`, `probable` или `semantic-only` (смежные навыки/ресурсы, semantic + LLM-ревью) |
 
-Пользователю показывается человекочитаемое объяснение («Вы выполняли похожую работу»,
-«У вас есть автомобиль и опыт перевозок», «Это простая физическая работа без
-специальной квалификации»). Chain-of-thought, сырые векторы и технические
-вычисления никогда не выводятся.
+Тип `new_opportunity` («простая работа, доступна каждому») удалён: он противоречит
+политике показа (отказ только при явном отказе, объективной несовместимости,
+нарушении времени/гео или заведомо другой области) и никогда не создавался боевым
+pipeline. Объяснение — фиксированные строки в `matching-run.ts`; в мобильном UI
+тип и объяснение сейчас не показываются, лента сортируется по score.
 
 ## 13.5 Распространение заказа
 AI не определяет число необходимых исполнителей. Заказ показывается всем кандидатам

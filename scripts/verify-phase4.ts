@@ -128,7 +128,7 @@ async function main() {
   assert.equal(candidateRows.length, 1);
   assert.equal(candidateRows[0]?.userId, candA.userId);
   assert.ok(Number(candidateRows[0]?.score) >= 10);
-  assert.ok(["exact", "probable", "new_opportunity"].includes(candidateRows[0]?.matchType ?? ""));
+  assert.ok(["exact", "probable"].includes(candidateRows[0]?.matchType ?? ""));
   console.log("   ok, matchType =", candidateRows[0]?.matchType, "score =", candidateRows[0]?.score, "explanation =", candidateRows[0]?.explanation);
 
   console.log("6. GET /feed для кандидата A — заказ виден");

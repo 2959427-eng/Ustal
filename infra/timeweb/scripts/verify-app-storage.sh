@@ -21,7 +21,7 @@ set +a
 : "${OBJECT_STORAGE_SECRET_KEY:?OBJECT_STORAGE_SECRET_KEY is required}"
 
 docker compose -f docker-compose.prod.yml exec -T api node --input-type=module -e "
-import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, HeadBucketCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const endpoint = process.env.OBJECT_STORAGE_ENDPOINT;
 const bucket = process.env.OBJECT_STORAGE_BUCKET;
@@ -30,7 +30,7 @@ const secretAccessKey = process.env.OBJECT_STORAGE_SECRET_KEY;
 const key = 'health/ustal-storage-check-' + Date.now() + '.txt';
 
 const client = new S3Client({
-  region: 'ru-1',
+  region: 'us-east-1',
   endpoint,
   forcePathStyle: true,
   credentials: { accessKeyId, secretAccessKey },
@@ -43,7 +43,12 @@ await client.send(new PutObjectCommand({
   Body: 'ustal storage check',
   ContentType: 'text/plain',
 }));
-await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+try {
+  const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (await object.Body.transformToString() !== 'ustal storage check') throw new Error('Storage read-back mismatch');
+} finally {
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+}
 
 console.log('App container verified Timeweb S3 bucket access:', bucket);
 "
