@@ -23,6 +23,11 @@ const asFact = (f: typeof schema.matchingFacts.$inferSelect): Fact => ({
 });
 
 /** City-first bounded retrieval, then evidence scoring. A completed run is published atomically. */
+/** Source review gate: structured facts or, as a fallback, both source texts (review decides). */
+export function shouldRunSourceReview(input: { needsSourceReview: boolean; structuredEvidence: boolean; sourceTextsAvailable: boolean }): boolean {
+  return input.needsSourceReview && (input.structuredEvidence || input.sourceTextsAvailable);
+}
+
 export async function handleMatchingRun(
   job: PgBoss.Job<MatchingRunJobData>,
 ): Promise<
@@ -52,6 +57,38 @@ export async function handleMatchingRun(
     });
     const vector = doc?.embedding ?? legacyEmbedding?.embedding;
     const model = doc?.embeddingModel ?? legacyEmbedding?.embeddingModel;
+    // Loaded before the legacy-requirements fallback below, which derives resourceType
+    // from these nodes (previously declared after use -> TDZ ReferenceError on that path).
+    const relations = await db.select().from(schema.ontologyRelations);
+    const nodes = await db.select().from(schema.ontologyNodes);
+
+    // Helper: Derive resourceType by traversing ontology hierarchy to root
+    const deriveResourceTypeFromNode = (nodeId: string): Fact['resourceType'] => {
+      const physicalResourceTypes = ['vehicle', 'tool', 'equipment', 'property', 'space'];
+      const nodeMap = new Map(nodes.map(n => [n.id, n]));
+      const visited = new Set<string>();
+      let current: typeof nodes[0] | undefined = nodeMap.get(nodeId);
+      
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id);
+        // Check if this node's canonicalKey matches a physical category
+        if (physicalResourceTypes.includes(current.canonicalKey)) {
+          return current.canonicalKey as Fact['resourceType'];
+        }
+        // Move to parent
+        if (current.parentId && activeIds.has(current.parentId)) {
+          current = nodeMap.get(current.parentId);
+        } else {
+          break;
+        }
+      }
+      
+      // Not a physical resource type
+      return null;
+    };
+    const activeIds = new Set(
+      nodes.filter((n) => n.status === "active").map((n) => n.id),
+    );
     let requirements: Fact[] = doc
       ? (
           await db
@@ -74,12 +111,10 @@ export async function handleMatchingRun(
         nodeIds: [r.ontologyNodeId],
         mandatory: r.isMandatory,
         confidence: 1,
+        resourceType: r.requirementType.endsWith("resource")
+          ? deriveResourceTypeFromNode(r.ontologyNodeId)
+          : undefined,
       }));
-    const relations = await db.select().from(schema.ontologyRelations);
-    const nodes = await db.select().from(schema.ontologyNodes);
-    const activeIds = new Set(
-      nodes.filter((n) => n.status === "active").map((n) => n.id),
-    );
     requirements = requirements.map((f) => ({
       ...f,
       nodeIds: f.nodeIds.filter((id) => activeIds.has(id)),
@@ -125,6 +160,14 @@ export async function handleMatchingRun(
         JOIN user_capabilities uc ON uc.capability_profile_id=e.profile_id
         WHERE uc.ontology_node_id IN (SELECT value::uuid FROM jsonb_array_elements_text(${JSON.stringify(retrievalIds)}::jsonb))
         GROUP BY e.user_id,e.profile_id ORDER BY count(DISTINCT uc.ontology_node_id) DESC,e.user_id LIMIT ${SEMANTIC_POLICY.shortlist}
+      ), canonical_resource AS (
+        -- Structural resource-only match never depended on embeddings and must not start
+        -- depending on them now: a candidate whose only signal is a matching resource
+        -- (no capability fact) is retrievable purely by ontology_node_id, same as canonical.
+        SELECT e.user_id,e.profile_id FROM eligible e
+        JOIN user_resources ur ON ur.capability_profile_id=e.profile_id
+        WHERE ur.ontology_node_id IN (SELECT value::uuid FROM jsonb_array_elements_text(${JSON.stringify(retrievalIds)}::jsonb))
+        GROUP BY e.user_id,e.profile_id ORDER BY count(DISTINCT ur.ontology_node_id) DESC,e.user_id LIMIT ${SEMANTIC_POLICY.shortlist}
       ), semantic AS (
         SELECT e.user_id,e.profile_id FROM profile_embeddings pe JOIN eligible e ON e.profile_id=pe.capability_profile_id
         WHERE pe.embedding_model=${model ?? ""} AND pe.embedding IS NOT NULL
@@ -132,7 +175,20 @@ export async function handleMatchingRun(
       ), city_fallback AS (
         SELECT user_id,profile_id FROM eligible WHERE embedding IS NOT NULL AND (SELECT count(*) FROM semantic)<${SEMANTIC_POLICY.shortlist}
         ORDER BY embedding <=> ${vecSql},user_id LIMIT ${SEMANTIC_POLICY.shortlist}
-      ) SELECT * FROM canonical UNION SELECT * FROM semantic UNION SELECT * FROM city_fallback
+      ), stale_model_fallback AS (
+        -- Bounded, model-agnostic safety net: a candidate whose most recent embedding was
+        -- computed under a DIFFERENT/older embedding_model has NULL eligible.embedding (the
+        -- LEFT JOIN above is filtered to the CURRENT model) and was previously invisible to
+        -- both semantic and city_fallback, which both require it. No ANN here -- a stale
+        -- vector cannot be ranked against the current model's vecSql at all -- bounded by the
+        -- same shortlist LIMIT off the already city/status/block-filtered eligible set, so
+        -- this stays a bounded indexed lookup, never a full scan.
+        SELECT e.user_id,e.profile_id FROM eligible e
+        WHERE e.embedding IS NULL
+          AND EXISTS(SELECT 1 FROM profile_embeddings pe2 WHERE pe2.capability_profile_id=e.profile_id)
+        LIMIT ${SEMANTIC_POLICY.shortlist}
+      ) SELECT * FROM canonical UNION SELECT * FROM canonical_resource UNION SELECT * FROM semantic
+        UNION SELECT * FROM city_fallback UNION SELECT * FROM stale_model_fallback
     `);
     const city = await db.query.cities.findFirst({
       where: eq(schema.cities.id, order.cityId),
@@ -257,6 +313,7 @@ export async function handleMatchingRun(
             kind: "resource",
             phrase: r.label,
             nodeIds: [r.ontologyNodeId],
+            resourceType: r.resourceType,
             mandatory: false,
             confidence: Number(r.confidence),
           })),
@@ -299,34 +356,61 @@ export async function handleMatchingRun(
       };
       let result = evaluateSemantic(evaluation);
       const needsSourceReview =
-        ["insufficient_capability_evidence", "physical_compatibility_unverified", "safety_review_required"].includes(result.reason);
-      if (needsSourceReview &&
-        facts.some((f) => f.kind === "capability" && f.confidence >= 0.5) && requirements.some((f) => f.kind === "capability")) {
-        if (reviews >= SEMANTIC_POLICY.reviewLimit) throw new Error("Semantic review budget exceeded; run not published");
-        reviews++;
-        const meta = { operationType: "semantic_pair_review", traceId: job.id, promptVersion: "semantic-review-v5-safety", schemaVersion: "v1" };
-        const started = new Date();
-        const reviewed = await getAiProviders().extraction.reviewSemantic({
-          profile: profileDoc?.sourceText ? [profileDoc.sourceText] : facts.filter((f) => f.kind === "capability" && f.confidence >= 0.5).map((f) => f.phrase),
-          order: doc?.sourceText ? [doc.sourceText] : requirements.filter((f) => f.kind === "capability").map((f) => f.phrase),
-        }, meta);
-        await db.insert(schema.aiRuns).values(buildAiRunRecord(meta, started, { result: reviewed }));
-        result = evaluateSemantic({ ...evaluation, semanticReview: reviewed.data });
+        ["insufficient_capability_evidence", "physical_compatibility_unverified", "safety_review_required"].includes(result.reason) ||
+        // Broad exact nodes cannot establish compliance with source-only constraints.
+        Boolean(result.matchType && profileDoc?.sourceText && doc?.sourceText);
+      // A profile can express suitability purely through a possessed resource ("есть газель
+      // с гидробортом", "есть шуруповёрт и набор инструментов") with no separate capability
+      // sentence. Such a resource fact must also unlock the semantic review, otherwise a
+      // resource-only profile can never pass the physical/safety-review gate at all.
+      // Deferred, not rejected: a candidate whose decision genuinely depends on LLM review
+      // (safety/physical/capability-evidence gate) must never be recorded as a normal reject
+      // just because this run's review budget ran out — that would look like a real mismatch
+      // and the candidate would never be picked up again. No schema change needed: `decision`
+      // is a free varchar and `detail` is jsonb, so a distinct sentinel + flag is enough to
+      // tell "genuinely rejected" apart from "needs review, budget exhausted this run" without
+      // a migration. The candidate still never enters matching_candidates (never shown to the
+      // user unverified) and a future matching run — which starts its own fresh 100-review
+      // budget — evaluates them again from scratch and can resolve it either way.
+      let deferredReviewBudget = false;
+      // Empty/insufficient structured extraction is not evidence of incompatibility:
+      // when both source texts exist, the source review decides (never an automatic match).
+      const structuredEvidence =
+        facts.some((f) =>
+          (f.kind === "capability" && f.confidence >= 0.5) ||
+          (f.kind === "resource" && f.resourceRole === "available"),
+        ) && requirements.some((f) => f.kind === "capability" || f.kind === "resource");
+      const sourceTextsAvailable = Boolean(profileDoc?.sourceText && doc?.sourceText);
+      if (shouldRunSourceReview({ needsSourceReview, structuredEvidence, sourceTextsAvailable })) {
+        if (reviews < SEMANTIC_POLICY.reviewLimit) {
+          reviews++;
+          const meta = { operationType: "semantic_pair_review", traceId: job.id, promptVersion: "semantic-review-v8-limits", schemaVersion: "v1" };
+          const started = new Date();
+          const reviewed = await getAiProviders().extraction.reviewSemantic({
+            profile: profileDoc?.sourceText ? [profileDoc.sourceText] : facts.filter((f) => f.kind === "capability" && f.confidence >= 0.5).map((f) => f.phrase),
+            order: doc?.sourceText ? [doc.sourceText] : requirements.filter((f) => f.kind === "capability").map((f) => f.phrase),
+          }, meta);
+          await db.insert(schema.aiRuns).values(buildAiRunRecord(meta, started, { result: reviewed }));
+          result = evaluateSemantic({ ...evaluation, semanticReview: reviewed.data });
+        } else {
+          deferredReviewBudget = true;
+        }
       }
       await db
         .insert(schema.matchingTraces)
         .values({
           matchingRunId: run.id,
           userId: candidate.user_id,
-          decision: result.classification,
+          decision: deferredReviewBudget ? "deferred_review_budget" : result.classification,
           detail: {
             ...result.trace,
+            ...(deferredReviewBudget ? { deferred: true, deferredReason: "review_budget_exhausted" } : {}),
             profile_id: candidate.profile_id,
             profile_document_id: profileDoc?.id ?? null,
             order_document_id: doc?.id ?? null,
           },
         });
-      if (!result.matchType) continue;
+      if (deferredReviewBudget || !result.matchType) continue;
       await db
         .insert(schema.matchingCandidates)
         .values({

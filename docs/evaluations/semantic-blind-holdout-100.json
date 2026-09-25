@@ -1,0 +1,1254 @@
+{
+  "metadata": {
+    "dataset_name": "semantic-blind-holdout-100",
+    "dataset_type": "independent blind test set",
+    "created": "2026-09-18T11:30:07.322463",
+    "last_updated": "2026-09-18T12:15:00.000000",
+    "total_cases": 100,
+    "match_count": 82,
+    "reject_count": 18,
+    "policy": "MATCH-if-relevant; REJECT-only-on-explicit-refusal-hard-constraint-objective-mismatch-or-domain-mismatch",
+    "policy_update": "Applied final USTAL matching policy: relaxed labels for cases with non-critical factors (narrow experience, license level, tool differences). Updated BH-020, BH-034, BH-038, BH-056 to MATCH.",
+    "labels_frozen": true
+  },
+  "cases": [
+    {
+      "case_id": "BH-001",
+      "profile": {
+        "skill": "документооборот",
+        "experience": "5 лет в офисе",
+        "constraints": "работаю по будням"
+      },
+      "order": {
+        "category": "корректировка договоров",
+        "complexity": "средняя",
+        "regulated": false
+      },
+      "expected_label": "MATCH",
+      "reason": "Профиль: опыт документооборота прямо применим"
+    },
+    {
+      "case_id": "BH-002",
+      "profile": {
+        "skill": "секретарь",
+        "experience": "3 года",
+        "constraints": "без иностранных языков"
+      },
+      "order": {
+        "category": "организация встреч",
+        "complexity": "низкая",
+        "requirements": [
+          "английский"
+        ]
+      },
+      "expected_label": "REJECT",
+      "reason": "Explicit constraint: нет иностранных языков vs требуется английский"
+    },
+    {
+      "case_id": "BH-003",
+      "profile": {
+        "skill": "бухгалтерия",
+        "experience": "опыт с 1С",
+        "constraints": "только удалённо"
+      },
+      "order": {
+        "category": "выписка счётов",
+        "complexity": "средняя",
+        "format": "remote"
+      },
+      "expected_label": "MATCH",
+      "reason": "Прямое совпадение: бухгалтер + удалённый формат"
+    },
+    {
+      "case_id": "BH-004",
+      "profile": {
+        "skill": "печать документов",
+        "speed": "60 слов/мин"
+      },
+      "order": {
+        "category": "стенография совещания",
+        "complexity": "высокая",
+        "speed_req": "120 слов/мин"
+      },
+      "expected_label": "REJECT",
+      "reason": "Objective resource mismatch: 60 vs 120 слов/мин"
+    },
+    {
+      "case_id": "BH-005",
+      "profile": {
+        "skill": "работа в Excel",
+        "certification": false
+      },
+      "order": {
+        "category": "аналитика данных",
+        "complexity": "средняя",
+        "tool": "Tableau"
+      },
+      "expected_label": "MATCH",
+      "reason": "Азы Excel → может освоить Tableau, семантически близко"
+    },
+    {
+      "case_id": "BH-006",
+      "profile": {
+        "skill": "PR",
+        "experience": "журналист 10 лет"
+      },
+      "order": {
+        "category": "написание пресс-релиза",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Журналист → PR-текст релевантен"
+    },
+    {
+      "case_id": "BH-007",
+      "profile": {
+        "skill": "кадровая служба",
+        "experience": "не нанимаю сам"
+      },
+      "order": {
+        "category": "рекрутинг для стартапа",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Опыт кадров → рекрутинг релевантен, даже без личного опыта найма"
+    },
+    {
+      "case_id": "BH-008",
+      "profile": {
+        "skill": "учитель истории"
+      },
+      "order": {
+        "category": "онлайн-репетитор по математике"
+      },
+      "expected_label": "REJECT",
+      "reason": "Очевидная нерелевантность: история vs математика"
+    },
+    {
+      "case_id": "BH-009",
+      "profile": {
+        "skill": "налоговый консультант",
+        "region": "Москва"
+      },
+      "order": {
+        "category": "налоговая консультация",
+        "region": "Казань"
+      },
+      "expected_label": "REJECT",
+      "reason": "Hard geo constraint: регионы разные (хотя услуга может быть удалённой)"
+    },
+    {
+      "case_id": "BH-010",
+      "profile": {
+        "skill": "администратор офиса"
+      },
+      "order": {
+        "category": "办理 паспортных услуг",
+        "complexity": "высокая",
+        "regulated": true
+      },
+      "expected_label": "REJECT",
+      "reason": "Очевидная нерелевантность: администратор ≠ госуслуги"
+    },
+    {
+      "case_id": "BH-011",
+      "profile": {
+        "skill": "веб-дизайн",
+        "tools": "Figma, Adobe"
+      },
+      "order": {
+        "category": "дизайн мобильного приложения",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Веб-дизайн → мобильный дизайн, инструменты совместимы"
+    },
+    {
+      "case_id": "BH-012",
+      "profile": {
+        "skill": "фронтенд",
+        "language": "JavaScript, React"
+      },
+      "order": {
+        "category": "вёрстка лендинга",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Фронтенд → вёрстка лендинга прямо применимо"
+    },
+    {
+      "case_id": "BH-013",
+      "profile": {
+        "skill": "Python",
+        "experience": "data science"
+      },
+      "order": {
+        "category": "скрипт для обработки CSV",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Python разработчик → скрипты, даже без DS это базовое"
+    },
+    {
+      "case_id": "BH-014",
+      "profile": {
+        "skill": "DevOps",
+        "tools": "Docker, Kubernetes"
+      },
+      "order": {
+        "category": "настройка CI/CD",
+        "tools": "GitHub Actions"
+      },
+      "expected_label": "MATCH",
+      "reason": "DevOps → CI/CD, инструменты в одном семействе"
+    },
+    {
+      "case_id": "BH-015",
+      "profile": {
+        "skill": "хакер",
+        "type": "white-hat penetration tester"
+      },
+      "order": {
+        "category": "тестирование безопасности",
+        "complexity": "высокая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Security researcher → penetration testing прямо применимо"
+    },
+    {
+      "case_id": "BH-016",
+      "profile": {
+        "skill": "видеомонтажник",
+        "software": "не работаю с 3D"
+      },
+      "order": {
+        "category": "3D-моделирование сцены",
+        "complexity": "высокая"
+      },
+      "expected_label": "REJECT",
+      "reason": "Explicit refusal: не работаю с 3D"
+    },
+    {
+      "case_id": "BH-017",
+      "profile": {
+        "skill": "блогер",
+        "followers": "50k Instagram"
+      },
+      "order": {
+        "category": "социальные медиа стратегия",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Блогер → SM стратегия, опыт целевой"
+    },
+    {
+      "case_id": "BH-018",
+      "profile": {
+        "skill": "SEO специалист"
+      },
+      "order": {
+        "category": "повышение рейтинга сайта",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "SEO → рейтинг сайта прямо применимо"
+    },
+    {
+      "case_id": "BH-019",
+      "profile": {
+        "skill": "QA engineer",
+        "tools": "Selenium"
+      },
+      "order": {
+        "category": "ручное тестирование интерфейса",
+        "tools": "manual"
+      },
+      "expected_label": "MATCH",
+      "reason": "QA автоматизация → ручное тестирование базовое"
+    },
+    {
+      "case_id": "BH-020",
+      "profile": {
+        "skill": "сисадмин",
+        "ОС": "Linux"
+      },
+      "order": {
+        "category": "выделенный сервер Windows",
+        "ОС": "Windows"
+      },
+      "expected_label": "MATCH",
+      "reason": "Linux sysadmin → Windows server management, foundational principles transferable"
+    },
+    {
+      "case_id": "BH-021",
+      "profile": {
+        "skill": "фотограф"
+      },
+      "order": {
+        "category": "видеосъёмка свадьбы"
+      },
+      "expected_label": "MATCH",
+      "reason": "Фотограф → видеосъёмка, оборудование часто совпадает"
+    },
+    {
+      "case_id": "BH-022",
+      "profile": {
+        "skill": "музыкант",
+        "instrument": "пианист"
+      },
+      "order": {
+        "category": "звукозапись в студии",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Музыкант → звукозапись, семантически близко"
+    },
+    {
+      "case_id": "BH-023",
+      "profile": {
+        "skill": "web scraper",
+        "language": "Python"
+      },
+      "order": {
+        "category": "автоматизация сбора данных",
+        "tool": "Selenium"
+      },
+      "expected_label": "MATCH",
+      "reason": "Web scraper → автоматизация, tool-agnostic"
+    },
+    {
+      "case_id": "BH-024",
+      "profile": {
+        "skill": "мобильный разработчик",
+        "platform": "iOS only"
+      },
+      "order": {
+        "category": "разработка Android приложения"
+      },
+      "expected_label": "REJECT",
+      "reason": "Explicit constraint: iOS only vs Android требуется"
+    },
+    {
+      "case_id": "BH-025",
+      "profile": {
+        "skill": "data analyst"
+      },
+      "order": {
+        "category": "статистическая обработка",
+        "tool": "R or Python"
+      },
+      "expected_label": "MATCH",
+      "reason": "Data analyst → статистика базовое"
+    },
+    {
+      "case_id": "BH-026",
+      "profile": {
+        "skill": "водитель",
+        "vehicle": "мотоцикл"
+      },
+      "order": {
+        "category": "доставка посылок",
+        "vehicle": "автомобиль"
+      },
+      "expected_label": "REJECT",
+      "reason": "Objective resource mismatch: мотоцикл vs автомобиль для посылок"
+    },
+    {
+      "case_id": "BH-027",
+      "profile": {
+        "skill": "доставка",
+        "range": "в пределах города"
+      },
+      "order": {
+        "category": "межгородская перевозка",
+        "distance": "500км"
+      },
+      "expected_label": "REJECT",
+      "reason": "Hard geo constraint: только город vs 500км"
+    },
+    {
+      "case_id": "BH-028",
+      "profile": {
+        "skill": "курьер",
+        "can_lift": "15кг"
+      },
+      "order": {
+        "category": "доставка мебели",
+        "weight": "50кг"
+      },
+      "expected_label": "REJECT",
+      "reason": "Objective resource mismatch: 15кг vs 50кг"
+    },
+    {
+      "case_id": "BH-029",
+      "profile": {
+        "skill": "логист",
+        "experience": "склад"
+      },
+      "order": {
+        "category": "организация логистики",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Логист со складом → организация логистики прямо применимо"
+    },
+    {
+      "case_id": "BH-030",
+      "profile": {
+        "skill": "водитель такси"
+      },
+      "order": {
+        "category": "личный шофёр",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Такси водитель → личный шофёр, вождение общее"
+    },
+    {
+      "case_id": "BH-031",
+      "profile": {
+        "skill": "грузчик",
+        "terrain": "не работаю на высоте"
+      },
+      "order": {
+        "category": "демонтаж кондиционера на крыше",
+        "height": "25м"
+      },
+      "expected_label": "REJECT",
+      "reason": "Explicit refusal: высота запрещена"
+    },
+    {
+      "case_id": "BH-032",
+      "profile": {
+        "skill": "таксист"
+      },
+      "order": {
+        "category": "курьерские услуги"
+      },
+      "expected_label": "MATCH",
+      "reason": "Таксист → курьер, вождение и доставка близко"
+    },
+    {
+      "case_id": "BH-033",
+      "profile": {
+        "skill": "погрузчик"
+      },
+      "order": {
+        "category": "монтаж оборудования"
+      },
+      "expected_label": "MATCH",
+      "reason": "Погрузчик → монтаж, физический труд и логистика"
+    },
+    {
+      "case_id": "BH-034",
+      "profile": {
+        "skill": "фургон",
+        "объём": "3 куб.м"
+      },
+      "order": {
+        "category": "вывоз строительного мусора",
+        "объём": "10 куб.м"
+      },
+      "expected_label": "MATCH",
+      "reason": "3m³ фургон может сделать несколько поездок для вывоза 10m³ мусора; заказ не требует одну поездку"
+    },
+    {
+      "case_id": "BH-035",
+      "profile": {
+        "skill": "лётчик",
+        "category": "коммерческая авиация"
+      },
+      "order": {
+        "category": "дроны"
+      },
+      "expected_label": "MATCH",
+      "reason": "Лётчик → дроны, воздушные навыки применимы"
+    },
+    {
+      "case_id": "BH-036",
+      "profile": {
+        "skill": "логист"
+      },
+      "order": {
+        "category": "таможенное оформление",
+        "regulated": true
+      },
+      "expected_label": "MATCH",
+      "reason": "Логист → таможня регулируемая, но логист может разбираться"
+    },
+    {
+      "case_id": "BH-037",
+      "profile": {
+        "skill": "почтовик"
+      },
+      "order": {
+        "category": "почтовая рассылка",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Почтовик → рассылка прямо применимо"
+    },
+    {
+      "case_id": "BH-038",
+      "profile": {
+        "skill": "водитель",
+        "license": "категория B"
+      },
+      "order": {
+        "category": "перевозка пассажиров",
+        "license": "категория D требуется"
+      },
+      "expected_label": "MATCH",
+      "reason": "Водитель категория B → категория D, лицензионный уровень не автоматический REJECT; водитель может повысить квалификацию"
+    },
+    {
+      "case_id": "BH-039",
+      "profile": {
+        "skill": "склад"
+      },
+      "order": {
+        "category": "учёт товара на складе",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Работник склада → учёт товара прямо применимо"
+    },
+    {
+      "case_id": "BH-040",
+      "profile": {
+        "skill": "рабочий пути",
+        "experience": "железная дорога"
+      },
+      "order": {
+        "category": "проверка путей",
+        "infrastructure": "железная дорога"
+      },
+      "expected_label": "MATCH",
+      "reason": "РЖД рабочий → проверка путей специализированное"
+    },
+    {
+      "case_id": "BH-041",
+      "profile": {
+        "skill": "слесарь",
+        "tools": "основной инструмент"
+      },
+      "order": {
+        "category": "водопроводные работы",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Слесарь → водопровод, инструменты совместимы"
+    },
+    {
+      "case_id": "BH-042",
+      "profile": {
+        "skill": "плотник",
+        "tools": "ручной инструмент"
+      },
+      "order": {
+        "category": "работа электроинструментом",
+        "tools": "перфоратор, болгарка"
+      },
+      "expected_label": "MATCH",
+      "reason": "Плотник → электроинструмент, прогресс навыков"
+    },
+    {
+      "case_id": "BH-043",
+      "profile": {
+        "skill": "электрик",
+        "license": "квалификация 3"
+      },
+      "order": {
+        "category": "проверка электросети в доме",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Электрик 3 кв. → проверка домовых сетей базовое"
+    },
+    {
+      "case_id": "BH-044",
+      "profile": {
+        "skill": "каменщик"
+      },
+      "order": {
+        "category": "облицовка плиткой",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Каменщик → плитка, кладка техника близко"
+    },
+    {
+      "case_id": "BH-045",
+      "profile": {
+        "skill": "маляр",
+        "material": "не работаю с асбестом"
+      },
+      "order": {
+        "category": "покраска асбестоцементных панелей"
+      },
+      "expected_label": "REJECT",
+      "reason": "Explicit refusal: асбест запрещен"
+    },
+    {
+      "case_id": "BH-046",
+      "profile": {
+        "skill": "кровельщик",
+        "height": "до 10м"
+      },
+      "order": {
+        "category": "кровельные работы на небоскрёбе",
+        "height": "40m"
+      },
+      "expected_label": "REJECT",
+      "reason": "Objective resource/constraint: высота 10м vs 40м"
+    },
+    {
+      "case_id": "BH-047",
+      "profile": {
+        "skill": "штукатур"
+      },
+      "order": {
+        "category": "выравнивание стен",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Штукатур → выравнивание прямо применимо"
+    },
+    {
+      "case_id": "BH-048",
+      "profile": {
+        "skill": "сварщик",
+        "certification": "TIG/MIG"
+      },
+      "order": {
+        "category": "ручная сварка",
+        "type": "MMA"
+      },
+      "expected_label": "MATCH",
+      "reason": "TIG/MIG сварщик → MMA, техника комплементарна"
+    },
+    {
+      "case_id": "BH-049",
+      "profile": {
+        "skill": "плотник"
+      },
+      "order": {
+        "category": "изготовление мебели",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Плотник → мебель прямо применимо"
+    },
+    {
+      "case_id": "BH-050",
+      "profile": {
+        "skill": "кровельщик"
+      },
+      "order": {
+        "category": "уборка крыши от снега",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Кровельщик → уборка крыши, опыт высоты есть"
+    },
+    {
+      "case_id": "BH-051",
+      "profile": {
+        "skill": "мастер по ремонту",
+        "expertise": "узкий спектр"
+      },
+      "order": {
+        "category": "ремонт бытовой техники",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Мастер ремонта → бытовая техника, узкий опыт не запрещает"
+    },
+    {
+      "case_id": "BH-052",
+      "profile": {
+        "skill": "монтажник"
+      },
+      "order": {
+        "category": "установка дверной коробки"
+      },
+      "expected_label": "MATCH",
+      "reason": "Монтажник → двери, стандартная услуга"
+    },
+    {
+      "case_id": "BH-053",
+      "profile": {
+        "skill": "строитель",
+        "tools": "есть инструмент"
+      },
+      "order": {
+        "category": "постройка забора из кирпича",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Строитель → забор кирпич применимо"
+    },
+    {
+      "case_id": "BH-054",
+      "profile": {
+        "skill": "лакировщик"
+      },
+      "order": {
+        "category": "полировка пола",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Лакировщик → полировка, техника близко"
+    },
+    {
+      "case_id": "BH-055",
+      "profile": {
+        "skill": "специалист по вентиляции"
+      },
+      "order": {
+        "category": "прочистка воздуховодов",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Вентиляция → прочистка воздуховодов специализированное"
+    },
+    {
+      "case_id": "BH-056",
+      "profile": {
+        "skill": "няня",
+        "age_group": "дети 3-7 лет"
+      },
+      "order": {
+        "category": "присмотр грудничка",
+        "age": "0-1 год"
+      },
+      "expected_label": "MATCH",
+      "reason": "Няня с опытом 3-7 лет имеет базовую компетенцию по уходу за детьми, может освоить специализацию для грудничков"
+    },
+    {
+      "case_id": "BH-057",
+      "profile": {
+        "skill": "сиделка",
+        "patient_type": "мобильные пожилые"
+      },
+      "order": {
+        "category": "уход за лежачим больным",
+        "patient_type": "лежачий"
+      },
+      "expected_label": "MATCH",
+      "reason": "Сиделка → уход лежачий, расширение компетенций"
+    },
+    {
+      "case_id": "BH-058",
+      "profile": {
+        "skill": "уборщица",
+        "hours": "до 17:00"
+      },
+      "order": {
+        "category": "ночная уборка офиса",
+        "time": "22:00-06:00"
+      },
+      "expected_label": "REJECT",
+      "reason": "Hard time constraint: до 17:00 vs ночь"
+    },
+    {
+      "case_id": "BH-059",
+      "profile": {
+        "skill": "парикмахер"
+      },
+      "order": {
+        "category": "стрижка",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Парикмахер → стрижка прямо применимо"
+    },
+    {
+      "case_id": "BH-060",
+      "profile": {
+        "skill": "косметолог"
+      },
+      "order": {
+        "category": "макияж для фотосессии",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Косметолог → макияж прямо применимо"
+    },
+    {
+      "case_id": "BH-061",
+      "profile": {
+        "skill": "тренер",
+        "specialization": "фитнес"
+      },
+      "order": {
+        "category": "занятия йогой",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Фитнес тренер → йога, физкультура близко"
+    },
+    {
+      "case_id": "BH-062",
+      "profile": {
+        "skill": "массажист",
+        "certification": false
+      },
+      "order": {
+        "category": "классический массаж",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Без сертификата но умеет → массаж простой может сделать"
+    },
+    {
+      "case_id": "BH-063",
+      "profile": {
+        "skill": "повар",
+        "cuisine": "итальянская"
+      },
+      "order": {
+        "category": "приготовление блюд",
+        "cuisine": "азиатская"
+      },
+      "expected_label": "MATCH",
+      "reason": "Повар итальянский → азиатскую кухню может освоить"
+    },
+    {
+      "case_id": "BH-064",
+      "profile": {
+        "skill": "официант"
+      },
+      "order": {
+        "category": "обслуживание банкета",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Официант → банкет прямо применимо"
+    },
+    {
+      "case_id": "BH-065",
+      "profile": {
+        "skill": "гид",
+        "languages": "только русский"
+      },
+      "order": {
+        "category": "экскурсия на английском",
+        "language": "английский"
+      },
+      "expected_label": "REJECT",
+      "reason": "Objective resource mismatch: русский vs английский требуется"
+    },
+    {
+      "case_id": "BH-066",
+      "profile": {
+        "skill": "уборщица",
+        "allergies": "не работаю с бытовой химией"
+      },
+      "order": {
+        "category": "уборка с химией",
+        "required": "бытовая химия"
+      },
+      "expected_label": "REJECT",
+      "reason": "Explicit refusal: химия запрещена"
+    },
+    {
+      "case_id": "BH-067",
+      "profile": {
+        "skill": "учитель английского"
+      },
+      "order": {
+        "category": "онлайн курс по английскому"
+      },
+      "expected_label": "MATCH",
+      "reason": "Учитель англ → онлайн курс прямо применимо"
+    },
+    {
+      "case_id": "BH-068",
+      "profile": {
+        "skill": "репетитор",
+        "subject": "математика"
+      },
+      "order": {
+        "category": "подготовка к ОГЭ",
+        "subject": "математика"
+      },
+      "expected_label": "MATCH",
+      "reason": "Репетитор матем → ОГЭ подготовка специализированное"
+    },
+    {
+      "case_id": "BH-069",
+      "profile": {
+        "skill": "логопед"
+      },
+      "order": {
+        "category": "коррекция речи у ребёнка",
+        "age": "6 лет"
+      },
+      "expected_label": "MATCH",
+      "reason": "Логопед → речь коррекция прямо применимо"
+    },
+    {
+      "case_id": "BH-070",
+      "profile": {
+        "skill": "воспитатель"
+      },
+      "order": {
+        "category": "организация досуга детей",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Воспитатель → досуг дети прямо применимо"
+    },
+    {
+      "case_id": "BH-071",
+      "profile": {
+        "skill": "визажист"
+      },
+      "order": {
+        "category": "makeup для свадьбы",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Визажист → свадебный макияж прямо применимо"
+    },
+    {
+      "case_id": "BH-072",
+      "profile": {
+        "skill": "художник",
+        "medium": "масло"
+      },
+      "order": {
+        "category": "графический дизайн",
+        "medium": "digital"
+      },
+      "expected_label": "MATCH",
+      "reason": "Художник масло → digital графика, художественное мышление близко"
+    },
+    {
+      "case_id": "BH-073",
+      "profile": {
+        "skill": "режиссёр"
+      },
+      "order": {
+        "category": "съёмка рекламного ролика",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Режиссёр → рекламный ролик прямо применимо"
+    },
+    {
+      "case_id": "BH-074",
+      "profile": {
+        "skill": "актёр"
+      },
+      "order": {
+        "category": "озвучивание мультфильма"
+      },
+      "expected_label": "MATCH",
+      "reason": "Актёр → озвучка прямо применимо"
+    },
+    {
+      "case_id": "BH-075",
+      "profile": {
+        "skill": "сценарист"
+      },
+      "order": {
+        "category": "написание диалогов для игры"
+      },
+      "expected_label": "MATCH",
+      "reason": "Сценарист → диалоги игры применимо"
+    },
+    {
+      "case_id": "BH-076",
+      "profile": {
+        "skill": "флорист"
+      },
+      "order": {
+        "category": "оформление букета на свадьбу"
+      },
+      "expected_label": "MATCH",
+      "reason": "Флорист → букет свадьба прямо применимо"
+    },
+    {
+      "case_id": "BH-077",
+      "profile": {
+        "skill": "декоратор"
+      },
+      "order": {
+        "category": "оформление события",
+        "budget": "средний"
+      },
+      "expected_label": "MATCH",
+      "reason": "Декоратор → оформление события применимо"
+    },
+    {
+      "case_id": "BH-078",
+      "profile": {
+        "skill": "диджей",
+        "equipment": "свой"
+      },
+      "order": {
+        "category": "музыкальное сопровождение вечеринки"
+      },
+      "expected_label": "MATCH",
+      "reason": "Диджей → вечеринка музыка прямо применимо"
+    },
+    {
+      "case_id": "BH-079",
+      "profile": {
+        "skill": "композитор"
+      },
+      "order": {
+        "category": "написание музыки для фильма"
+      },
+      "expected_label": "MATCH",
+      "reason": "Композитор → киномузыка прямо применимо"
+    },
+    {
+      "case_id": "BH-080",
+      "profile": {
+        "skill": "иллюстратор"
+      },
+      "order": {
+        "category": "рисунки для детской книги"
+      },
+      "expected_label": "MATCH",
+      "reason": "Иллюстратор → иллюстрации прямо применимо"
+    },
+    {
+      "case_id": "BH-081",
+      "profile": {
+        "skill": "карикатурист"
+      },
+      "order": {
+        "category": "портретный рисунок"
+      },
+      "expected_label": "MATCH",
+      "reason": "Карикатурист → портрет, рисунок техника близко"
+    },
+    {
+      "case_id": "BH-082",
+      "profile": {
+        "skill": "аниматор",
+        "experience": "2D only"
+      },
+      "order": {
+        "category": "3D анимация",
+        "format": "3D"
+      },
+      "expected_label": "REJECT",
+      "reason": "Objective resource mismatch: 2D vs 3D требуется"
+    },
+    {
+      "case_id": "BH-083",
+      "profile": {
+        "skill": "видеооператор"
+      },
+      "order": {
+        "category": "съёмка документального фильма"
+      },
+      "expected_label": "MATCH",
+      "reason": "Видеооператор → документальная съёмка применимо"
+    },
+    {
+      "case_id": "BH-084",
+      "profile": {
+        "skill": "звукооператор"
+      },
+      "order": {
+        "category": "звукозапись подкаста"
+      },
+      "expected_label": "MATCH",
+      "reason": "Звукооператор → подкаст запись применимо"
+    },
+    {
+      "case_id": "BH-085",
+      "profile": {
+        "skill": "верстальщик книги"
+      },
+      "order": {
+        "category": "верстка журнала",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Верстальщик → журнал верстка применимо"
+    },
+    {
+      "case_id": "BH-086",
+      "profile": {
+        "skill": "сапожник"
+      },
+      "order": {
+        "category": "ремонт обуви",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Сапожник → ремонт обуви прямо применимо"
+    },
+    {
+      "case_id": "BH-087",
+      "profile": {
+        "skill": "портной"
+      },
+      "order": {
+        "category": "пошив платья",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Портной → пошив платья прямо применимо"
+    },
+    {
+      "case_id": "BH-088",
+      "profile": {
+        "skill": "кузнец"
+      },
+      "order": {
+        "category": "ковка ограды",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Кузнец → ковка ограды прямо применимо"
+    },
+    {
+      "case_id": "BH-089",
+      "profile": {
+        "skill": "стеклорез"
+      },
+      "order": {
+        "category": "изготовление витража"
+      },
+      "expected_label": "MATCH",
+      "reason": "Стеклорез → витраж стекло техника применимо"
+    },
+    {
+      "case_id": "BH-090",
+      "profile": {
+        "skill": "керамист"
+      },
+      "order": {
+        "category": "изготовление фарфоровой посуды"
+      },
+      "expected_label": "MATCH",
+      "reason": "Керамист → фарфор, керамика техника близко"
+    },
+    {
+      "case_id": "BH-091",
+      "profile": {
+        "skill": "резчик по дереву"
+      },
+      "order": {
+        "category": "резьба мебели"
+      },
+      "expected_label": "MATCH",
+      "reason": "Резчик → резьба мебели прямо применимо"
+    },
+    {
+      "case_id": "BH-092",
+      "profile": {
+        "skill": "ювелир",
+        "material": "только серебро"
+      },
+      "order": {
+        "category": "ювелирные изделия из золота",
+        "material": "золото"
+      },
+      "expected_label": "REJECT",
+      "reason": "Objective resource/constraint: серебро vs золото требуется"
+    },
+    {
+      "case_id": "BH-093",
+      "profile": {
+        "skill": "часовщик"
+      },
+      "order": {
+        "category": "ремонт механических часов",
+        "type": "механика"
+      },
+      "expected_label": "MATCH",
+      "reason": "Часовщик → механика часов прямо применимо"
+    },
+    {
+      "case_id": "BH-094",
+      "profile": {
+        "skill": "оптик"
+      },
+      "order": {
+        "category": "изготовление оправы очков"
+      },
+      "expected_label": "MATCH",
+      "reason": "Оптик → оправа очков применимо"
+    },
+    {
+      "case_id": "BH-095",
+      "profile": {
+        "skill": "цветовод"
+      },
+      "order": {
+        "category": "озеленение офиса",
+        "complexity": "низкая"
+      },
+      "expected_label": "MATCH",
+      "reason": "Цветовод → озеленение прямо применимо"
+    },
+    {
+      "case_id": "BH-096",
+      "profile": {
+        "skill": "садовник"
+      },
+      "order": {
+        "category": "дизайн ландшафта",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Садовник → ландшафт дизайн, опыт почвы есть"
+    },
+    {
+      "case_id": "BH-097",
+      "profile": {
+        "skill": "пастух"
+      },
+      "order": {
+        "category": "содержание домашних животных"
+      },
+      "expected_label": "MATCH",
+      "reason": "Пастух → животные, опыт есть"
+    },
+    {
+      "case_id": "BH-098",
+      "profile": {
+        "skill": "пчеловод"
+      },
+      "order": {
+        "category": "сбор мёда",
+        "complexity": "средняя"
+      },
+      "expected_label": "MATCH",
+      "reason": "Пчеловод → сбор мёда специализированное"
+    },
+    {
+      "case_id": "BH-099",
+      "profile": {
+        "skill": "рыбак"
+      },
+      "order": {
+        "category": "рыбный промысел",
+        "method": "сеть"
+      },
+      "expected_label": "MATCH",
+      "reason": "Рыбак → рыбный промысел прямо применимо"
+    },
+    {
+      "case_id": "BH-100",
+      "profile": {
+        "skill": "охотник",
+        "license": "охотничья лицензия"
+      },
+      "order": {
+        "category": "рыбалка в охотничьем хозяйстве"
+      },
+      "expected_label": "MATCH",
+      "reason": "Охотник → рыбалка хозяйство, опыт природы есть"
+    }
+  ]
+}

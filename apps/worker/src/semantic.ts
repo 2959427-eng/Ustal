@@ -3,8 +3,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
 import { getDb, schema, type Database } from "@ustal/database";
 import { semanticResultSchema, type SemanticFact } from "@ustal/validation";
+import { isUserAssetResource, narrowRefusalNodeIds, resolveProfileNegatives } from "./profile-negatives.js";
 
-export const PIPELINE_VERSION = "semantic-v2.4";
+export const PIPELINE_VERSION = "semantic-v2.6";
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export interface PreparedFact extends SemanticFact {
   nodeIds: string[];
@@ -86,7 +87,11 @@ export async function prepareDocument(
       "Semantic normalization returned unsupported source evidence",
     );
 
-  const resolved = parsed.facts.map((f) => {
+  const resolved = parsed.facts.map((raw) => {
+    const nonAsset = (raw.subjectType === "software_skill" || raw.subjectType === "qualification") &&
+      raw.kind !== "exclude" && raw.constraintType !== "exclusion";
+    const f = nonAsset ? { ...raw, kind: "capability" as const, resourceRole: "none" as const,
+      mandatory: false, resourceCapacity: { value: null, unit: null, kind: null } } : raw;
     const exact = byPhrase.get(f.phrase.trim().toLowerCase());
     const selected = new Map<string, (typeof nodes)[number]>();
     if (exact && f.confidence >= 0.8) selected.set(exact.id, exact);
@@ -105,7 +110,7 @@ export async function prepareDocument(
     )
       factKind = "capability";
     if (
-      f.kind === "capability" &&
+      f.kind === "capability" && !nonAsset &&
       selectedNodes.length &&
       selectedNodes.every((n) => n.nodeType === "resource")
     )
@@ -121,6 +126,18 @@ export async function prepareDocument(
     );
     return { ...f, kind: factKind, nodeIds: compatible.map((n) => n.id) };
   });
+  if (kind === "profile") {
+    // Отказ от узкой деятельности не привязываем к широкому навыку (см. narrowRefusalNodeIds).
+    const hasChildren = new Set(nodes.map((n) => n.parentId).filter((id): id is string => !!id));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const f of resolved) {
+      if (f.kind !== "exclude" && f.constraintType !== "exclusion") continue;
+      f.nodeIds = narrowRefusalNodeIds(byPhrase.get(f.phrase.trim().toLowerCase())?.id, f.nodeIds, (id) => {
+        const n = byId.get(id);
+        return n && { nodeType: n.nodeType, hasChildren: hasChildren.has(id) };
+      });
+    }
+  }
   // Known extracted actions cannot disappear because another model omitted them. This is
   // ontology lookup, not keyword parsing of source text; negative facts always win below.
   const data = extracted as {
@@ -210,13 +227,29 @@ export async function prepareDocument(
     )
   )
     throw new Error("Invalid semantic embeddings");
+  let finalFacts = facts.map((f, i) => ({ ...f, embedding: vectors[i + 1]! }));
+  let documentEmbedding = vectors[0]!;
+  if (kind === "profile") {
+    // Новая отрицательная информация («продал машину», «больше не работаю таксистом»)
+    // переопределяет старую положительную из накопительного текста профиля.
+    const resolvedFacts = resolveProfileNegatives(finalFacts, text);
+    const droppedCapability = finalFacts.some((f) => f.kind === "capability" && !resolvedFacts.includes(f));
+    finalFacts = resolvedFacts;
+    if (droppedCapability) {
+      // Положительный retrieval-текст не должен притягивать отменённые навыки.
+      const positive = finalFacts.filter((f) => f.kind === "capability").map((f) => f.phrase).join("\n");
+      const docVector = (await ai.embedding.embed([positive || "нет подтвержденных способностей"], { ...meta, operationType: "matching_fact_embeddings" })).data.vectors[0];
+      if (!docVector || docVector.length !== 1536 || !docVector.some((x) => x !== 0)) throw new Error("Invalid semantic embeddings");
+      documentEmbedding = docVector;
+    }
+  }
   return {
     processingVersion: `${PIPELINE_VERSION}:${ontologyVersion}:${hash(normalized.model + embeddingResult.model).slice(0, 8)}`,
     sourceHash: hash(text),
     sourceText: text,
     embeddingModel: embeddingResult.model,
-    embedding: vectors[0]!,
-    facts: facts.map((f, i) => ({ ...f, embedding: vectors[i + 1]! })),
+    embedding: documentEmbedding,
+    facts: finalFacts,
   };
 }
 
@@ -287,6 +320,8 @@ export async function persistDocument(
     const seen = new Set<string>();
     for (const f of facts)
       for (const nodeId of f.nodeIds) {
+        // missing / provided_by_customer / compatibility — ограничения для matching, не активы исполнителя.
+        if (f.kind === "resource" && !isUserAssetResource(f)) continue;
         const key = `${f.kind}:${nodeId}`;
         if (seen.has(key)) continue;
         seen.add(key);

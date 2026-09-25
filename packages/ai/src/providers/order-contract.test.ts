@@ -101,7 +101,7 @@ it("does not accept an order normalization that skips the physical completeness 
   } finally { log.mockRestore(); }
 });
 it("uses the configured semantic reviewer and validates its result", async () => {
-  create.mockResolvedValue({ choices: [{ message: { content: '{"compatible":false,"confidence":0.9,"reason":"Different activities"}' } }] });
+  create.mockResolvedValue({ choices: [{ message: { content: '{"compatible":false,"confidence":0.9,"reason":"Different activities","hardConflict":{"kind":"domain","profileEvidence":"move files","orderEvidence":"move furniture"}}' } }] });
   const result=await openAiExtraction.reviewSemantic({profile:["move files"],order:["move furniture"]},meta);
   expect(result.model).toBe("review-test");
   expect(create.mock.lastCall![0].model).toBe("review-test");

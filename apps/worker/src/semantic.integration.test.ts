@@ -211,7 +211,7 @@ afterAll(async () => {
 });
 
 describe("semantic pipeline on real isolated PostgreSQL; fixture AI, no external models", () => {
-  it("keeps an over-budget review run atomic at city scale", async () => {
+  it("completes review within the current 100-call budget without publishing incompatible candidates", async () => {
     const previousCity = city;
     const [isolated] = await db.insert(schema.cities).values({name: `TEST review budget ${randomUUID()}`,regionName:"TEST",federalDistrict:"TEST",timezone:"Asia/Vladivostok",isActive:false}).returning();
     city = isolated!.id; cities.push(city);
@@ -222,9 +222,12 @@ describe("semantic pipeline on real isolated PostgreSQL; fixture AI, no external
       fixture("Budget order", [fact("ordinary action two", [], 33)]);
       for (let i = 0; i < 21; i++) await profile(await user(), "Budget profile");
       const oid = await order(a, "Budget order");
-      await expect(handleMatchingRun({id:randomUUID(),data:{orderId:oid}} as never)).rejects.toThrow("Semantic review budget exceeded");
-      expect(review).toHaveBeenCalledTimes(20);
-      expect((await db.select().from(schema.matchingRuns).where(eq(schema.matchingRuns.orderId, oid))).length).toBe(0);
+      const result = await handleMatchingRun({id:randomUUID(),data:{orderId:oid}} as never);
+      expect(review).toHaveBeenCalledTimes(21);
+      expect(result).toMatchObject({ candidatesCount: 0 });
+      const runs = await db.select().from(schema.matchingRuns).where(eq(schema.matchingRuns.orderId, oid));
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.completedAt).not.toBeNull();
     } finally { review.mockRestore(); city = previousCity; }
   }, 30000);
   it("reviews low-cosine unmapped actions using immutable full source context", async () => {
@@ -488,5 +491,179 @@ describe("semantic pipeline on real isolated PostgreSQL; fixture AI, no external
       const facts=await db.select().from(schema.matchingFacts).where(eq(schema.matchingFacts.documentId,doc!.id));
       expect(facts).toEqual(expect.arrayContaining([expect.objectContaining({kind:"resource",resourceRole:"compatibility",mandatory:false,resourceCapacity:{value:900,unit:"литр",kind:null}})]));
     } finally { review.mockRestore(); }
+  });
+  it("unlocks semantic review from a resource-only profile fact, not just capability facts", async () => {
+    const a = await user(), u = await user();
+    fixture("Truck profile", [
+      { ...fact("газель с гидробортом", ["truck"], 18, "resource"), resourceRole: "available" },
+    ]);
+    fixture("Heavy cargo order", [
+      { ...fact("перевезти тяжёлую технику", ["moving"], 19), resourceCapacity: { value: null, unit: null, kind: "техника" } },
+    ]);
+    await profile(u, "Truck profile");
+    const oid = await order(a, "Heavy cargo order");
+    const review = vi.spyOn(mockProviders.extraction, "reviewSemantic").mockResolvedValue(wrap({ compatible: true, confidence: 1, reason: "Truck with hydraulic lift covers this workload" }));
+    try {
+      expect(await matches(oid, u)).toBeDefined();
+      expect(review).toHaveBeenCalledWith({ profile: ["Truck profile"], order: ["Heavy cargo order"] }, expect.anything());
+    } finally { review.mockRestore(); }
+  });
+});
+
+describe("profile update: new negative facts override old positive ones (real DB, fixture AI)", () => {
+  const withRole = (f: SemanticFact, resourceRole: SemanticFact["resourceRole"]): SemanticFact => ({ ...f, resourceRole });
+  async function appliedItems(profileId: string) {
+    const [caps, res] = await Promise.all([
+      db.query.userCapabilities.findMany({ where: eq(schema.userCapabilities.capabilityProfileId, profileId) }),
+      db.query.userResources.findMany({ where: eq(schema.userResources.capabilityProfileId, profileId) }),
+    ]);
+    const nodes = await db.query.ontologyNodes.findMany();
+    const key = (id: string) => nodes.find((n) => n.id === id)?.canonicalKey;
+    return {
+      caps: caps.map((c) => ({ key: key(c.ontologyNodeId), label: c.label })),
+      res: res.map((r) => ({ key: key(r.ontologyNodeId), label: r.label })),
+    };
+  }
+
+  it("resource car -> 'продал машину' (AI omits the old car): car is not carried forward and the negative phrase is not a resource", async () => {
+    const u = await user();
+    const t1 = fixture("NEG1 Есть легковой автомобиль", [withRole(fact("есть легковой автомобиль", ["car"], 301, "resource"), "available")]);
+    const p1 = await profile(u, t1);
+    expect((await appliedItems(p1.profileId)).res.map((r) => r.key)).toEqual(["car"]);
+
+    const t2 = fixture("NEG1 Продал машину", [withRole(fact("продал машину", ["car"], 302, "resource"), "missing")]);
+    const p2 = await profile(u, t2);
+    const after = await appliedItems(p2.profileId);
+    expect(after.res).toEqual([]);
+    // Отрицательный факт остаётся ограничением для matching, но не активом.
+    const doc = await db.query.matchingDocuments.findFirst({ where: eq(schema.matchingDocuments.profileId, p2.profileId) });
+    const facts = await db.query.matchingFacts.findMany({ where: eq(schema.matchingFacts.documentId, doc!.id) });
+    expect(facts.some((f) => f.resourceRole === "missing" && f.phrase === "продал машину")).toBe(true);
+    expect(facts.some((f) => f.phrase === "есть легковой автомобиль")).toBe(false);
+  });
+
+  it("same document holds old positive and new negative for the same resource: the newer negative wins", async () => {
+    const u = await user();
+    const t1 = fixture("NEG2 Есть легковой автомобиль", [withRole(fact("есть легковой автомобиль", ["car"], 303, "resource"), "available")]);
+    await profile(u, t1);
+    const t2 = fixture("NEG2 Продал машину", [
+      withRole(fact("есть легковой автомобиль", ["car"], 303, "resource"), "available"),
+      withRole(fact("продал машину", ["car"], 304, "resource"), "missing"),
+    ]);
+    const p2 = await profile(u, t2);
+    expect((await appliedItems(p2.profileId)).res).toEqual([]);
+  });
+
+  it("skill 'подрабатываю таксистом' -> 'больше не работаю таксистом' (refusal without ontology node): old skill is not carried and matching still rejects taxi orders", async () => {
+    const u = await user();
+    const t1 = fixture("NEG3 Подрабатываю таксистом", [fact("подрабатываю таксистом", ["driving"], 311)]);
+    const p1 = await profile(u, t1);
+    expect((await appliedItems(p1.profileId)).caps.map((c) => c.key)).toEqual(["driving"]);
+
+    const refusal: SemanticFact = { ...fact("больше не работаю таксистом", [], 311, "exclude"), constraintType: "exclusion", constraintScope: "whole_task" };
+    const t2 = fixture("NEG3 Больше не работаю таксистом", [refusal]);
+    const p2 = await profile(u, t2);
+    expect((await appliedItems(p2.profileId)).caps).toEqual([]);
+
+    const author = await user();
+    const oid = await order(author, fixture("NEG3 order Отвезти на такси", [fact("поездка на такси", ["driving"], 311, "capability", true)], ["вождение"]));
+    expect(await matches(oid, u)).toBeUndefined();
+  });
+
+  it("provided_by_customer and compatibility resources never become the executor's own resources", async () => {
+    const u = await user();
+    const t = fixture("NEG4 Косилка заказчика, доступ на крышу", [
+      withRole(fact("газонокосилка заказчика", ["lawn_mower"], 321, "resource"), "provided_by_customer"),
+      withRole(fact("доступ на крышу", ["car"], 322, "resource"), "compatibility"),
+    ]);
+    const p = await profile(u, t);
+    expect((await appliedItems(p.profileId)).res).toEqual([]);
+  });
+});
+
+
+describe("narrow activity refusal does not delete a broad skill or block adjacent orders (real DB, fixture AI)", () => {
+  const refusal = (phrase: string, keys: string[], axis: number): SemanticFact => ({
+    ...fact(phrase, keys, axis, "exclude"), constraintType: "exclusion", constraintScope: "whole_task",
+  });
+  const capKeys = async (profileId: string) => {
+    const caps = await db.query.userCapabilities.findMany({ where: eq(schema.userCapabilities.capabilityProfileId, profileId) });
+    const nodes = await db.query.ontologyNodes.findMany();
+    return caps.map((c) => ({ key: nodes.find((n) => n.id === c.ontologyNodeId)?.canonicalKey, label: c.label }));
+  };
+
+  it("'не работаю таксистом' (model maps it to driving): taxi blocked, driving kept, freight still matched", async () => {
+    const u = await user();
+    await profile(u, fixture("NARROW1 Вожу машину, подрабатываю таксистом", [
+      fact("вождение", ["driving"], 331),
+      fact("подрабатываю таксистом", ["driving"], 332),
+    ]));
+    // Накопительный текст разбирается заново: старые факты повторяются вместе с новым отказом.
+    const p2 = await profile(u, fixture("NARROW1 Больше не работаю таксистом", [
+      fact("вождение", ["driving"], 331),
+      fact("подрабатываю таксистом", ["driving"], 332),
+      refusal("работа таксистом", ["driving"], 332),
+    ]));
+    const caps = await capKeys(p2.profileId);
+    expect(caps.map((c) => c.key)).toEqual(["driving"]);
+    expect(caps.some((c) => /такси/i.test(c.label))).toBe(false);
+
+    const author = await user();
+    const taxi = await order(author, fixture("NARROW1 order Такси до аэропорта", [fact("поездка на такси", ["driving"], 332, "capability", true)]));
+    expect(await matches(taxi, u)).toBeUndefined();
+    const freight = await order(author, fixture("NARROW1 order Перевезти груз", [fact("перевезти груз", ["freight_transport"], 331)]));
+    expect(await matches(freight, u)).toBeDefined();
+  });
+
+  it("same refusal when the model omits the old facts: driving is carried with a non-cancelled label", async () => {
+    const u = await user();
+    await profile(u, fixture("NARROW6 Вожу машину, подрабатываю таксистом", [
+      fact("вождение", ["driving"], 361),
+      fact("подрабатываю таксистом", ["driving"], 362),
+    ]));
+    const p2 = await profile(u, fixture("NARROW6 Больше не работаю таксистом", [refusal("работа таксистом", ["driving"], 362)]));
+    expect(await capKeys(p2.profileId)).toEqual([{ key: "driving", label: "вождение" }]);
+  });
+
+  it("'больше не умею водить' still removes driving and blocks driving orders", async () => {
+    const u = await user();
+    await profile(u, fixture("NARROW2 Умею водить", [fact("вождение", ["driving"], 341)]));
+    const p2 = await profile(u, fixture("NARROW2 Больше не умею водить", [refusal("вождение", ["driving"], 341)]));
+    expect(await capKeys(p2.profileId)).toEqual([]);
+    const author = await user();
+    const oid = await order(author, fixture("NARROW2 order Нужен водитель", [fact("вождение", ["driving"], 341, "capability", true)]));
+    expect(await matches(oid, u)).toBeUndefined();
+  });
+
+  it("'не работаю ночью' changes availability only, skills stay", async () => {
+    const u = await user();
+    await profile(u, fixture("NARROW3 Умею водить", [fact("вождение", ["driving"], 343)]));
+    const night: SemanticFact = { ...fact("не работаю ночью", [], 344, "availability"), constraintType: "availability", startHour: 8, endHour: 20 };
+    const p2 = await profile(u, fixture("NARROW3 Не работаю ночью", [night]));
+    expect((await capKeys(p2.profileId)).map((c) => c.key)).toEqual(["driving"]);
+  });
+
+  it("'продал машину' keeps the driving skill", async () => {
+    const u = await user();
+    await profile(u, fixture("NARROW4 Вожу, есть машина", [
+      fact("вождение", ["driving"], 345),
+      { ...fact("есть легковой автомобиль", ["car"], 346, "resource"), resourceRole: "available" },
+    ]));
+    const p2 = await profile(u, fixture("NARROW4 Продал машину", [{ ...fact("продал машину", ["car"], 347, "resource"), resourceRole: "missing" }]));
+    expect((await capKeys(p2.profileId)).map((c) => c.key)).toEqual(["driving"]);
+    expect(await db.query.userResources.findMany({ where: eq(schema.userResources.capabilityProfileId, p2.profileId) })).toEqual([]);
+  });
+
+  it("an activity refusal without an ontology node blocks only semantically close orders", async () => {
+    const u = await user();
+    await profile(u, fixture("NARROW5 Ремонтирую технику, но не телефоны", [
+      fact("ремонт техники", [], 351),
+      refusal("ремонт телефонов", [], 352),
+    ]));
+    const author = await user();
+    const phone = await order(author, fixture("NARROW5 order Починить телефон", [fact("ремонт телефонов", [], 352, "capability", true)]));
+    expect(await matches(phone, u)).toBeUndefined();
+    const laptop = await order(author, fixture("NARROW5 order Починить ноутбук", [fact("ремонт техники", [], 351, "capability", true)]));
+    expect(await matches(laptop, u)).toBeDefined();
   });
 });

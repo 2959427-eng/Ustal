@@ -1,4 +1,6 @@
 import { prepareDocument, persistDocument } from "../semantic.js";
+import { planNegativeOverrides } from "../profile-negatives.js";
+import { carryForwardProfileItems } from "../profile-merge.js";
 import type PgBoss from "pg-boss";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
@@ -127,6 +129,15 @@ export async function handleProfileExtraction(
     .filter(Boolean)
     .join("\nПоследнее изменение пользователя:\n");
   const prepared = await prepareDocument("profile", source, extracted, job.id);
+  // Факты прежнего профиля: новые отрицательные факты («продал машину», «больше не работаю
+  // таксистом») отменяют их и по ontology-узлу, и по смыслу — такой пункт не переносится.
+  const priorFacts = previousDoc
+    ? await db.select().from(schema.matchingFacts).where(eq(schema.matchingFacts.documentId, previousDoc.id))
+    : [];
+  const overrides = planNegativeOverrides(
+    prepared.facts,
+    priorFacts.map((f) => ({ ...f, nodeIds: (f.nodeIds ?? []) as string[] })),
+  );
   return db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${job.data.userId}, 0))`,
@@ -167,7 +178,17 @@ export async function handleProfileExtraction(
       })
       .returning();
     if (!profile) throw new Error("Failed to create profile");
-    await persistDocument(tx, { profileId: profile.id }, prepared);
+    const saved = await persistDocument(tx, { profileId: profile.id }, prepared);
+    // Накопительный профиль: существующие узлы сохраняют прежний label, отсутствующие в новом
+    // ответе AI старые пункты переносятся; удаляются только явно исключённые (kind "exclude").
+    await carryForwardProfileItems(tx, {
+      draftProfileId: profile.id,
+      draftDocumentId: saved.id,
+      previousProfileId: previousProfile?.id,
+      excludedNodeIds: overrides.excludedNodeIds,
+      supersededLabels: overrides.supersededLabels,
+      relabel: overrides.relabel,
+    });
     await tx
       .insert(schema.profileEmbeddings)
       .values({

@@ -1,3 +1,6 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { loadEnv } from "@ustal/config";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
 import { handleProfileTranscribe } from "./handlers/profile-transcribe.js";
@@ -18,12 +21,15 @@ async function main() {
   await boss.work(JOB_TYPES.ORDER_EXTRACTION, handleOrderExtraction);
   await boss.work(JOB_TYPES.MATCHING_RUN, handleMatchingRun);
   await boss.work(JOB_TYPES.NOTIFICATION_DISPATCH, handleNotificationDispatch);
+  const heartbeat = () => writeFile(join(tmpdir(), "ustal-worker-heartbeat"), "ok");
+  await heartbeat();
   let dispatching = false;
   setInterval(async () => {
     if (dispatching) return;
     dispatching = true;
     try {
       await dispatchRematches();
+      await heartbeat();
     } catch {
       console.error(
         "Rematch outbox dispatch failed; durable requests retained for retry",

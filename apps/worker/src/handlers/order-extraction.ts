@@ -17,12 +17,11 @@ export interface OrderExtractionJobData {
  * embedding → (публикация — отдельным явным действием автора, см.
  * POST /orders/{id}/publish в apps/api/src/routes/orders.ts).
  *
- * Модерация (раздел 12 ТЗ + architecture.md §5 п.7): сначала детерминированные
- * правила (moderateWithRules — работает одинаково для mock и openai
- * провайдеров, не полагается на реализацию каждого), затем — если заказ
- * помечен моделью как `regulated` — жёстко manual_review (в MVP нет
- * верификации, поэтому ни один регулируемый заказ не публикуется
- * автоматически), и только для оставшихся пограничных случаев — AI-модерация.
+ * Модерация (раздел 12 ТЗ): только детерминированные правила незаконного
+ * контента (moderateWithRules — работает одинаково для mock и openai
+ * провайдеров) и AI-модерация для пограничных случаев. Продукт-правило:
+ * regulated/лицензии/допуски USTAL не проверяет и они не влияют на
+ * moderationDecision/riskLevel/review — заказчик сам проверяет документы.
  *
  * Пауза «Проверка транскрипции» (claude/pipeline-split-design.md): STT для
  * voice-заказа больше не делается здесь — этот job ставится в очередь
@@ -98,11 +97,9 @@ async function extract(
   stage("ontology:done");
 
   // Risk classification (architecture.md §5 п.7): regulated > requiresQualification > обычная задача.
-  const riskLevel = extracted.regulated
-    ? 2
-    : extracted.requiresQualification
-      ? 1
-      : 0;
+  // Продукт-правило: regulated/лицензии/допуски не проверяются USTAL и не влияют
+  // на risk-based review. riskLevel отражает только requiresQualification.
+  const riskLevel = extracted.requiresQualification ? 1 : 0;
 
   stage("moderation:start");
   const ruleResult = moderateWithRules(sourceText);
@@ -113,10 +110,6 @@ async function extract(
   if (ruleResult.decision) {
     moderationDecision = ruleResult.decision;
     moderationReason = ruleResult.reason ?? "";
-  } else if (extracted.regulated) {
-    moderationDecision = "manual_review";
-    moderationReason =
-      "regulated: в MVP нет верификации исполнителей (architecture.md §5 п.7)";
   } else {
     const modMeta = {
       operationType: "order_moderation",
@@ -126,7 +119,7 @@ async function extract(
     };
     const modStarted = new Date();
     const modResult = await ai.moderation.moderate(
-      { text: sourceText, regulated: extracted.regulated, riskLevel },
+      { text: sourceText, riskLevel },
       modMeta,
     );
     await db

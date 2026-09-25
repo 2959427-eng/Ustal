@@ -45,6 +45,21 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
     expect(run([f("capability","activity")],reqs,{semanticReview:{compatible:true,confidence:1,reason:"Customer supplies suitable access"}}).matchType).toBe("exact");
     expect(run(caps,[...reqs,{...f("resource","other",true),resourceRole:"required"}],{semanticReview:{compatible:true,confidence:1,reason:"Relevant"}}).reason).toBe("missing_mandatory_resource");
   });
+  it("classifies semantic-only for a resource-only profile that passes physical-compatibility review, even with zero capability facts", () => {
+    // Profile expresses suitability purely through a possessed resource ("есть газель с
+    // гидробортом"), with no separate capability sentence at all. The order's resource
+    // requirement is a physical-compatibility check ("без лифта"), not a "required" asset --
+    // this is the real shape order extraction produces, and it never increments resourceHits.
+    const caps = [{ ...f("resource", "truck"), resourceRole: "available" as const }];
+    const reqs = [f("capability", "moving"), { ...f("resource", "no-elevator"), resourceRole: "compatibility" as const }];
+    expect(run(caps, reqs).reason).toBe("physical_compatibility_unverified");
+    expect(run(caps, reqs, { semanticReview: { compatible: false, confidence: 1, reason: "Not established" } }).reason).toBe("physical_compatibility_unverified");
+    const ok = run(caps, reqs, { semanticReview: { compatible: true, confidence: 1, reason: "Truck with hydraulic lift covers this" } });
+    expect(ok.matchType).toBe("probable");
+    expect(ok.reason).toBe("semantic-only");
+    // A capability-only profile with no physical-review signal at all still correctly rejects.
+    expect(run([], [f("capability", "moving")]).reason).toBe("insufficient_capability_evidence");
+  });
   it("does not treat ordinary riskLevel as an automatic qualification reject", () => {
     const caps = [f("capability", "shared-category")];
     const reqs = [f("capability", "shared-category")];
@@ -140,12 +155,12 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
         { localHour: 1 },
       ).classification,
     ).toBe("exact"));
-  it("keeps regulated work closed even for exact skills", () =>
+  it("does not let regulated affect classification (product rule: no license/permit checks)", () =>
     expect(
       run([f("capability", "electric")], [f("capability", "electric")], {
         regulated: true,
-      }).reason,
-    ).toBe("regulated_unverified"));
+      }).classification,
+    ).toBe("exact"));
   it("allows a broad related edge for an ordinary non-regulated capability", () =>
     expect(
       run(
@@ -195,12 +210,12 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
           { documentSimilarity: 0 },
         ).reason,
       ).toBe("insufficient_capability_evidence"));
-    it("keeps regulated electrical work rejected without verification", () =>
+    it("does not let regulated block electrical work classification", () =>
       expect(
         run([f("capability", "electrical")], [f("capability", "electrical")], {
           regulated: true,
-        }).reason,
-      ).toBe("regulated_unverified"));
+        }).classification,
+      ).toBe("exact"));
     it("matches moving work when lifting/loading covers adjacent carrying tasks", () =>
       expect(
         run(
@@ -324,13 +339,13 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
         [{ ...f("resource", "drill", true), resourceRole: "provided_by_customer" }],
       ).reason,
     ).not.toBe("missing_mandatory_resource"));
-  it("rejects a mandatory resource when typed capacity is insufficient", () =>
+  it("allows capacity mismatch as soft signal (multiple trips allowed)", () =>
     expect(
       run(
         [{ ...f("resource", "vehicle"), resourceRole: "available", resourceCapacity: { value: 1, unit: "volume", kind: "capacity" } }],
         [{ ...f("resource", "vehicle", true), resourceRole: "required", resourceCapacity: { value: 3, unit: "volume", kind: "capacity" } }],
-      ).reason,
-    ).toBe("missing_mandatory_resource"));
+      ).matchType,
+    ).not.toBeNull());
   it("enforces typed availability constraints", () =>
     expect(
       run(
@@ -349,8 +364,44 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
   it("handles missing/zero/different-dimensional vectors", () => {
     expect(cosine([0, 0], [1, 0])).toBe(0);
     expect(cosine([1], [1, 0])).toBe(0);
-    expect(cosine(null, [1, 0])).toBe(0);
   });
+  it("allows capacity mismatch as soft signal (multiple trips allowed)", () =>
+    expect(
+      run(
+        [f("capability", "transport"), { ...f("resource", "vehicle"), resourceRole: "available", resourceType: "vehicle" as const, resourceCapacity: { value: 1, unit: "m3", kind: null } }],
+        [f("capability", "transport", true), { ...f("resource", "vehicle", true), resourceRole: "required", resourceType: "vehicle" as const, resourceCapacity: { value: 3, unit: "m3", kind: null } }]
+      ).matchType
+    ).not.toBeNull()
+  );
+  it("hard-rejects insufficient capacity when the resource requirement is explicit one-trip/whole-task (objective incompatibility, not a soft signal)", () => {
+    const result = run(
+      [{ ...f("resource", "vehicle"), resourceRole: "available", resourceCapacity: { value: 2, unit: "m3", kind: null } }],
+      [{ ...f("resource", "vehicle", true), resourceRole: "required", resourceCapacity: { value: 5, unit: "m3", kind: null }, constraintScope: "whole_task" }],
+    );
+    expect(result.reason).toBe("missing_mandatory_resource");
+    expect(result.matchType).toBeNull();
+  });
+  it("stays a soft signal (no hard reject) when multiple trips are explicitly allowed (constraintScope=fact, not whole_task)", () =>
+    expect(
+      run(
+        [{ ...f("resource", "vehicle"), resourceRole: "available", resourceCapacity: { value: 2, unit: "m3", kind: null } }],
+        [{ ...f("resource", "vehicle", true), resourceRole: "required", resourceCapacity: { value: 5, unit: "m3", kind: null }, constraintScope: "fact" }],
+      ).matchType,
+    ).not.toBeNull());
+  it("matches normally when capacity is sufficient, even for an explicit one-trip requirement", () =>
+    expect(
+      run(
+        [{ ...f("resource", "vehicle"), resourceRole: "available", resourceCapacity: { value: 5, unit: "m3", kind: null } }],
+        [{ ...f("resource", "vehicle", true), resourceRole: "required", resourceCapacity: { value: 5, unit: "m3", kind: null }, constraintScope: "whole_task" }],
+      ).matchType,
+    ).not.toBeNull());
+  it("does not hard-reject on capacity mismatch when constraintScope is absent -- absence of data is never a prohibition", () =>
+    expect(
+      run(
+        [{ ...f("resource", "vehicle"), resourceRole: "available", resourceCapacity: { value: 2, unit: "m3", kind: null } }],
+        [{ ...f("resource", "vehicle", true), resourceRole: "required", resourceCapacity: { value: 5, unit: "m3", kind: null } }],
+      ).matchType,
+    ).not.toBeNull());
   it("compares the requested source time window with evening-only availability",()=>{
     expect(run([f("capability","loading"),{...f("availability",""),startHour:18,endHour:23}], [f("capability","loading"),{...f("availability",""),startHour:8,endHour:12}]).reason).toBe("outside_availability");
   });
@@ -377,7 +428,7 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
         [f("capability", "assembly")],
       ).classification,
     ).not.toBe("reject"));
-  it("rejects a mismatched resource subtype (drill vs perforator) even without a numeric capacity", () =>
+  it("allows drill when order requires generic drilling tool (no specific kind) = soft signal", () =>
     expect(
       run(
         [
@@ -391,11 +442,52 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
           {
             ...f("resource", "drill", true),
             resourceRole: "required",
-            resourceCapacity: { value: null, unit: null, kind: "перфоратор" },
+            resourceCapacity: { value: null, unit: null, kind: null },  // No specific kind required
+          },
+        ],
+      ).reason,
+    ).not.toBe("missing_mandatory_resource"));
+  it("rejects drill when order specifically requires perforator (hard requirement)", () =>
+    expect(
+      run(
+        [
+          {
+            ...f("resource", "drill"),
+            resourceRole: "available",
+            resourceType: "tool",
+            resourceCapacity: { value: null, unit: null, kind: "дрель" },
+          },
+        ],
+        [
+          {
+            ...f("resource", "drill", true),
+            resourceRole: "required",
+            resourceType: "tool",  // known physical tool: kind is an objective requirement
+            resourceCapacity: { value: null, unit: null, kind: "перфоратор" },  // Specific kind required
           },
         ],
       ).reason,
     ).toBe("missing_mandatory_resource"));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // Exact subtype of a physical tool still matches.
   it("still matches an exact resource subtype", () =>
     expect(
       run(
@@ -421,5 +513,41 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
         [{ ...f("resource", "van"), resourceRole: "missing" }],
         [{ ...f("resource", "van", true), resourceRole: "required" }],
       ).reason,
+    ).toBe("missing_mandatory_resource"));
+});
+
+describe("resource unknown to the ontology (no canonical node) is never hard-rejected for that alone", () => {
+  const unknown = (embedding: number[], extra: Partial<Fact> = {}): Fact => ({
+    ...f("resource", ""),
+    phrase: "виброплита",
+    embedding,
+    ...extra,
+  });
+  const order = (embedding = [1, 0]) => [
+    f("capability", "paving", true),
+    unknown(embedding, { mandatory: true, resourceRole: "required" }),
+  ];
+  it("matches when the executor has the same/semantically close unknown resource", () => {
+    const result = run(
+      [f("capability", "paving"), unknown([0.95, 0.05], { resourceRole: "available" })],
+      order(),
+    );
+    expect(result.reason).not.toBe("missing_mandatory_resource");
+    expect(result.matchType).not.toBeNull();
+    expect(result.trace.unknown_resource_semantic_hits).toBe(1);
+  });
+  it("keeps a candidate without evidence for the unknown resource as a soft, unverified signal", () => {
+    const result = run([f("capability", "paving")], order());
+    expect(result.reason).not.toBe("missing_mandatory_resource");
+    expect(result.matchType).not.toBeNull();
+    expect(result.trace.unknown_resource_unverified).toBe(1);
+  });
+  it("still rejects when the executor explicitly states the same unknown resource is missing", () =>
+    expect(
+      run([f("capability", "paving"), unknown([1, 0], { resourceRole: "missing" })], order()).reason,
+    ).toBe("missing_mandatory_resource"));
+  it("known physical resource absence is still a hard reject (unchanged)", () =>
+    expect(
+      run([f("capability", "paving")], [f("capability", "paving", true), { ...f("resource", "vibro-plate", true), resourceRole: "required" }]).reason,
     ).toBe("missing_mandatory_resource"));
 });

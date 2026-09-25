@@ -1,0 +1,29 @@
+{
+  "name": "@ustal/blind-evaluation",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node ../../scripts/run-node-tests.mjs",
+    "blind:verify-isolation": "tsx scripts/verify-isolation.ts",
+    "blind:setup-db": "tsx scripts/setup-test-db.ts && tsx scripts/setup-pipeline-db.ts",
+    "blind:load-data": "tsx scripts/load-holdout-data.ts",
+    "blind:evaluate": "tsx scripts/run-blind-evaluation.ts",
+    "blind:analyze": "tsx scripts/analyze-results.ts"
+  },
+  "dependencies": {
+    "@ustal/config": "*",
+    "@ustal/database": "*",
+    "@ustal/domain": "*",
+    "@ustal/matching": "*",
+    "drizzle-orm": "*",
+    "pg": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.4",
+    "tsx": "^4.23.12",
+    "@types/pg": "^8.11.0"
+  }
+}

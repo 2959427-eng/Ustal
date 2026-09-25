@@ -34,9 +34,9 @@ export interface SpeechToTextProvider {
 }
 
 export interface StructuredExtractionProvider {
-  reviewSemantic(input: { profile: string[]; order: string[] }, meta: AiCallMeta): Promise<AiCallResult<{ compatible: boolean; confidence: number; reason: string }>>;
+  reviewSemantic(input: { profile: string[]; order: string[] }, meta: AiCallMeta): Promise<AiCallResult<import("@ustal/validation").SemanticReview>>;
   normalizeMatching(
-    input: { kind: "profile" | "order"; text: string; extracted: unknown; ontology: import("@ustal/validation").OntologyOption[] },
+    input: { kind: "profile" | "order"; professionRule?: boolean; text: string; extracted: unknown; ontology: import("@ustal/validation").OntologyOption[] },
     meta: AiCallMeta,
   ): Promise<AiCallResult<import("@ustal/validation").SemanticResult>>;
   extractCapabilityProfile(
@@ -58,7 +58,7 @@ export type ModerationDecision = "allow" | "allow_with_warning" | "manual_review
 
 export interface ModerationProvider {
   moderate(
-    input: { text: string; regulated: boolean; riskLevel: number },
+    input: { text: string; riskLevel: number },
     meta: AiCallMeta,
   ): Promise<AiCallResult<{ decision: ModerationDecision; reason: string }>>;
 }
