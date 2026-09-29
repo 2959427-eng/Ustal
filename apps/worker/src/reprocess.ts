@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { getDb, schema } from "@ustal/database";
+import { getDb, loadProfileLineage, schema } from "@ustal/database";
+import { rebuildProfileIfNeeded } from "./profile-rebuild.js";
 import { getAiProviders } from "@ustal/ai";
 import {
   prepareDocument,
@@ -18,6 +19,13 @@ export async function reprocessProfile(
   const profile = await db.query.capabilityProfiles.findFirst({
     where: eq(schema.capabilityProfiles.id, profileId),
   });
+  // Source revoke (2026-09-28): never reprocess text that still contains a revoked message; the profile is
+  // rebuilt from the remaining messages instead (normal pipeline, new applied version, rematch).
+  if (profile?.status === "rebuild_pending" ||
+    (profile?.status === "applied" && (await loadProfileLineage(db, profile)).inputs.some((i) => i.revokedAt))) {
+    if (!apply) return { profileId, action: "rebuild-after-source-revoke", dryRun: true };
+    return rebuildProfileIfNeeded(profile.userId);
+  }
   if (!profile || profile.status !== "applied")
     throw new Error("Backfill requires an applied profile");
   const priorDoc = await db.query.matchingDocuments.findFirst({

@@ -1,0 +1,221 @@
+{
+  "runAt": "2026-09-27T14:54:10.980Z",
+  "orders": {
+    "O_ikea": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Собрать шкаф из ИКЕА» [assembly] c=0.95",
+        "capability «повесить полку» [basic_household_fixes] c=0.95"
+      ]
+    },
+    "O_mount": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Собрать и повесить кухонные шкафы» [assembly] c=0.95",
+        "capability «просверлить отверстия в бетонной стене» [concrete_work] c=0.95",
+        "resource/required «нужен свой инструмент» [tool_use] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"инструмент\"} scope=whole_task mand=true"
+      ]
+    }
+  },
+  "profiles": {
+    "P07:base": {
+      "source": "Муж на час: собираю мебель, вешаю полки, сверлю, есть перфоратор и шуруповёрт.",
+      "facts": [
+        "capability «сборка мебели» [assembly] c=0.95",
+        "capability «вешаю полки» [basic_household_fixes] c=0.9",
+        "capability «сверлю» [basic_household_fixes] c=0.9",
+        "resource/available «есть перфоратор» [drill] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"перфоратор\"} scope=whole_task mand=false",
+        "resource/available «есть шуруповёрт» [tool_use] c=0.9 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"шуруповёрт\"} scope=whole_task mand=false"
+      ]
+    },
+    "P07:career": {
+      "source": "Инженер-механик по образованию, 20 лет в автопроме, последние 5 лет технический директор. Муж на час: собираю мебель, вешаю полки, сверлю, есть перфоратор и шуруповёрт. Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.",
+      "facts": [
+        "capability «Инженер-механик по образованию, 20 лет в автопроме, последние 5 лет технический директор» [] c=0.95 st=career_context",
+        "capability «Работу активно не ищу, рассматриваю только интересные предложения в машиностроении» [] c=0.9 st=career_context",
+        "capability «Муж на час: собираю мебель» [assembly] c=0.9",
+        "capability «вешаю полки» [basic_household_fixes] c=0.9",
+        "capability «сверлю» [basic_household_fixes] c=0.9",
+        "resource/available «есть перфоратор» [drill] c=0.95 st=physical_resource cap={\"value\":1,\"unit\":null,\"kind\":\"перфоратор\"} scope=whole_task mand=false",
+        "resource/available «есть шуруповёрт» [tool_use] c=0.95 st=physical_resource cap={\"value\":1,\"unit\":null,\"kind\":\"шуруповёрт\"} scope=whole_task mand=false"
+      ]
+    },
+    "P07:cumulative": {
+      "source": "Муж на час: собираю мебель, вешаю полки, сверлю, есть перфоратор и шуруповёрт.\nПоследнее изменение пользователя:\nИнженер-механик по образованию, 20 лет в автопроме, последние 5 лет технический директор. Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.",
+      "facts": [
+        "capability «собираю мебель» [assembly] c=0.95",
+        "capability «вешаю полки» [basic_household_fixes] c=0.9",
+        "capability «сверлю» [basic_household_fixes] c=0.9",
+        "resource/available «есть перфоратор» [drill] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"перфоратор\"} scope=fact mand=false",
+        "resource/available «есть шуруповёрт» [tool_use] c=0.9 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"шуруповёрт\"} scope=fact mand=false",
+        "capability «Инженер-механик по образованию» [] c=0.9 st=qualification",
+        "capability «20 лет в автопроме» [] c=0.85",
+        "capability «последние 5 лет технический директор» [] c=0.85",
+        "capability «Работу активно не ищу» [] c=0.9 st=career_context",
+        "capability «рассматриваю только интересные предложения в машиностроении» [] c=0.9 st=career_context"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P07:base",
+      "group": "P07",
+      "variant": "base",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.568,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт и инструменты для сборки мебели и сверления, что соответствует заказу на сборку и сверление в бетонной стене с использованием собственного инструмента."
+      }
+    },
+    {
+      "key": "P07:base",
+      "group": "P07",
+      "variant": "base",
+      "order": "O_ikea",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.603,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт и инструменты для сборки мебели и навешивания полок соответствуют заказу."
+      }
+    },
+    {
+      "key": "P07:career",
+      "group": "P07",
+      "variant": "career",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.272,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": {
+          "profileEvidence": "работу активно не ищу, рассматриваю только интересные предложения в машиностроении.",
+          "orderEvidence": "Собрать и повесить кухонные шкафы, просверлить отверстия в бетонной стене, нужен свой инструмент.",
+          "allowed": [
+            "интересные предложения в машиностроении"
+          ],
+          "requested": null,
+          "requestedWithinAllowed": false
+        },
+        "reason": "Опыт инженера-механика и технического директора в автопроме, а также навыки сборки мебели и работы с инструментом, релевантны для сборки и подвешивания кухонных шкафов с просверливанием отверстий. Однако профиль ограничивает предложения только машиностроением, что не совпадает с заказом, но это ограничение относится к поиску работы, а не к выполнению услуги."
+      }
+    },
+    {
+      "key": "P07:career",
+      "group": "P07",
+      "variant": "career",
+      "order": "O_ikea",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.313,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": {
+          "profileEvidence": "Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.",
+          "orderEvidence": "Собрать шкаф из ИКЕА и повесить полку.",
+          "allowed": [
+            "интересные предложения в машиностроении"
+          ],
+          "requested": null,
+          "requestedWithinAllowed": false
+        },
+        "reason": "Профиль содержит опыт сборки мебели и работы с инструментами, что релевантно заказу на сборку шкафа и навешивание полки. Хотя профиль указывает ограничение по интересным предложениям в машиностроении, это относится к поиску работы, а не к выполнению разовых бытовых услуг, поэтому совместимость возможна."
+      }
+    },
+    {
+      "key": "P07:cumulative",
+      "group": "P07",
+      "variant": "cumulative",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.382,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.8,
+        "hardConflict": null,
+        "exclusiveScope": {
+          "profileEvidence": "Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.",
+          "orderEvidence": "Собрать и повесить кухонные шкафы, просверлить отверстия в бетонной стене, нужен свой инструмент.",
+          "allowed": [
+            "интересные предложения в машиностроении"
+          ],
+          "requested": null,
+          "requestedWithinAllowed": false
+        },
+        "reason": "Профиль содержит опыт сборки мебели и работы с инструментом, что релевантно заказу. Однако в профиле указано 'рассматриваю только интересные предложения в машиностроении', что ограничивает сферу работы. Тем не менее, технические навыки и наличие инструмента подходят для выполнения заказа. Требуется уточнение, относится ли заказ к машиностроению."
+      }
+    },
+    {
+      "key": "P07:cumulative",
+      "group": "P07",
+      "variant": "cumulative",
+      "order": "O_ikea",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.413,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": {
+          "profileEvidence": "Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.",
+          "orderEvidence": "Собрать шкаф из ИКЕА и повесить полку.",
+          "allowed": [
+            "интересные предложения в машиностроении"
+          ],
+          "requested": null,
+          "requestedWithinAllowed": false
+        },
+        "reason": "Профиль содержит опыт и инструменты для сборки мебели и навешивания полок, что соответствует заказу. Однако в профиле указано ограничение по работе только в машиностроении, что не совпадает с заказом на сборку мебели, но это ограничение относится к поиску работы, а не к выполнению услуги, поэтому не является жестким конфликтом."
+      }
+    }
+  ]
+}

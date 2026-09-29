@@ -26,7 +26,9 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
   it("does not use customer-supplied profile resources as executor-owned assets", () => {
     const caps=[f("capability","assembly"),{...f("resource","tool"),resourceRole:"provided_by_customer" as const}];
     const reqs=[f("capability","assembly"),{...f("resource","tool",true),resourceRole:"required" as const}];
-    expect(run(caps,reqs).reason).toBe("missing_mandatory_resource");
+    // 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
+    expect(run(caps,reqs).reason).toBe("physical_compatibility_unverified");
+    expect(run(caps,reqs).matchType).toBeNull();
     expect(run(caps,[reqs[0]!,{...reqs[1]!,resourceRole:"provided_by_customer"}]).matchType).toBe("exact");
   });
   it("requires safety review even for identical documents and exact capabilities", () => {
@@ -43,7 +45,9 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
     expect(run(caps,reqs,{semanticReview:{compatible:false,confidence:1,reason:"Access not established"}}).matchType).toBeNull();
     // Compatible customer-supplied means can pass without pretending the worker owns them.
     expect(run([f("capability","activity")],reqs,{semanticReview:{compatible:true,confidence:1,reason:"Customer supplies suitable access"}}).matchType).toBe("exact");
-    expect(run(caps,[...reqs,{...f("resource","other",true),resourceRole:"required"}],{semanticReview:{compatible:true,confidence:1,reason:"Relevant"}}).reason).toBe("missing_mandatory_resource");
+    // 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
+    expect(run(caps,[...reqs,{...f("resource","other",true),resourceRole:"required"}],{semanticReview:{compatible:true,confidence:1,reason:"Relevant"}}).matchType).toBe("probable");
+    expect(run([...caps,{...f("resource","other"),resourceRole:"missing"}],[...reqs,{...f("resource","other",true),resourceRole:"required"}],{semanticReview:{compatible:true,confidence:1,reason:"Relevant"}}).reason).toBe("missing_mandatory_resource");
   });
   it("classifies semantic-only for a resource-only profile that passes physical-compatibility review, even with zero capability facts", () => {
     // Profile expresses suitability purely through a possessed resource ("есть газель с
@@ -79,7 +83,9 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
     expect(run([c],[req],options).classification).toBe("semantic-only");
     expect(run([c],[req],{...options,riskLevel:1}).classification).toBe("semantic-only");
     expect(run([c],[{...req,mandatory:true}],options).classification).toBe("semantic-only");
-    expect(run([c],[req,f("resource","van",true)],options).reason).toBe("missing_mandatory_resource");
+    // 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
+    expect(run([c],[req,f("resource","van",true)],options).matchType).toBe("probable");
+    expect(run([c,{...f("resource","van"),resourceRole:"missing"}],[req,f("resource","van",true)],options).reason).toBe("missing_mandatory_resource");
     expect(run([c,f("exclude","")],[req],options).reason).toBe("explicit_exclusion");
     expect(run([c],[req],{...options,semanticReview:{compatible:false,confidence:1,reason:"Unrelated"}}).classification).toBe("reject");
   });
@@ -87,13 +93,14 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
     expect(
       run([f("resource", "car")], [f("capability", "delivery")]).classification,
     ).toBe("reject"));
+  // 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
   it("never waives a mandatory resource using vectors", () =>
     expect(
       run(
         [f("capability", "delivery")],
         [f("capability", "delivery"), f("resource", "van", true)],
-      ).reason,
-    ).toBe("missing_mandatory_resource"));
+      ).matchType,
+    ).toBeNull());
   it("allows a concrete asset to satisfy its generic parent", () =>
     expect(
       run(
@@ -317,10 +324,11 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
         },
       ).reason,
     ).toBe("safety_review_required"));
+    // 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
     it("keeps a truly missing mandatory resource as a hard reject", () =>
       expect(
         run(
-          [f("capability", "delivery")],
+          [f("capability", "delivery"), { ...f("resource", "van"), resourceRole: "missing" }],
           [f("capability", "delivery"), f("resource", "van", true)],
         ).reason,
       ).toBe("missing_mandatory_resource"));
@@ -331,7 +339,7 @@ describe("evidence gates preserve safety while allowing relevant adjacent work",
         [{ ...f("resource", "lift", true), resourceRole: "required" }],
         { documentSimilarity: 1 },
       ).reason,
-    ).toBe("missing_mandatory_resource"));
+    ).toBe("physical_compatibility_unverified")); // 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
   it("does not require a customer-provided resource from the executor", () =>
     expect(
       run(
@@ -548,6 +556,6 @@ describe("resource unknown to the ontology (no canonical node) is never hard-rej
     ).toBe("missing_mandatory_resource"));
   it("known physical resource absence is still a hard reject (unchanged)", () =>
     expect(
-      run([f("capability", "paving")], [f("capability", "paving", true), { ...f("resource", "vibro-plate", true), resourceRole: "required" }]).reason,
-    ).toBe("missing_mandatory_resource"));
+      run([f("capability", "paving"), { ...f("resource", "vibro-plate"), resourceRole: "missing" }], [f("capability", "paving", true), { ...f("resource", "vibro-plate", true), resourceRole: "required" }]).reason,
+    ).toBe("missing_mandatory_resource")); // 2026-09-27: "known absence" = explicit missing fact
 });

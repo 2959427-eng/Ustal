@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@ustal/api-client";
+import { apiClient, setCachedAccessToken } from "./client";
+import { saveTokens, clearTokens, getRefreshToken } from "./session";
+import { refreshSession, isSessionUsable, login, logout } from "./auth";
+import { queryClient } from "../state/query-client";
 
 /**
  * refreshSession() (src/api/auth.ts) — 2026-09-08 fix.
@@ -14,25 +18,42 @@ import { ApiRequestError } from "@ustal/api-client";
  */
 
 vi.mock("./client", () => ({
-  apiClient: { request: vi.fn() },
+  apiClient: { request: vi.fn(), cancelAll: vi.fn() },
   setCachedAccessToken: vi.fn(),
 }));
 
 vi.mock("./session", () => ({
   saveTokens: vi.fn(),
-  clearTokens: vi.fn(),
+  invalidateTokenWrites: vi.fn(),
+  clearTokens: vi.fn(async () => {}),
   getRefreshToken: vi.fn(),
 }));
 
 vi.mock("../notifications/push", () => ({
   resetPushRegistrationState: vi.fn(),
+  unregisterPush: vi.fn(async () => {}),
 }));
 
 // vi.mock() calls above are hoisted above these imports by vitest's
 // transform, so these already receive the mocked modules.
-import { apiClient, setCachedAccessToken } from "./client";
-import { saveTokens, clearTokens, getRefreshToken } from "./session";
-import { refreshSession, isSessionUsable } from "./auth";
+
+it("A logout cancels pending queries and removes A data before B login", async () => {
+  vi.mocked(getRefreshToken).mockResolvedValue("A-refresh");
+  vi.mocked(apiClient.request).mockResolvedValue({ accessToken: "B-access", refreshToken: "B-refresh" });
+  queryClient.setQueryData(["profile"], { owner: "A" });
+  let finish!: (value: string) => void;
+  const pending = queryClient.fetchQuery({ queryKey: ["late-A"], queryFn: () => new Promise<string>((resolve) => { finish = resolve; }) }).catch(() => null);
+  await logout();
+  await login("+70000000000", "test-password");
+  finish("private-A"); await pending;
+  expect(queryClient.getQueryData(["profile"])).toBeUndefined();
+  expect(queryClient.getQueryData(["late-A"])).toBeUndefined();
+});
+
+it("SecureStore read failure is a recoverable startup result", async () => {
+  vi.mocked(getRefreshToken).mockRejectedValueOnce(new Error("Keychain locked"));
+  await expect(refreshSession()).resolves.toEqual({ state: "storage_unavailable" });
+});
 
 describe("refreshSession", () => {
   beforeEach(() => {
@@ -151,4 +172,20 @@ describe("isSessionUsable", () => {
   it("treats no local session as not usable", () => {
     expect(isSessionUsable({ state: "no_local_session" })).toBe(false);
   });
+});
+
+it("a refresh started by A cannot persist after logout and B login", async () => {
+  vi.clearAllMocks();
+  vi.mocked(getRefreshToken).mockResolvedValue("A-refresh");
+  let resolveA!: (value: unknown) => void;
+  vi.mocked(apiClient.request).mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }));
+  const oldRefresh = refreshSession();
+  await Promise.resolve();
+  vi.mocked(apiClient.request).mockResolvedValue({ accessToken: "B-access", refreshToken: "B-refresh" });
+  await logout();
+  await login("+70000000000", "test-password");
+  resolveA({ accessToken: "A-late", refreshToken: "A-late-refresh" });
+  expect(await oldRefresh).toEqual({ state: "session_changed" });
+  expect(saveTokens).not.toHaveBeenCalledWith("A-late", "A-late-refresh");
+  expect(setCachedAccessToken).toHaveBeenLastCalledWith("B-access");
 });

@@ -65,6 +65,7 @@ services:
         required: true
     environment:
       NODE_ENV: production
+      PUSH_PROVIDER: ${PUSH_PROVIDER:-expo}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     healthcheck:
       test: ["CMD", "node", "-e", "const fs=require('fs');const p=require('path').join(require('os').tmpdir(),'ustal-worker-heartbeat');process.exit(Date.now()-fs.statSync(p).mtimeMs<45000?0:1)"]

@@ -1,11 +1,12 @@
 import { prepareDocument, persistDocument } from "../semantic.js";
 import { planNegativeOverrides } from "../profile-negatives.js";
 import { carryForwardProfileItems } from "../profile-merge.js";
+import { rebuildProfileIfNeeded } from "../profile-rebuild.js";
 import type PgBoss from "pg-boss";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
 import { getRuntimeConfig } from "@ustal/config";
-import { getDb, schema } from "@ustal/database";
+import { getDb, PROFILE_SOURCE_SEPARATOR, schema } from "@ustal/database";
 import {
   createOntologyCandidate,
   findOntologyNodeForPhrase,
@@ -70,8 +71,15 @@ export async function handleProfileExtraction(
 
   if (input.userId !== job.data.userId || input.status !== "confirmed")
     throw new Error("Profile source is not confirmed by this user");
+  // Source revoke (2026-09-28): a withdrawn message never enters the AI profile.
+  if (input.revokedAt) throw new Error("Profile source was revoked by its owner");
+  // A draft invalidated by a revoke/rebuild does not count: the message is re-extracted on top of the
+  // rebuilt profile.
   const priorRun = await db.query.capabilityProfiles.findFirst({
-    where: eq(schema.capabilityProfiles.sourceInputId, input.id),
+    where: and(
+      eq(schema.capabilityProfiles.sourceInputId, input.id),
+      ne(schema.capabilityProfiles.status, "invalidated"),
+    ),
   });
   if (priorRun)
     return { profileId: priorRun.id, profileVersion: priorRun.profileVersion };
@@ -81,6 +89,9 @@ export async function handleProfileExtraction(
     throw new Error(
       `profile_source_inputs ${input.id}: нет текста для extraction`,
     );
+
+  // The base must never contain a revoked message: finish a pending rebuild first (no-op otherwise).
+  await rebuildProfileIfNeeded(job.data.userId, job.id);
 
   // Текущий («живой») профиль — applied, не draft: previousProfileSummary для
   // AI и база для диффа в GET /profile/draft должны быть тем, что пользователь
@@ -127,7 +138,7 @@ export async function handleProfileExtraction(
     : undefined;
   const source = [previousDoc?.sourceText ?? previousProfile?.summary, text]
     .filter(Boolean)
-    .join("\nПоследнее изменение пользователя:\n");
+    .join(PROFILE_SOURCE_SEPARATOR);
   const prepared = await prepareDocument("profile", source, extracted, job.id);
   // Факты прежнего профиля: новые отрицательные факты («продал машину», «больше не работаю
   // таксистом») отменяют их и по ontology-узлу, и по смыслу — такой пункт не переносится.
@@ -142,8 +153,17 @@ export async function handleProfileExtraction(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${job.data.userId}, 0))`,
     );
+    const [source] = await tx
+      .select({ revokedAt: schema.profileSourceInputs.revokedAt })
+      .from(schema.profileSourceInputs)
+      .where(eq(schema.profileSourceInputs.id, input.id));
+    if (source?.revokedAt)
+      throw new Error("Profile source was revoked by its owner");
     const duplicate = await tx.query.capabilityProfiles.findFirst({
-      where: eq(schema.capabilityProfiles.sourceInputId, input.id),
+      where: and(
+        eq(schema.capabilityProfiles.sourceInputId, input.id),
+        ne(schema.capabilityProfiles.status, "invalidated"),
+      ),
     });
     if (duplicate)
       return {

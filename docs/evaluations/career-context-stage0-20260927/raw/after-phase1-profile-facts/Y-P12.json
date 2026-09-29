@@ -1,0 +1,86 @@
+{
+  "runAt": "2026-09-27T14:57:03.291Z",
+  "orders": {
+    "O_paint_fence": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Покрасить деревянный забор на даче, около 20 метров.» [painting,garden_dacha] c=0.95",
+        "resource/compatibility «Покрасить деревянный забор на даче, около 20 метров.» [] c=0.95 cap={\"value\":20,\"unit\":\"метров\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P12:base": {
+      "source": "Хорошо рисую и делаю дизайн интерьера, могу покрасить стены.",
+      "facts": [
+        "capability «рисую» [] c=0.9",
+        "capability «делаю дизайн интерьера» [graphic_design] c=0.95",
+        "capability «могу покрасить стены» [painting] c=0.95"
+      ]
+    },
+    "P12:career": {
+      "source": "Хорошо рисую и делаю дизайн интерьера, могу покрасить стены. Была арт-директором агентства, руководила 50 дизайнерами, английский C1. Рассматриваю только позиции арт-директора или креативного директора от 400 тысяч.",
+      "facts": [
+        "capability «рисую» [] c=0.9",
+        "capability «делаю дизайн интерьера» [graphic_design] c=0.95",
+        "capability «покрасить стены» [painting] c=0.9",
+        "capability «арт-директор» [digital_creative] c=0.9",
+        "capability «руководила 50 дизайнерами» [] c=0.85"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P12:base",
+      "group": "P12",
+      "variant": "base",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.323,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт в покраске стен и дизайн интерьера связан с покраской, что делает выполнение покраски деревянного забора разумно возможным."
+      }
+    },
+    {
+      "key": "P12:career",
+      "group": "P12",
+      "variant": "career",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.261,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.7,
+        "hardConflict": null,
+        "exclusiveScope": {
+          "profileEvidence": "Рассматриваю только позиции арт-директора или креативного директора от 400 тысяч.",
+          "orderEvidence": "Покрасить деревянный забор на даче, около 20 метров.",
+          "allowed": [
+            "позиции арт-директора",
+            "креативного директора"
+          ],
+          "requested": null,
+          "requestedWithinAllowed": false
+        },
+        "reason": "Профиль содержит опыт в дизайне и покраске стен, что связано с покраской, но профиль ограничивает поиск только позициями арт-директора или креативного директора, что не совпадает с заказом на покраску забора. Однако, навыки покраски и дизайн интерьера близки к требуемой работе, поэтому совместимость возможна, но требуется уточнение."
+      }
+    }
+  ]
+}

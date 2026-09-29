@@ -1,0 +1,1585 @@
+{
+ "BH-022": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.229,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Пианист как музыкант имеет релевантные навыки для звукозаписи в студии, даже если опыт конкретно не указан."
+  }
+ },
+ "BH-021": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.401,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Фотограф имеет смежные навыки с видеосъёмкой свадьбы, что позволяет выполнять или обсуждать данную работу."
+  }
+ },
+ "BH-024": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "scope_mismatch",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.573,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "scope",
+    "profileEvidence": "{\"skill\":\"мобильный разработчик\",\"platform\":\"iOS only\"}",
+    "orderEvidence": "{\"category\":\"разработка Android приложения\"}"
+   },
+   "exclusiveScope": {
+    "profileEvidence": "{\"skill\":\"мобильный разработчик\",\"platform\":\"iOS only\"}",
+    "orderEvidence": "{\"category\":\"разработка Android приложения\"}",
+    "allowed": [
+     "iOS only"
+    ],
+    "requested": null,
+    "requestedWithinAllowed": false
+   },
+   "reason": "Профиль ограничен только платформой iOS, заказ требует разработку Android приложения, что является несовместимым по платформе."
+  }
+ },
+ "BH-023": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.487,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык веб-скрапинга на Python, что релевантно для автоматизации сбора данных с использованием Selenium, так как это инструмент для автоматизации браузера, часто применяемый в веб-скрапинге."
+  }
+ },
+ "BH-025": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.39,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык 'data analyst', что семантически релевантно для задачи статистической обработки с использованием R или Python, так как аналитики данных обычно владеют этими инструментами и методами."
+  }
+ },
+ "BH-027": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "scope_mismatch",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": false,
+  "docSim": 0.486,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "scope",
+    "profileEvidence": "{\"skill\":\"доставка\",\"range\":\"в пределах города\"}",
+    "orderEvidence": "{\"category\":\"межгородская перевозка\",\"distance\":\"500км\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль ограничен доставкой в пределах города, заказ требует межгородскую перевозку на 500 км, что выходит за пределы указанного диапазона."
+  }
+ },
+ "BH-028": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "numeric_mismatch",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": true,
+  "docSim": 0.308,
+  "review": {
+   "compatible": false,
+   "confidence": 0.9,
+   "hardConflict": {
+    "kind": "numeric",
+    "profileEvidence": "{\"skill\":\"курьер\",\"can_lift\":\"15кг\"}",
+    "orderEvidence": "{\"category\":\"доставка мебели\",\"weight\":\"50кг\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Вес мебели 50кг превышает максимальный подъем 15кг курьера, что делает выполнение заказа невозможным."
+  }
+ },
+ "BH-026": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": false,
+  "docSim": 0.272,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит опыт водителя мотоцикла, что связано с навыками вождения и логистикой, релевантно для доставки посылок на автомобиле. Требуется уточнить возможность использования автомобиля."
+  }
+ },
+ "BH-030": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.336,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык водителя такси, что близко и релевантно для работы личного шофёра, так как обе роли связаны с вождением и перевозкой пассажиров."
+  }
+ },
+ "BH-031": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "scope_mismatch",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": false,
+  "docSim": 0.217,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "scope",
+    "profileEvidence": "{\"skill\":\"грузчик\",\"terrain\":\"не работаю на высоте\"}",
+    "orderEvidence": "{\"category\":\"демонтаж кондиционера на крыше\",\"height\":\"25м\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль явно указывает, что человек не работает на высоте, а заказ требует демонтаж на крыше на высоте 25 м, что является конфликтом по области работы."
+  }
+ },
+ "BH-032": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.31,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Таксист может выполнять курьерские услуги, так как обе деятельности связаны с перевозкой и доставкой."
+  }
+ },
+ "BH-029": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.587,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит опыт и навык в логистике и работе на складе, что релевантно для организации логистики средней сложности."
+  }
+ },
+ "BH-033": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.343,
+  "review": {
+   "compatible": true,
+   "confidence": 0.8,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык погрузчика, что связано с физической работой и обращением с оборудованием, что релевантно для монтажа оборудования. Требуется уточнение опыта именно монтажа оборудования."
+  }
+ },
+ "BH-035": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.272,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит опыт в коммерческой авиации, что связано с управлением летательными аппаратами, включая дроны. Требуется уточнение опыта именно с дронами."
+  }
+ },
+ "BH-036": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": false,
+  "docSim": 0.239,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык логиста, что связано с таможенным оформлением, так как логисты часто взаимодействуют с таможенными процедурами и документацией. Отсутствие прямого упоминания опыта таможенного оформления требует уточнения, но связь достаточно близка для совместимости."
+  }
+ },
+ "BH-034": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": false,
+  "docSim": 0.159,
+  "review": {
+   "compatible": true,
+   "confidence": 0.8,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык вывоза мусора с фургоном объёмом 3 куб.м, что связано с заказом на вывоз строительного мусора объёмом 10 куб.м. Объём меньше требуемого, но это не исключает возможность выполнения работы с несколькими рейсами."
+  }
+ },
+ "BH-037": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.53,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык почтовика, что напрямую связано с почтовой рассылкой, даже при низкой сложности."
+  }
+ },
+ "BH-039": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.489,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Навык работы на складе релевантен для учёта товара на складе, что требует связанных знаний и опыта."
+  }
+ },
+ "BH-038": {
+  "decision": "MATCH",
+  "classification": "strong",
+  "reason": "strong",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": true,
+  "docSim": 0.465,
+  "review": {
+   "compatible": true,
+   "confidence": 1,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Водитель с категорией B не соответствует требованию категории D для перевозки пассажиров."
+  }
+ },
+ "BH-040": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": false,
+  "docSim": 0.446,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит опыт и навык работы с железнодорожными путями, что соответствует заказу на проверку путей на железной дороге."
+  }
+ },
+ "BH-001": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.306,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт работы с документооборотом и офисная деятельность связаны с корректировкой договоров, что делает выполнение задачи возможным."
+  }
+ },
+ "BH-002": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "exclusion_mismatch",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.252,
+  "review": {
+   "compatible": false,
+   "confidence": 0.9,
+   "hardConflict": {
+    "kind": "exclusion",
+    "profileEvidence": "constraints: без иностранных языков",
+    "orderEvidence": "requirements: [\"английский\"]"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль указывает отсутствие иностранных языков, а заказ требует знание английского."
+  }
+ },
+ "BH-003": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.408,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": {
+    "profileEvidence": "{\"skill\":\"бухгалтерия\",\"experience\":\"опыт с 1С\",\"constraints\":\"только удалённо\"}",
+    "orderEvidence": "{\"category\":\"выписка счётов\",\"complexity\":\"средняя\",\"format\":\"remote\"}",
+    "allowed": [
+     "удалённо"
+    ],
+    "requested": "remote",
+    "requestedWithinAllowed": true
+   },
+   "reason": "Профиль содержит опыт в бухгалтерии и 1С, что релевантно для выписки счетов. Указано ограничение 'только удалённо', заказ также удалённый, что совпадает."
+  }
+ },
+ "BH-004": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "numeric_mismatch",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": false,
+  "docSim": 0.257,
+  "review": {
+   "compatible": false,
+   "confidence": 0.7,
+   "hardConflict": {
+    "kind": "numeric",
+    "profileEvidence": "{\"skill\":\"печать документов\",\"speed\":\"60 слов/мин\"}",
+    "orderEvidence": "{\"category\":\"стенография совещания\",\"complexity\":\"высокая\",\"speed_req\":\"120 слов/мин\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Навыки печати документов связаны с стенографией совещаний, хотя скорость ниже требуемой; возможна адаптация или подтверждение скорости."
+  }
+ },
+ "BH-006": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.452,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Журналист с 10-летним опытом обладает релевантными навыками для написания пресс-релиза, что является близкой по профилю задачей."
+  }
+ },
+ "BH-007": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.168,
+  "review": {
+   "compatible": true,
+   "confidence": 0.8,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт в кадровой службе релевантен для рекрутинга, хотя нет прямого опыта найма; требуется уточнение роли в рекрутинге."
+  }
+ },
+ "BH-008": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "domain_mismatch",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.137,
+  "review": {
+   "compatible": false,
+   "confidence": 0.9,
+   "hardConflict": {
+    "kind": "domain",
+    "profileEvidence": "{\"skill\":\"учитель истории\"}",
+    "orderEvidence": "{\"category\":\"онлайн-репетитор по математике\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль указывает на учителя истории, а заказ требует онлайн-репетитора по математике, что является разными предметными областями."
+  }
+ },
+ "BH-005": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.4,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт работы с Excel свидетельствует о базовых навыках работы с данными, что релевантно для аналитики данных, даже если инструмент Tableau не указан в профиле. Требуется уточнение опыта с Tableau."
+  }
+ },
+ "BH-010": {
+  "decision": "REJECT",
+  "reason": "moderation_manual_review"
+ },
+ "BH-009": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "location_mismatch",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": false,
+  "docSim": 0.874,
+  "review": {
+   "compatible": false,
+   "confidence": 0.9,
+   "hardConflict": {
+    "kind": "location",
+    "profileEvidence": "{\"skill\":\"налоговый консультант\",\"region\":\"Москва\"}",
+    "orderEvidence": "{\"category\":\"налоговая консультация\",\"region\":\"Казань\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль указывает регион Москва, заказ требует работу в Казани, отсутствует разрешение на удалённую работу или командировки."
+  }
+ },
+ "BH-011": {
+  "decision": "MATCH",
+  "classification": "strong",
+  "reason": "strong",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": true,
+  "docSim": 0.486,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Веб-дизайн и дизайн мобильного приложения тесно связаны, инструменты Figma и Adobe подходят для выполнения задачи."
+  }
+ },
+ "BH-012": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.222,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт во фронтенде с JavaScript и React релевантен для вёрстки лендинга, даже при низкой сложности."
+  }
+ },
+ "BH-013": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.3,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт в data science с навыками Python релевантен для создания скрипта для обработки CSV, даже при низкой сложности."
+  }
+ },
+ "BH-015": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.432,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык белого хакера, что напрямую связано с тестированием безопасности, включая задачи высокой сложности."
+  }
+ },
+ "BH-014": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.463,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт в DevOps с Docker и Kubernetes релевантен для настройки CI/CD, хотя конкретно GitHub Actions не упомянут; требуется уточнение опыта с GitHub Actions."
+  }
+ },
+ "BH-017": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.239,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт блогера с 50k подписчиков в Instagram релевантен для работы по социальной медиа стратегии, так как включает навыки создания и продвижения контента в соцсетях."
+  }
+ },
+ "BH-018": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.374,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "SEO специалист релевантен для задачи повышения рейтинга сайта, так как это напрямую связано с его навыками."
+  }
+ },
+ "BH-016": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "exclusion_mismatch",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": true,
+  "docSim": 0.339,
+  "review": {
+   "compatible": false,
+   "confidence": 0.9,
+   "hardConflict": {
+    "kind": "exclusion",
+    "profileEvidence": "{\"skill\":\"видеомонтажник\",\"software\":\"не работаю с 3D\"}",
+    "orderEvidence": "{\"category\":\"3D-моделирование сцены\",\"complexity\":\"высокая\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль явно указывает на отказ от работы с 3D, тогда как заказ требует 3D-моделирование сцены."
+  }
+ },
+ "BH-020": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.422,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит опыт системного администратора с Linux, что близко к администрированию выделенного сервера Windows; навыки системного администрирования и понимание ОС релевантны, хотя ОС отличается."
+  }
+ },
+ "BH-019": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": false,
+  "docSim": 0.447,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль QA инженера с опытом в Selenium релевантен для ручного тестирования интерфейса, так как навыки тестирования и понимание интерфейсов пересекаются, несмотря на различие в инструментах."
+  }
+ },
+ "BH-042": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": true,
+  "docSim": 0.198,
+  "review": {
+   "compatible": true,
+   "confidence": 0.8,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль плотника с ручным инструментом релевантен работе с электроинструментом, так как навыки работы с инструментами схожи, хотя опыт с конкретными электроинструментами не указан."
+  }
+ },
+ "BH-041": {
+  "decision": "MATCH",
+  "classification": "strong",
+  "reason": "strong",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.193,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Слесарь обладает навыками работы с инструментами, что релевантно для выполнения водопроводных работ средней сложности. Требуется уточнить опыт именно в водопроводных работах."
+  }
+ },
+ "BH-044": {
+  "decision": "MATCH",
+  "classification": "strong",
+  "reason": "strong",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.192,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Каменщик обладает навыками работы с камнем и облицовочными материалами, что близко к облицовке плиткой. Требуется уточнить опыт именно с плиткой."
+  }
+ },
+ "BH-045": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "exclusion_mismatch",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.171,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "exclusion",
+    "profileEvidence": "не работаю с асбестом",
+    "orderEvidence": "покраска асбестоцементных панелей"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль явно указывает на отказ работать с асбестом, а заказ требует покраску асбестоцементных панелей, содержащих асбест."
+  }
+ },
+ "BH-046": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "numeric_mismatch",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": true,
+  "docSim": 0.493,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "numeric",
+    "profileEvidence": "{\"skill\":\"кровельщик\",\"height\":\"до 10м\"}",
+    "orderEvidence": "{\"category\":\"кровельные работы на небоскрёбе\",\"height\":\"40m\"}"
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль ограничен высотой до 10м, а заказ требует работы на высоте 40м, что превышает возможности."
+  }
+ },
+ "BH-043": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": true,
+  "docSim": 0.458,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык электрика с квалификацией, что соответствует проверке электросети в доме."
+  }
+ },
+ "BH-048": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": true,
+  "docSim": 0.344,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит сварщика с сертификатами TIG/MIG, что является смежными навыками для ручной сварки MMA; опыт и навыки сварки релевантны, несмотря на различие в методах."
+  }
+ },
+ "BH-047": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.301,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык штукатура, что напрямую связано с выравниванием стен средней сложности."
+  }
+ },
+ "BH-050": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.168,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль кровельщика релевантен для уборки снега с крыши, так как кровельщик имеет опыт работы с крышей и связанными задачами."
+  }
+ },
+ "BH-049": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.148,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык плотника, что напрямую связано с изготовлением мебели средней сложности. Это предполагает наличие соответствующих умений и опыта."
+  }
+ },
+ "BH-052": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.363,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Монтажник имеет релевантные навыки для установки дверной коробки, что является частью монтажных работ."
+  }
+ },
+ "BH-051": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.44,
+  "review": {
+   "compatible": true,
+   "confidence": 0.8,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль мастера по ремонту с узким спектром навыков может быть релевантен для ремонта бытовой техники средней сложности, требуется уточнение конкретных видов техники."
+  }
+ },
+ "BH-054": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.284,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Лакировщик обладает навыками работы с поверхностями, что близко к полировке пола; требуется уточнить опыт именно с полом."
+  }
+ },
+ "BH-055": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.471,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль специалиста по вентиляции соответствует задаче прочистки воздуховодов, так как это смежные области работы с системами вентиляции."
+  }
+ },
+ "BH-053": {
+  "decision": "MATCH",
+  "classification": "strong",
+  "reason": "strong",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.397,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль строителя с инструментом соответствует выполнению работы средней сложности по постройке кирпичного забора."
+  }
+ },
+ "BH-056": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.194,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт работы с детьми 3-7 лет близок к присмотру за грудничками, навыки ухода и присмотра могут быть перенесены. Требуется уточнить опыт работы с младенцами 0-1 год."
+  }
+ },
+ "BH-058": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "outside_availability",
+  "preReview": "reject/outside_availability",
+  "canonicalHit": true,
+  "docSim": 0.334,
+  "review": null
+ },
+ "BH-059": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.186,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык парикмахера, что напрямую связано с выполнением стрижки, даже низкой сложности."
+  }
+ },
+ "BH-057": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.456,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт сиделки с мобильными пожилыми пациентами частично переносим на уход за лежачими больными, так как навыки ухода и помощи в быту схожи, хотя требуется уточнить опыт работы именно с лежачими пациентами."
+  }
+ },
+ "BH-060": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.38,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Косметолог обладает навыками, связанными с макияжем, что релевантно для макияжа для фотосессии."
+  }
+ },
+ "BH-082": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "scope_mismatch",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.4,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "scope",
+    "profileEvidence": "2D only",
+    "orderEvidence": "3D"
+   },
+   "exclusiveScope": {
+    "profileEvidence": "2D only",
+    "orderEvidence": "3D",
+    "allowed": [
+     "2D"
+    ],
+    "requested": "3D",
+    "requestedWithinAllowed": false
+   },
+   "reason": "Профиль ограничен только 2D анимацией, заказ требует 3D анимацию, что является несовместимым."
+  }
+ },
+ "BH-081": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.326,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Карикатурист обладает навыками рисования портретов, что делает его профиль релевантным для заказа портретного рисунка."
+  }
+ },
+ "BH-083": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.402,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Видеооператор имеет релевантные навыки для съёмки документального фильма, так как это смежная деятельность в области видеосъёмки."
+  }
+ },
+ "BH-085": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.573,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Верстальщик книги имеет навыки, близкие к верстке журнала, что предполагает совместимость по сфере деятельности."
+  }
+ },
+ "BH-086": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.367,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык сапожника, что напрямую связано с ремонтом обуви, поэтому кандидат подходит для выполнения заказа."
+  }
+ },
+ "BH-084": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.444,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль звукооператора напрямую связан с задачей звукозаписи подкаста, что предполагает наличие соответствующих навыков и опыта."
+  }
+ },
+ "BH-087": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.218,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Портной обладает навыками, связанными с пошивом одежды, что релевантно для пошива платья средней сложности."
+  }
+ },
+ "BH-089": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.276,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Навык стеклореза напрямую связан с изготовлением витражей, что требует работы со стеклом и его резки."
+  }
+ },
+ "BH-088": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.258,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль кузнеца напрямую связан с ковкой ограды, что требует соответствующих навыков и опыта."
+  }
+ },
+ "BH-090": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.237,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык керамиста, что напрямую связано с изготовлением фарфоровой посуды, поэтому человек может выполнять или обсуждать данную работу."
+  }
+ },
+ "BH-091": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.504,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Резчик по дереву обладает навыками, которые напрямую связаны с резьбой по мебели, что делает выполнение заказа возможным."
+  }
+ },
+ "BH-092": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "scope_mismatch",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.701,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "scope",
+    "profileEvidence": "{\"skill\":\"ювелир\",\"material\":\"только серебро\"}",
+    "orderEvidence": "{\"category\":\"ювелирные изделия из золота\",\"material\":\"золото\"}"
+   },
+   "exclusiveScope": {
+    "profileEvidence": "{\"skill\":\"ювелир\",\"material\":\"только серебро\"}",
+    "orderEvidence": "{\"category\":\"ювелирные изделия из золота\",\"material\":\"золото\"}",
+    "allowed": [
+     "только серебро"
+    ],
+    "requested": "золото",
+    "requestedWithinAllowed": false
+   },
+   "reason": "Профиль ограничен только серебром, заказ требует работу с золотом, что конфликтует с ограничением материала."
+  }
+ },
+ "BH-093": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": false,
+  "docSim": 0.42,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль часовщика соответствует ремонту механических часов, что является напрямую связанным навыком."
+  }
+ },
+ "BH-094": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.285,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык оптика, что напрямую связано с изготовлением оправы очков, поэтому кандидат может выполнять или обсуждать данную работу."
+  }
+ },
+ "BH-095": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.318,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык цветовода, что напрямую связано с озеленением офиса, даже при низкой сложности работы."
+  }
+ },
+ "BH-097": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.24,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль пастуха напрямую связан с содержанием домашних животных, что делает выполнение заказа семантически релевантным."
+  }
+ },
+ "BH-098": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.219,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык пчеловода, что напрямую связано с задачей сбора мёда. Это обеспечивает релевантность опыта и навыков для выполнения заказа."
+  }
+ },
+ "BH-096": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.268,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Навыки садовника релевантны для выполнения работы по дизайну ландшафта, так как обе области связаны с уходом и оформлением зеленых насаждений."
+  }
+ },
+ "BH-100": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.48,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Охотник с охотничьей лицензией имеет смежные навыки и опыт, которые могут быть применимы для рыбалки в охотничьем хозяйстве. Требуется уточнение опыта именно в рыбалке."
+  }
+ },
+ "BH-099": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.53,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык рыбака, что напрямую связано с рыбным промыслом с использованием сети, поэтому кандидат может выполнять или обсуждать данную работу."
+  }
+ },
+ "BH-061": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.312,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Тренер по фитнесу обладает смежными навыками и опытом, которые позволяют проводить занятия йогой средней сложности."
+  }
+ },
+ "BH-062": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": true,
+  "docSim": 0.62,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль указывает на навык массажиста, что релевантно для выполнения классического массажа средней сложности. Отсутствие сертификата не исключает возможность выполнения работы."
+  }
+ },
+ "BH-063": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.473,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Повар с опытом в итальянской кухне может адаптироваться к приготовлению азиатских блюд, так как обе деятельности связаны с кулинарией и требуют схожих навыков."
+  }
+ },
+ "BH-065": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "scope_mismatch",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.297,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "scope",
+    "profileEvidence": "\"languages\":\"только русский\"",
+    "orderEvidence": "\"language\":\"английский\""
+   },
+   "exclusiveScope": {
+    "profileEvidence": "\"languages\":\"только русский\"",
+    "orderEvidence": "\"language\":\"английский\"",
+    "allowed": [
+     "только русский"
+    ],
+    "requested": "английский",
+    "requestedWithinAllowed": false
+   },
+   "reason": "Профиль ограничен только русским языком, заказ требует английский язык, что несовместимо."
+  }
+ },
+ "BH-064": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.26,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Опыт официанта релевантен для обслуживания банкета средней сложности, так как включает навыки обслуживания гостей и работы с клиентами."
+  }
+ },
+ "BH-066": {
+  "decision": "REJECT",
+  "classification": "reject",
+  "reason": "exclusion_mismatch",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.524,
+  "review": {
+   "compatible": false,
+   "confidence": 1,
+   "hardConflict": {
+    "kind": "exclusion",
+    "profileEvidence": "не работаю с бытовой химией",
+    "orderEvidence": "\"required\":\"бытовая химия\""
+   },
+   "exclusiveScope": null,
+   "reason": "Профиль содержит явный отказ от работы с бытовой химией, которая требуется в заказе."
+  }
+ },
+ "BH-068": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.532,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит опыт репетитора по математике, что напрямую соответствует подготовке к ОГЭ по математике."
+  }
+ },
+ "BH-069": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/physical_compatibility_unverified",
+  "canonicalHit": false,
+  "docSim": 0.266,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык логопеда, что напрямую связано с коррекцией речи у ребёнка 6 лет."
+  }
+ },
+ "BH-070": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.367,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль воспитателя соответствует организации досуга детей, так как включает навыки работы с детьми и проведение мероприятий с низкой сложностью."
+  }
+ },
+ "BH-067": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.522,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык учителя английского, что релевантно для проведения онлайн курса по английскому."
+  }
+ },
+ "BH-071": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.288,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль визажиста соответствует заказу на макияж для свадьбы, что является прямой областью компетенции."
+  }
+ },
+ "BH-073": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.429,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Режиссёр обладает релевантными навыками для съёмки рекламного ролика, что является смежной деятельностью."
+  }
+ },
+ "BH-072": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.402,
+  "review": {
+   "compatible": true,
+   "confidence": 0.8,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль художника с опытом работы в масле может быть релевантен для графического дизайна в цифровом формате, так как навыки композиции и визуального восприятия схожи, хотя требуется уточнение опыта работы с digital medium."
+  }
+ },
+ "BH-075": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.39,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Сценарист обычно обладает навыками написания диалогов, что напрямую связано с заказом на написание диалогов для игры."
+  }
+ },
+ "BH-076": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.238,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык флориста, что напрямую связано с оформлением букета на свадьбу. Это соответствует требуемой деятельности."
+  }
+ },
+ "BH-074": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.231,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Актёр обладает навыками работы с голосом и выражением, что релевантно для озвучивания мультфильма."
+  }
+ },
+ "BH-077": {
+  "decision": "MATCH",
+  "classification": "exact",
+  "reason": "exact",
+  "preReview": "exact/exact",
+  "canonicalHit": true,
+  "docSim": 0.226,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык декоратора, что напрямую связано с оформлением события; это соответствует требуемой категории работы."
+  }
+ },
+ "BH-078": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.183,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Профиль содержит навык диджея с собственным оборудованием, что напрямую связано с музыкальным сопровождением вечеринки."
+  }
+ },
+ "BH-080": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/insufficient_capability_evidence",
+  "canonicalHit": false,
+  "docSim": 0.363,
+  "review": {
+   "compatible": true,
+   "confidence": 0.9,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Иллюстратор имеет прямое отношение к созданию рисунков, включая детские книги, что делает его профиль релевантным для заказа."
+  }
+ },
+ "BH-079": {
+  "decision": "MATCH",
+  "classification": "semantic-only",
+  "reason": "semantic-only",
+  "preReview": "reject/safety_review_required",
+  "canonicalHit": false,
+  "docSim": 0.305,
+  "review": {
+   "compatible": true,
+   "confidence": 0.95,
+   "hardConflict": null,
+   "exclusiveScope": null,
+   "reason": "Композитор имеет прямое отношение к написанию музыки для фильма, что является смежной областью его навыков."
+  }
+ }
+}

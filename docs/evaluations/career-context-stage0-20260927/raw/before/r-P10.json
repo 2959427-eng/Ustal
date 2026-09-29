@@ -1,0 +1,218 @@
+{
+  "runAt": "2026-09-27T03:26:11.815Z",
+  "orders": {
+    "O_office_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «упаковать и перевезти 40 коробок» [moving_full] c=0.95",
+        "resource/required «нужен свой фургон» [van] c=0.99 cap={\"value\":1,\"unit\":null,\"kind\":\"грузовой фургон\"} scope=whole_task mand=true",
+        "resource/compatibility «упаковать и перевезти 40 коробок» [] c=0.95 cap={\"value\":40,\"unit\":\"коробок\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_unload": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Нужен грузчик на 3 часа» [loading] c=1",
+        "capability «разгрузить машину со стройматериалами» [unloading] c=1",
+        "resource/compatibility «Нужен грузчик на 3 часа» [] c=1 cap={\"value\":3,\"unit\":\"часа\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_flat_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «помочь с переездом: перевезти вещи из квартиры в квартиру по городу» [moving_full] c=0.95",
+        "resource/required «нужен грузовой автомобиль» [van] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":\"грузовой автомобиль\"} scope=whole_task mand=true"
+      ]
+    }
+  },
+  "profiles": {
+    "P10:base": {
+      "source": "Помогаю с переездами, работаю грузчиком, есть Газель.",
+      "facts": [
+        "capability «помощь с переездами» [moving_full] c=0.95",
+        "capability «работаю грузчиком» [loading] c=0.95",
+        "resource/available «есть Газель» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    },
+    "P10:career": {
+      "source": "Помогаю с переездами, работаю грузчиком, есть Газель. Раньше был начальником смены на складе, руководил 30 людьми. К переезду в другой город не готов.",
+      "facts": [
+        "capability «помогаю с переездами» [] c=0.95",
+        "capability «работаю грузчиком» [loading] c=0.95",
+        "resource/available «есть Газель» [van] c=0.95 cap={\"value\":1,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «был начальником смены на складе, руководил 30 людьми» [] c=0.7",
+        "exclude/exclusion:whole_task «К переезду в другой город не готов» [moving_full] c=0.95"
+      ]
+    },
+    "P10:cumulative": {
+      "source": "Помогаю с переездами, работаю грузчиком, есть Газель.\nПоследнее изменение пользователя:\nРаньше был начальником смены на складе, руководил 30 людьми. К переезду в другой город не готов.",
+      "facts": [
+        "capability «помогаю с переездами» [] c=0.95",
+        "capability «работаю грузчиком» [loading] c=0.95",
+        "resource/available «есть Газель» [van] c=0.95 cap={\"value\":1,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «был начальником смены на складе» [] c=0.9",
+        "capability «руководил 30 людьми» [] c=0.9",
+        "exclude/exclusion:whole_task «К переезду в другой город не готов» [moving_full] c=0.95"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P10:base",
+      "group": "P10",
+      "variant": "base",
+      "order": "O_flat_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.655,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на опыт работы грузчиком и наличие Газели, что соответствует требованию грузового автомобиля для переезда по городу."
+      }
+    },
+    {
+      "key": "P10:base",
+      "group": "P10",
+      "variant": "base",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "missing_mandatory_resource",
+      "preReview": "reject/missing_mandatory_resource",
+      "canonicalHit": true,
+      "docSim": 0.419,
+      "review": null
+    },
+    {
+      "key": "P10:base",
+      "group": "P10",
+      "variant": "base",
+      "order": "O_unload",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.557,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт работы грузчиком и наличие Газели, что соответствует требованию разгрузки машины со стройматериалами."
+      }
+    },
+    {
+      "key": "P10:career",
+      "group": "P10",
+      "variant": "career",
+      "order": "O_flat_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "explicit_exclusion",
+      "preReview": "reject/explicit_exclusion",
+      "canonicalHit": true,
+      "docSim": 0.569,
+      "review": null
+    },
+    {
+      "key": "P10:career",
+      "group": "P10",
+      "variant": "career",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "explicit_exclusion",
+      "preReview": "reject/explicit_exclusion",
+      "canonicalHit": true,
+      "docSim": 0.402,
+      "review": null
+    },
+    {
+      "key": "P10:career",
+      "group": "P10",
+      "variant": "career",
+      "order": "O_unload",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "location_mismatch",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.501,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "location",
+          "profileEvidence": "К переезду в другой город не готов.",
+          "orderEvidence": "Нужен грузчик на 3 часа: разгрузить машину со стройматериалами."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль явно указывает на отказ от переезда в другой город, заказ требует работу, возможно, в другом городе."
+      }
+    },
+    {
+      "key": "P10:cumulative",
+      "group": "P10",
+      "variant": "cumulative",
+      "order": "O_flat_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "explicit_exclusion",
+      "preReview": "reject/explicit_exclusion",
+      "canonicalHit": true,
+      "docSim": 0.551,
+      "review": null
+    },
+    {
+      "key": "P10:cumulative",
+      "group": "P10",
+      "variant": "cumulative",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "explicit_exclusion",
+      "preReview": "reject/explicit_exclusion",
+      "canonicalHit": true,
+      "docSim": 0.41,
+      "review": null
+    },
+    {
+      "key": "P10:cumulative",
+      "group": "P10",
+      "variant": "cumulative",
+      "order": "O_unload",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.499,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт работы грузчиком и наличие Газели, что релевантно для разгрузки машины со стройматериалами. Отсутствие готовности к переезду в другой город не влияет на выполнение локальной разгрузки."
+      }
+    }
+  ]
+}

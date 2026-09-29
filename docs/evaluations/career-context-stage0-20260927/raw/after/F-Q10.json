@@ -1,0 +1,70 @@
+{
+  "runAt": "2026-09-27T04:15:25.176Z",
+  "orders": {
+    "O_flat_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «помочь с переездом» [moving_full] c=0.95",
+        "capability «перевезти вещи из квартиры в квартиру по городу» [freight_transport] c=0.95",
+        "resource/required «нужен грузовой автомобиль» [van] c=0.95 cap={\"value\":1,\"unit\":\"единица\",\"kind\":\"грузовой автомобиль\"} scope=whole_task mand=true"
+      ]
+    }
+  },
+  "profiles": {
+    "Q10:base": {
+      "source": "Помогаю с переездами, работаю грузчиком, есть Газель.",
+      "facts": [
+        "capability «помогаю с переездами» [moving_full] c=0.95",
+        "capability «работаю грузчиком» [loading] c=0.95",
+        "resource/available «есть Газель» [van] c=0.95 st=physical_resource cap={\"value\":1,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    },
+    "Q10:career": {
+      "source": "Помогаю с переездами, работаю грузчиком, есть Газель. Раньше был начальником смены на складе, руководил 30 людьми. К переезду в другой город не готов.",
+      "facts": [
+        "capability «К переезду в другой город не готов» [] c=0.95 st=career_context",
+        "capability «работаю грузчиком» [loading] c=0.95",
+        "capability «Помогаю с переездами» [moving_full] c=0.95",
+        "resource/available «есть Газель» [van] c=0.95 st=physical_resource cap={\"value\":1,\"unit\":\"единица\",\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «Раньше был начальником смены на складе, руководил 30 людьми» [] c=0.9"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "Q10:base",
+      "group": "Q10",
+      "variant": "base",
+      "order": "O_flat_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "missing_mandatory_resource",
+      "preReview": "reject/missing_mandatory_resource",
+      "canonicalHit": true,
+      "docSim": 0.706,
+      "review": null
+    },
+    {
+      "key": "Q10:career",
+      "group": "Q10",
+      "variant": "career",
+      "order": "O_flat_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.594,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт работы грузчиком и наличие Газели напрямую соответствуют требованию перевозки вещей по городу. Не готовность к переезду в другой город не конфликтует с заказом, который ограничен городом."
+      }
+    }
+  ]
+}

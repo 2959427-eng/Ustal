@@ -6,7 +6,14 @@ import { openAiProviders } from "./providers/openai.js";
 export * from "./types.js";
 export * from "./record-run.js";
 export { mockProviders } from "./providers/mock.js";
-export { openAiProviders, moderateWithRules } from "./providers/openai.js";
+export { openAiProviders, moderateWithRules, PROFILE_FACTS_PROMPT_VERSION } from "./providers/openai.js";
+
+/** Phase 1 profile_facts: pipeline id + the model the configured provider will use (extraction ledger key). */
+export const PROFILE_FACTS_PIPELINE_VERSION = "profile-facts-v1";
+export function profileFactsModel(): string {
+  const env = loadEnv();
+  return env.AI_PROVIDER === "openai" ? env.AI_MODEL_NORMALIZATION : "mock";
+}
 
 /** Единая точка получения провайдеров — читает AI_PROVIDER из конфигурации. */
 export function getAiProviders(): AiProviderBundle {

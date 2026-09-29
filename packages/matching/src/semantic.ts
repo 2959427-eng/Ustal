@@ -90,6 +90,10 @@ export function evaluateSemantic(input: {
   similarCompletedWork?: boolean;
   semanticReview?: { compatible: boolean; confidence: number; reason: string;
     hardConflict?: { kind: string; profileEvidence: string; orderEvidence: string } | null };
+  // The source review was required but failed technically (timeout, provider error, malformed or
+  // ungrounded output). Unknown is not incompatible: review-only gates are waived (fail-open for
+  // recall), but this is never counted as a positive review and never cancels an independent hard rule.
+  reviewUnavailable?: boolean;
 }): SemanticDecision {
   const caps = input.capabilities.filter(
     (f) => f.kind === "capability" && f.confidence >= 0.5,
@@ -110,6 +114,7 @@ export function evaluateSemantic(input: {
     semantic_similarity: input.documentSimilarity,
     availability: "unspecified",
     semantic_review: input.semanticReview ?? null,
+    ...(input.reviewUnavailable ? { review_unverified: true } : {}),
   };
   const reject = (reason: string) => ({
     score: 0,
@@ -241,6 +246,15 @@ export function evaluateSemantic(input: {
   let physicalReviewRequired = false;
   let unknownResourceSemanticHits = 0;
   let unknownResourceUnverified = 0;
+  // Mandatory resource the profile is silent about / capacity not comparable: unverified, not missing.
+  let mandatoryResourceUnverified = 0;
+  let capacityUnverified = 0;
+  // Explicit "нет X" in the profile (resourceRole=missing) matching this requirement by node or meaning.
+  const explicitlyMissing = (req: Fact) => input.capabilities.some((f) =>
+    f.kind === "resource" && f.resourceRole === "missing" &&
+    (intersects(f.nodeIds, req.nodeIds) || related(f.nodeIds, req.nodeIds, input.relations, true) ||
+      cosine(f.embedding, req.embedding) >= SEMANTIC_POLICY.semanticMin));
+  const unit = (u: string | null | undefined) => (u ?? "").trim().toLowerCase().replace(/\.$/u, "");
   for (const req of resourceReqs) {
     if (req.resourceRole === "compatibility") {
       // This is suitability of execution, not proof the executor owns an asset. Workload
@@ -288,8 +302,9 @@ export function evaluateSemantic(input: {
     
     const requiredCapacity = req.resourceCapacity;
     const requiresSpecificKind = requiredCapacity?.kind != null;
+    // The same resource is owned but provably unsuitable (known kind mismatch / known whole-task shortfall).
+    let provenIncompatible = false;
 
-    
     const hit = resources.some((r) => {
       const sameResource =
         intersects(r.nodeIds, req.nodeIds) ||
@@ -302,19 +317,21 @@ export function evaluateSemantic(input: {
       const kindMatches = !requiredCapacity?.kind || !availableCapacity?.kind ||
         requiredCapacity.kind === availableCapacity.kind;
       
-      // Check capacity matching (if specified)
+      // Check capacity matching (if specified). Only known values in the same unit can prove a
+      // shortfall; an unknown value/unit or different units is unverified, not incompatible.
       let capacityMatches = true;
       if (requiredCapacity?.value && requiredCapacity.value > 0) {
-        capacityMatches =
-          availableCapacity?.value != null &&
-          availableCapacity.value >= requiredCapacity.value &&
-          availableCapacity.unit === requiredCapacity.unit;
+        const comparable = availableCapacity?.value != null && unit(availableCapacity.unit) !== "" &&
+          unit(availableCapacity.unit) === unit(requiredCapacity.unit);
+        if (!comparable) capacityUnverified++;
+        else capacityMatches = availableCapacity!.value! >= requiredCapacity.value;
       }
       
       // Objective incompatibility of a known physical resource (e.g. motorcycle vs
       // required automobile, drill vs required perforator) is decided on kind alone and
       // must not be masked by a capacity mismatch evaluated in the same comparison.
       if (!kindMatches && required && requiresSpecificKind && isPhysical && !isExplicitMethod) {
+        provenIncompatible = true;
         return false;  // Hard reject: physical resource specific kind requirement not met
       }
       
@@ -329,6 +346,7 @@ export function evaluateSemantic(input: {
       // inventing a new field. A missing/other constraintScope never triggers this branch.
       if (!capacityMatches) {
         if (required && req.constraintScope === "whole_task") {
+          provenIncompatible = true;
           return false; // hard: this resource cannot satisfy a one-trip/whole-task requirement
         }
         capacityMismatches++;
@@ -341,7 +359,10 @@ export function evaluateSemantic(input: {
     });
     
     if (!hit && required && !provided) {
-      return reject("missing_mandatory_resource");
+      // Hard only when proven: explicit absence or an owned resource that objectively cannot do it.
+      // A profile that simply does not mention the resource is unverified -> the source review decides.
+      if (provenIncompatible || explicitlyMissing(req)) return reject("missing_mandatory_resource");
+      mandatoryResourceUnverified++;
     }
     if (hit) resourceHits++;
   }
@@ -363,14 +384,17 @@ export function evaluateSemantic(input: {
     resource_capacity_mismatches: capacityMismatches,
     unknown_resource_semantic_hits: unknownResourceSemanticHits,
     unknown_resource_unverified: unknownResourceUnverified,
+    mandatory_resource_unverified: mandatoryResourceUnverified,
+    resource_capacity_unverified: capacityUnverified,
     missing_mandatory_capability: missingMandatoryCapability,
     semantic_review: input.semanticReview ?? null,
     physical_review_required: physicalReviewRequired,
     safety_review_required: Boolean(input.reviewRequired || input.riskLevel > 0),
   });
-  if ((physicalReviewRequired || input.reviewRequired || input.riskLevel > 0) &&
-      !reviewedRelevant) {
-    return reject(physicalReviewRequired ? "physical_compatibility_unverified" : "safety_review_required");
+  const resourceReviewRequired = physicalReviewRequired || mandatoryResourceUnverified > 0;
+  if ((resourceReviewRequired || input.reviewRequired || input.riskLevel > 0) &&
+      !reviewedRelevant && !input.reviewUnavailable) {
+    return reject(resourceReviewRequired ? "physical_compatibility_unverified" : "safety_review_required");
   }
   // Source review can discover an explicit scope/refusal lost by broad ontology mapping.
   // A confident negative judgment must beat even an exact canonical match.
@@ -383,16 +407,17 @@ export function evaluateSemantic(input: {
     (exactCoverage > 0 || relatedCoverage > 0);
   if (
     input.reviewRequired &&
-    !reviewedRelevant
+    !reviewedRelevant && !input.reviewUnavailable
   )
     return reject("insufficient_capability_evidence");
   if (
     weakOverlap &&
-    !reviewedRelevant
+    !reviewedRelevant && !input.reviewUnavailable
   )
     return reject("insufficient_capability_evidence");
   let classification: "exact" | "strong" | "probable" | "semantic-only";
-  if (exactCoverage === 1) classification = "exact";
+  // An unverified mandatory resource never yields "exact" ("у вас есть подходящие навыки" would overstate).
+  if (exactCoverage === 1 && mandatoryResourceUnverified === 0) classification = "exact";
   else if (exactCoverage + relatedCoverage >= 0.5) classification = "strong";
   else if (exactCoverage > 0 || relatedCoverage > 0)
     classification = "probable";
@@ -407,7 +432,7 @@ export function evaluateSemantic(input: {
     // not a "required" one, so it never increments resourceHits at all: if physicalReviewRequired
     // was true, reaching this point already proves semanticReview passed the earlier hard gate
     // above, so it is a safe, equally-narrow door in alongside resourceHits.
-    (caps.length || resourceHits > 0 || physicalReviewRequired || input.requirements.some(r => r.kind === "resource"))
+    (caps.length || resourceHits > 0 || resourceReviewRequired || input.requirements.some(r => r.kind === "resource"))
   )
     classification = "semantic-only";
   else return reject("insufficient_capability_evidence");

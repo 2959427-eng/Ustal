@@ -12,8 +12,10 @@ it("positive review resolves weak ontology overlap",()=>{
 it("positive review resolves qualification and physical review without rechecking certainty",()=>{
   expect(run([f("capability","a")],[f("capability","a"),f("resource","workload",{resourceRole:"compatibility"})],{riskLevel:1,reviewRequired:true,regulated:true}).matchType).toBe("exact");
 });
-it("positive review never overrides a missing mandatory owned resource",()=>{
-  expect(run([f("capability","a")],[f("capability","a"),f("resource","vehicle",{mandatory:true,resourceRole:"required"})]).reason).toBe("missing_mandatory_resource");
+// 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
+it("positive review resolves an unverified mandatory resource but never overrides an explicitly missing one",()=>{
+  expect(run([f("capability","a")],[f("capability","a"),f("resource","vehicle",{mandatory:true,resourceRole:"required"})]).matchType).toBe("probable");
+  expect(run([f("capability","a"),f("resource","vehicle",{resourceRole:"missing"})],[f("capability","a"),f("resource","vehicle",{mandatory:true,resourceRole:"required"})]).reason).toBe("missing_mandatory_resource");
 });
 it("positive review never overrides a targeted refusal or time restriction",()=>{
   expect(run([f("capability","a"),f("exclude","a",{constraintScope:"whole_task"})],[f("capability","a")]).reason).toBe("explicit_exclusion");

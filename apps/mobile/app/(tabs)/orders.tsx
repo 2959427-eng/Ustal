@@ -10,7 +10,7 @@ import { cancelOrder } from "../../src/api/orders";
 import { HomeHeader } from "../../src/components/HomeHeader";
 import { ArchiveLink } from "../../src/components/ArchiveLink";
 import { getFeed } from "../../src/api/feed";
-import { getMyOrders, type MyOrderItem } from "../../src/api/my";
+import { myKeys, getMyOrders, type MyOrderItem } from "../../src/api/my";
 import type { OrderStatus } from "../../src/api/orders";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
@@ -42,7 +42,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 export default function OrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data, isLoading, isError, isRefetching, refetch } = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders() });
+  const { data, isLoading, isError, isRefetching, refetch } = useQuery({ queryKey: myKeys.orders(), queryFn: () => getMyOrders() });
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
   const { data: feed } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
 

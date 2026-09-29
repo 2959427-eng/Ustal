@@ -1,3 +1,4 @@
+import { consumeOrderRoute } from "../../src/notifications/navigation";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useEffect, useState } from "react";
 import { Text, TextInput, StyleSheet, ScrollView, View, Pressable } from "react-native";
@@ -88,7 +89,7 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       await register({ name: name.trim(), phone, password, cityId });
-      router.replace("/(tabs)");
+      router.replace(consumeOrderRoute() ?? "/(tabs)");
       void ensurePushRegistered();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось завершить регистрацию");

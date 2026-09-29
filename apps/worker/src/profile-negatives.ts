@@ -130,3 +130,18 @@ export function planNegativeOverrides(
 export function supersededNodeIds(currentFacts: ProfileFactLike[], priorFacts: ProfileFactLike[]): Set<string> {
   return planNegativeOverrides(currentFacts, priorFacts).excludedNodeIds;
 }
+
+/**
+ * Карьерный контекст профиля (собственный поиск работы: желаемая должность/зарплата, «работу активно
+ * не ищу», готовность к релокации/командировкам) не ограничивает сервисные заказы. Факт-ограничение
+ * (exclude / availability / constraintType != none), который нормализация пометила subjectType=
+ * career_context, отбрасывается до ontology mapping: иначе «не готов к переезду в другой город»
+ * превращался в отказ от узла «переезд» и отсекал заказы на переезд. Позитивные факты не трогаем;
+ * исходный текст остаётся в sourceText и доступен source review. Заказы не затрагиваются.
+ */
+export function dropCareerContext<T extends { subjectType?: string; kind: string; constraintType: string }>(kind: "profile" | "order", facts: T[]): T[] {
+  return kind === "profile"
+    ? facts.filter((f) => !(f.subjectType === "career_context" &&
+        (f.kind === "exclude" || f.kind === "availability" || f.constraintType !== "none")))
+    : facts;
+}

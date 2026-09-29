@@ -63,6 +63,13 @@ export function applyReviewConstraints(review: SemanticReview, sources: Sources)
     }
   }
   const scope = review.exclusiveScope;
+  // The same model sometimes returns a scope hardConflict while its own exclusiveScope inventory says the
+  // order does not state that dimension (requested=null) or is within the allowed scope - e.g. a job-search
+  // "рассматриваю только предложения в машиностроении" vs an assembly order. The inventory is the checked
+  // evidence; a scope conflict it does not confirm is unproven.
+  if (conflict?.kind === "scope" && scope && (scope.requested === null || scope.requestedWithinAllowed)) {
+    conflict = null; suppressed = true;
+  }
   if (scope) {
     grounded(scope);
     if (!scope.allowed.every(value => normalized(scope.profileEvidence).includes(normalized(value))) ||
@@ -86,4 +93,16 @@ export function applyReviewConstraints(review: SemanticReview, sources: Sources)
       "compatible=false requires a grounded hardConflict (use kind=domain for an unrelated domain)");
   }
   return { ...review, hardConflict: conflict, compatible: conflict ? false : review.compatible };
+}
+
+/**
+ * Bug 1 (2026-09-27): an explicit refusal acts only on its own target. The broad review sometimes returns an
+ * exclusion hardConflict for an order that does not request the refused thing (live: "Не выполняю перевозки."
+ * vs furniture assembly, while its own reason said there was no conflict). A focused verification answers
+ * only "does this order request / require the refused thing?". involves=false -> the conflict is unproven.
+ * No verdict (verification failed technically) -> the successful review's conflict stands.
+ */
+export function applyRefusalVerification(review: SemanticReview, verdict: { involves: boolean } | null): SemanticReview {
+  if (review.hardConflict?.kind !== "exclusion" || !verdict || verdict.involves) return review;
+  return { ...review, hardConflict: null, compatible: true };
 }

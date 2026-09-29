@@ -1,0 +1,74 @@
+{
+  "runAt": "2026-09-27T03:20:13.415Z",
+  "orders": {
+    "O_socket": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «отремонтировать розетку» [electrical_work] c=0.95",
+        "capability «заменить выключатель» [electrical_work] c=0.95"
+      ]
+    }
+  },
+  "profiles": {
+    "P02:base": {
+      "source": "Электрик, 10 лет опыта, делаю проводку, меняю розетки, собираю щитки.",
+      "facts": [
+        "capability «Электрик» [electrical_work] c=0.95",
+        "capability «делаю проводку» [electrical_work] c=0.9",
+        "capability «меняю розетки» [electrical_work] c=0.9",
+        "capability «собираю щитки» [electrical_work] c=0.9"
+      ]
+    },
+    "P02:career": {
+      "source": "Электрик, 10 лет опыта, делаю проводку, меняю розетки, собираю щитки. Сейчас работаю главным энергетиком на заводе, руковожу отделом из 25 человек. Высшее образование, МЭИ. Работу активно не ищу, но интересные предложения рассмотрю.",
+      "facts": [
+        "capability «Электрик с 10-летним опытом, делаю проводку, меняю розетки, собираю щитки» [electrical_work] c=0.95",
+        "capability «Работаю главным энергетиком на заводе, руковожу отделом из 25 человек» [electrical_work] c=0.9",
+        "capability «Высшее образование, МЭИ» [] c=0.85"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P02:base",
+      "group": "P02",
+      "variant": "base",
+      "order": "O_socket",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.517,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль электрика с опытом работы по проводке и замене розеток напрямую соответствует заказу на ремонт розетки и замену выключателя в квартире."
+      }
+    },
+    {
+      "key": "P02:career",
+      "group": "P02",
+      "variant": "career",
+      "order": "O_socket",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.376,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль электрика с опытом замены розеток и работы с электропроводкой напрямую соответствует заказу на ремонт розетки и замену выключателя в квартире."
+      }
+    }
+  ]
+}

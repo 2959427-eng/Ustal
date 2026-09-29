@@ -1,3 +1,4 @@
+import { getOrderView } from "../../src/api/order-view";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { OrderHeaderBlock } from "../../src/components/OrderHeaderBlock";
 import { useEffect, useState } from "react";
@@ -24,7 +25,7 @@ import {
   reportAssignmentIssue,
 } from "../../src/api/assignments";
 import { RatingCard } from "../../src/components/RatingCard";
-import { getMyResponses } from "../../src/api/my";
+import { getMyResponse, myKeys } from "../../src/api/my";
 import type { MyResponseItem } from "../../src/api/my";
 import { blockUser } from "../../src/api/blocks";
 import { getOrderAuthor } from "../../src/api/users";
@@ -59,7 +60,7 @@ function formatPrice(priceMinor: number | null | undefined): string {
  * Не-автор (кандидат/исполнитель): GET /orders/{id} отдаёт 404 (сервер
  * скрывает чужие заказы, не 403 — см. apps/api/src/routes/orders.ts) — это
  * штатный, а не ошибочный путь, поэтому экран переключается на вид
- * кандидата: карточка заказа берётся из параметров, переданных из ленты
+ * кандидата: карточка заказа загружается по orderId из авторизованного API вместо параметров ленты
  * (#16), а собственный отклик (или его отсутствие) — из GET /my/responses
  * (тот же список, что и на вкладке «Отклики»). Форма отклика (#17),
  * раскрытие контакта автора после выбора (#21) и отзыв (#25) — тоже здесь.
@@ -70,17 +71,7 @@ function formatPrice(priceMinor: number | null | undefined): string {
  * автора заказа (вид кандидата).
  */
 export default function OrderDetailScreen() {
-  const { id, title, description, cityName, priceMinor, matchType, explanation, photoMediaIds, acceptsPriceOffers } = useLocalSearchParams<{
-    id: string;
-    title?: string;
-    description?: string;
-    cityName?: string;
-    priceMinor?: string;
-    matchType?: string;
-    explanation?: string;
-    photoMediaIds?: string;
-    acceptsPriceOffers?: string;
-  }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -118,21 +109,8 @@ export default function OrderDetailScreen() {
 
       {isNotAuthor && <AuthorHeader orderId={id} />}
 
-      {isNotAuthor && (
-        <CandidateView
-          orderId={id}
-          fallback={{
-            title: title ?? null,
-            description: description ?? null,
-            cityName: cityName ?? null,
-            priceMinor: priceMinor ? Number(priceMinor) : null,
-            matchType: (matchType as "exact" | "probable" | undefined) || undefined,
-            explanation: explanation || undefined,
-            photoMediaIds: photoMediaIds ? photoMediaIds.split(",").filter(Boolean) : [],
-            acceptsPriceOffers: acceptsPriceOffers === "1",
-          }}
-        />
-      )}
+      {isNotAuthor && <CandidateView key={id} orderId={id} />}
+
     </ScrollView>
     </KeyboardAvoid>
   );
@@ -175,6 +153,7 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["order-candidates", orderId] });
+    void queryClient.invalidateQueries({ queryKey: ["order-view", orderId] });
     void queryClient.invalidateQueries({ queryKey: ["order", orderId] });
     void queryClient.invalidateQueries({ queryKey: ["my-orders"] });
     void queryClient.invalidateQueries({ queryKey: ["order-rating", orderId] });
@@ -516,43 +495,35 @@ function StatusBadge({ label }: { label: string }) {
 // Кандидат / исполнитель
 // ---------------------------------------------------------------------------
 
-interface FeedFallback {
-  title: string | null;
-  description: string | null;
-  cityName: string | null;
-  priceMinor: number | null;
-  matchType?: "exact" | "probable";
-  explanation?: string;
-  photoMediaIds?: string[];
-  acceptsPriceOffers?: boolean;
-}
-
-function CandidateView({ orderId, fallback }: { orderId: string; fallback: FeedFallback }) {
+function CandidateView({ orderId }: { orderId: string }) {
   const queryClient = useQueryClient();
-  const responsesQuery = useQuery({
-    queryKey: ["my-responses"],
-    queryFn: () => getMyResponses({ limit: 50 }),
-  });
-
-  const myResponse: MyResponseItem | undefined = responsesQuery.data?.items.find((r) => r.orderId === orderId);
+  const detailQuery = useQuery({ queryKey: ["order-view", orderId], queryFn: () => getOrderView(orderId), refetchInterval: 10_000 });
+  const responsesQuery = useQuery({ queryKey: myKeys.response(orderId), queryFn: () => getMyResponse(orderId), refetchInterval: 10_000 });
+  const myResponse: MyResponseItem | null | undefined = responsesQuery.data;
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["my-responses"] });
     void queryClient.invalidateQueries({ queryKey: ["order-candidates", orderId] });
+    void queryClient.invalidateQueries({ queryKey: ["order-view", orderId] });
   };
 
-  if (responsesQuery.isLoading) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (responsesQuery.isLoading || detailQuery.isLoading) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (responsesQuery.isError || detailQuery.isError || !detailQuery.data) return <View style={styles.errorBox}>
+    <Text style={styles.error}>Не удалось загрузить заказ или отклик. Заказ может быть недоступен.</Text>
+    <PrimaryButton label="Повторить" onPress={() => { void detailQuery.refetch(); void responsesQuery.refetch(); }} />
+  </View>;
+  const detail = detailQuery.data;
 
   return (
     <View style={styles.gap}>
       <OrderHeaderBlock
-        title={fallback.title ?? myResponse?.orderTitle ?? null}
-        description={fallback.description}
-        photoMediaIds={fallback.photoMediaIds}
+        title={detail.title ?? myResponse?.orderTitle ?? null}
+        description={detail.description}
+        photoMediaIds={detail.photoMediaIds}
       />
       <View style={styles.metaRow}>
-        <Text style={styles.price}>{formatPrice(fallback.priceMinor)}</Text>
-        {fallback.cityName && <Text style={styles.hint}>{fallback.cityName}</Text>}
+        <Text style={styles.price}>{formatPrice(detail.priceMinor)}</Text>
+        {detail.cityName && <Text style={styles.hint}>{detail.cityName}</Text>}
       </View>
       <ReportOrderLink orderId={orderId} />
 
@@ -561,10 +532,10 @@ function CandidateView({ orderId, fallback }: { orderId: string; fallback: FeedF
       {myResponse?.status === "withdrawn" && !myResponse.assignmentStatus && (
         <Text style={styles.hint}>Вы отозвали отклик. Можно откликнуться снова.</Text>
       )}
-      {(!myResponse || (myResponse.status === "withdrawn" && !myResponse.assignmentStatus)) && <ResponseForm orderId={orderId} onCreated={invalidate} acceptsPriceOffers={!!fallback.acceptsPriceOffers} />}
+      {detail.canRespond && (!myResponse || (myResponse.status === "withdrawn" && !myResponse.assignmentStatus)) && <ResponseForm orderId={orderId} onCreated={invalidate} acceptsPriceOffers={!!detail.acceptsPriceOffers} />}
 
       {myResponse && myResponse.status !== "withdrawn" && (
-        <MyResponsePanel orderId={orderId} response={myResponse} onChanged={invalidate} acceptsPriceOffers={!!fallback.acceptsPriceOffers} />
+        <MyResponsePanel orderId={orderId} response={myResponse} onChanged={invalidate} acceptsPriceOffers={!!detail.acceptsPriceOffers} />
       )}
     </View>
   );

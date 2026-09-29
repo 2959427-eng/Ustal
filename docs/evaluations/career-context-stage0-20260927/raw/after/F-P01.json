@@ -1,0 +1,395 @@
+{
+  "runAt": "2026-09-27T04:12:36.438Z",
+  "orders": {
+    "O_office_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «упаковать 40 коробок» [moving_full] c=0.95",
+        "capability «перевезти 40 коробок» [freight_transport] c=0.95",
+        "resource/required «нужен свой фургон» [van] c=0.99 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"грузовой фургон\"} scope=whole_task mand=true",
+        "resource/compatibility «упаковать 40 коробок» [] c=0.95 cap={\"value\":40,\"unit\":\"коробок\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_truck_c": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «водитель с правами категории C» [driving] c=0.95 st=qualification",
+        "capability «перевезти стройматериалы 4 тонны» [freight_transport] c=0.9",
+        "resource/compatibility «на грузовике заказчика» [vehicle_use] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"грузовик\"} scope=whole_task mand=false"
+      ]
+    },
+    "O_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability/required «перевезти диван и холодильник на Газели» [freight_transport] c=0.95",
+        "capability «погрузка на месте» [loading] c=0.9",
+        "resource/compatibility «на Газели» [van] c=0.95 st=physical_resource cap={\"value\":1,\"unit\":\"единица\",\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    },
+    "O_mount": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Собрать кухонные шкафы» [assembly] c=0.95",
+        "capability «Повесить кухонные шкафы» [installation] c=0.95",
+        "capability «Просверлить отверстия в бетонной стене» [concrete_work] c=0.9",
+        "resource/required «нужен свой инструмент» [tool_use] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"инструмент\"} scope=whole_task mand=true"
+      ]
+    },
+    "O_nails": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Сделать маникюр на дому» [manicure] c=1"
+      ]
+    }
+  },
+  "profiles": {
+    "P01:base": {
+      "source": "Есть Газель, права B/C, умею работать инструментом.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=fact mand=false",
+        "capability «права B/C» [driving] c=0.95 st=qualification",
+        "resource «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=fact mand=false"
+      ]
+    },
+    "P01:career": {
+      "source": "Бывший директор производства, управлял 300 сотрудниками. Есть Газель, права B/C, умею работать инструментом. Рассматриваю руководящие позиции от 500 тыс.",
+      "facts": [
+        "capability «Рассматриваю руководящие позиции от 500 тыс.» [] c=0.95 st=career_context",
+        "resource/available «Есть Газель» [van] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «права B/C» [driving] c=0.95 st=qualification",
+        "resource «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=whole_task mand=false",
+        "capability «Бывший директор производства» [] c=0.9"
+      ]
+    },
+    "P01:cumulative": {
+      "source": "Есть Газель, права B/C, умею работать инструментом.\nПоследнее изменение пользователя:\nБывший директор производства, управлял 300 сотрудниками. Рассматриваю руководящие позиции от 500 тыс.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=fact mand=false",
+        "capability «права B/C» [driving] c=0.95 st=qualification",
+        "resource/available «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=fact mand=false",
+        "capability «бывший директор производства» [] c=0.9",
+        "capability «управлял 300 сотрудниками» [] c=0.9",
+        "capability «Рассматриваю руководящие позиции от 500 тыс» [] c=0.95 st=career_context"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P01:base",
+      "group": "P01",
+      "variant": "base",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.131,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит Газель и права категории B/C, что соответствует перевозке мебели и техники. Умение работать инструментом помогает при погрузке. Нет конфликтов по локации или ресурсам."
+      }
+    },
+    {
+      "key": "P01:base",
+      "group": "P01",
+      "variant": "base",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.11,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на наличие автомобиля Газель, водительских прав категорий B и C, а также умение работать с инструментом, что соответствует требованиям заказа по сборке и монтажу кухонных шкафов с использованием собственного инструмента."
+      }
+    },
+    {
+      "key": "P01:base",
+      "group": "P01",
+      "variant": "base",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.369,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит права категории C и опыт работы с инструментом, что релевантно для перевозки стройматериалов грузовиком. Наличие Газели и прав B/C подтверждает способность управлять грузовиком категории C."
+      }
+    },
+    {
+      "key": "P01:base",
+      "group": "P01",
+      "variant": "base",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.135,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит Газель и права B/C, что соответствует требованию собственного фургона для перевозки коробок. Навыки работы с инструментом также полезны для упаковки."
+      }
+    },
+    {
+      "key": "P01:base",
+      "group": "P01",
+      "variant": "base",
+      "order": "O_nails",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "domain_mismatch",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": false,
+      "docSim": 0.097,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "domain",
+          "profileEvidence": "Есть Газель, права B/C, умею работать инструментом.",
+          "orderEvidence": "Сделать маникюр на дому."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль описывает навыки вождения и работы с инструментом, что не связано с выполнением маникюра, требующего специальных косметических навыков."
+      }
+    },
+    {
+      "key": "P01:career",
+      "group": "P01",
+      "variant": "career",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.216,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт управления и наличие Газели с правами B/C, что соответствует перевозке мебели и техники. Навыки работы с инструментом и опыт руководства не противоречат задаче. Требуется уточнить детали погрузки, но в целом профиль релевантен."
+      }
+    },
+    {
+      "key": "P01:career",
+      "group": "P01",
+      "variant": "career",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.198,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт управления производством и наличие навыков работы с инструментом, а также собственный инструмент (Газель и права B/C) позволяют выполнять сборку и монтаж кухонных шкафов, включая сверление отверстий в бетонной стене."
+      }
+    },
+    {
+      "key": "P01:career",
+      "group": "P01",
+      "variant": "career",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.408,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт управления и наличие водительских прав категории C, а также умение работать с инструментом, что релевантно для перевозки стройматериалов грузовиком. Необходимость использовать грузовик заказчика не противоречит профилю."
+      }
+    },
+    {
+      "key": "P01:career",
+      "group": "P01",
+      "variant": "career",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.24,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт управления производством и наличие Газели с правами B/C позволяют выполнить переезд офиса с упаковкой и перевозкой коробок."
+      }
+    },
+    {
+      "key": "P01:career",
+      "group": "P01",
+      "variant": "career",
+      "order": "O_nails",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "domain_mismatch",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": false,
+      "docSim": 0.127,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "domain",
+          "profileEvidence": "Бывший директор производства, управлял 300 сотрудниками. Есть Газель, права B/C, умею работать инструментом.",
+          "orderEvidence": "Сделать маникюр на дому."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль описывает управленческий опыт и навыки работы с инструментами, но не связан с косметическими услугами, такими как маникюр."
+      }
+    },
+    {
+      "key": "P01:cumulative",
+      "group": "P01",
+      "variant": "cumulative",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.21,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт управления и наличие Газели с правами B/C, что соответствует перевозке мебели и техники. Навыки работы с инструментом также полезны для погрузки."
+      }
+    },
+    {
+      "key": "P01:cumulative",
+      "group": "P01",
+      "variant": "cumulative",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.205,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт управления производством и умение работать с инструментом, а также наличие автомобиля Газель и водительских прав категорий B/C, что косвенно подтверждает способность выполнять физическую работу и использовать инструмент. Хотя нет прямого упоминания о сборке мебели или сверлении бетона, эти навыки могут быть связаны с опытом работы с инструментом. Требование иметь свой инструмент совпадает с профилем, где указано умение работать инструментом, но не уточнено наличие конкретного инструмента, что стоит подтвердить."
+      }
+    },
+    {
+      "key": "P01:cumulative",
+      "group": "P01",
+      "variant": "cumulative",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.448,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт управления производством и наличие водительских прав категории B/C, а также умение работать с инструментом. Требуется водитель с категорией C для перевозки стройматериалов на грузовике заказчика. Профиль соответствует требованиям по категории прав и навыкам вождения грузовика, что делает выполнение заказа возможным."
+      }
+    },
+    {
+      "key": "P01:cumulative",
+      "group": "P01",
+      "variant": "cumulative",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.248,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт управления и наличие Газели с правами B/C, что соответствует требованию перевозки и упаковки коробок для переезда офиса."
+      }
+    },
+    {
+      "key": "P01:cumulative",
+      "group": "P01",
+      "variant": "cumulative",
+      "order": "O_nails",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "domain_mismatch",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": false,
+      "docSim": 0.141,
+      "review": {
+        "compatible": false,
+        "confidence": 1,
+        "hardConflict": {
+          "kind": "domain",
+          "profileEvidence": "Есть Газель, права B/C, умею работать инструментом.",
+          "orderEvidence": "Сделать маникюр на дому."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль связан с управлением и вождением, не имеет отношения к маникюру."
+      }
+    }
+  ]
+}

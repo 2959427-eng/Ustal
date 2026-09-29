@@ -1,0 +1,79 @@
+{
+  "runAt": "2026-09-27T03:23:42.610Z",
+  "orders": {
+    "O_truck_c": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «водитель с правами категории C» [driving] c=0.95",
+        "capability «перевезти стройматериалы» [freight_transport] c=0.9",
+        "resource/compatibility «стройматериалы 4 тонны» [] c=0.9 cap={\"value\":4,\"unit\":\"тонны\",\"kind\":null} scope=whole_task mand=false",
+        "resource/compatibility «грузовик заказчика» [vehicle_use] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"грузовик\"} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P08:base": {
+      "source": "Водитель, права категорий B, C, E, стаж 15 лет, есть легковой автомобиль.",
+      "facts": [
+        "capability «права категорий B, C, E» [driving] c=0.95",
+        "capability «стаж 15 лет» [driving] c=0.9",
+        "capability «Водитель» [driving] c=0.9",
+        "resource/available «есть легковой автомобиль» [car] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"легковой автомобиль\"} scope=whole_task mand=false"
+      ]
+    },
+    "P08:career": {
+      "source": "Водитель, права категорий B, C, E, стаж 15 лет, есть легковой автомобиль. Был начальником автоколонны на 80 машин, руководил 100 водителями. Хочу работать руководителем транспортного отдела, зарплата от 250 тысяч. Не готов к переезду в другой город.",
+      "facts": [
+        "capability «права категорий B, C, E, стаж 15 лет» [driving] c=0.95",
+        "capability «Водитель» [driving] c=0.9",
+        "capability «Был начальником автоколонны на 80 машин, руководил 100 водителями» [business_services] c=0.9",
+        "capability «Хочу работать руководителем транспортного отдела» [business_services] c=0.85",
+        "resource/available «есть легковой автомобиль» [car] c=0.95 cap={\"value\":1,\"unit\":\"unit\",\"kind\":\"легковой автомобиль\"} scope=whole_task mand=false",
+        "exclude/exclusion:whole_task «Не готов к переезду в другой город» [] c=0.95"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P08:base",
+      "group": "P08",
+      "variant": "base",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.56,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения и права категории C, что соответствует требованию перевозки стройматериалов грузовиком. Наличие легкового автомобиля не исключает возможность управления грузовиком заказчика."
+      }
+    },
+    {
+      "key": "P08:career",
+      "group": "P08",
+      "variant": "career",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.5,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения с категорией C и опыт руководства автоколонной, что релевантно для перевозки стройматериалов грузовиком по городу."
+      }
+    }
+  ]
+}

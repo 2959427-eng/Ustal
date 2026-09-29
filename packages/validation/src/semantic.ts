@@ -5,7 +5,7 @@ export const semanticFactSchema = z.object({
   kind: z.enum(["capability", "resource", "exclude", "availability"]),
   // Normalization-only discriminator; prevents ontology resource nodes from converting
   // software proficiency or a credential into ownership/capacity. Not a DB column.
-  subjectType: z.enum(["unspecified", "software_skill", "qualification", "physical_resource"]).optional(),
+  subjectType: z.enum(["unspecified", "software_skill", "qualification", "physical_resource", "career_context"]).optional(),
   constraintType: z.enum(["none", "availability", "exclusion", "scope"]),
   constraintScope: z.enum(["whole_task", "fact", "optional_component"]),
   resourceRole: z.enum(["none", "available", "required", "provided_by_customer", "missing", "compatibility"]),
@@ -67,6 +67,8 @@ export const semanticReviewSchema = z.object({
   reason: z.string().min(1).max(600),
 });
 export type SemanticReview = z.infer<typeof semanticReviewSchema>;
+// Focused check of an exclusion hardConflict: does the order request / require the refused thing?
+export const refusalVerdictSchema = z.object({ involves: z.boolean(), reason: z.string().max(400) });
 export interface OntologyOption {
   canonicalKey: string;
   name: string;

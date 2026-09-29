@@ -23,10 +23,12 @@ beforeEach(() => {
 });
 
 it("BH-066 pattern: evidence repair names the failing field and quote, and the corrected quote is accepted", async () => {
-  create.mockResolvedValueOnce(review("требуется бытовая химия")).mockResolvedValueOnce(review("бытовая химия"));
+  create.mockResolvedValueOnce(review("требуется бытовая химия")).mockResolvedValueOnce(review("бытовая химия"))
+    // 2026-09-27: an exclusion conflict is followed by the focused refusal-target check.
+    .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ involves: true, reason: "уборка с химией" }) } }], usage: { prompt_tokens: 1, completion_tokens: 1 } });
   const { openAiExtraction } = await import("./openai.js");
   const result = await openAiExtraction.reviewSemantic({ profile: [profile], order: [order] } as never, {} as never);
-  expect(create).toHaveBeenCalledTimes(2);
+  expect(create).toHaveBeenCalledTimes(3);
   const feedback = create.mock.calls[1]![0].messages.at(-1).content as string;
   expect(feedback).toContain('"orderEvidence"');
   expect(feedback).toContain('"требуется бытовая химия"');

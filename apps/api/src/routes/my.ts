@@ -32,7 +32,7 @@ export default async function myRoutes(app: FastifyInstance) {
     const rows = await db.query.orders.findMany({
       // Удалённые (cancelled) заказы в списке не показываем; в БД остаются для истории.
       where: and(eq(schema.orders.authorId, request.userId), ne(schema.orders.status, "cancelled")),
-      orderBy: (t, { desc: d }) => d(t.createdAt),
+      orderBy: (t, { desc: d }) => [d(t.createdAt), d(t.id)],
       limit,
       offset,
     });
@@ -77,11 +77,12 @@ export default async function myRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/my/responses", { preHandler: app.authenticate }, async (request, reply) => {
+  app.get("/my/responses", { preHandler: app.authenticate, schema: { querystring: { type: "object", properties: { orderId: { type: "string", format: "uuid" }, limit: { type: "integer", minimum: 1 }, offset: { type: "integer", minimum: 0 } } } } }, async (request, reply) => {
     const { limit, offset } = pagination(request.query);
+    const { orderId } = request.query as { orderId?: string };
     const rows = await db.query.responses.findMany({
-      where: eq(schema.responses.executorId, request.userId),
-      orderBy: (t, { desc: d }) => d(t.createdAt),
+      where: and(eq(schema.responses.executorId, request.userId), orderId ? eq(schema.responses.orderId, orderId) : undefined),
+      orderBy: (t, { desc: d }) => [d(t.createdAt), d(t.id)],
       limit,
       offset,
     });

@@ -17,6 +17,10 @@ export const JOB_TYPES = {
   PROFILE_TRANSCRIBE: "profile_transcribe",
   ORDER_TRANSCRIBE: "order_transcribe",
   PROFILE_EXTRACTION: "profile_extraction",
+  // Phase 1 profile_facts (SHADOW): separate per-input fact extraction, independent of PROFILE_EXTRACTION.
+  PROFILE_FACTS_EXTRACTION: "profile_facts_extraction",
+  // Source revoke (2026-09-28): rebuild the AI profile from the owner's remaining (non-revoked) messages.
+  PROFILE_REBUILD: "profile_rebuild",
   ORDER_EXTRACTION: "order_extraction",
   MODERATION: "moderation",
   EMBEDDING: "embedding",

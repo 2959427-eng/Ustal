@@ -1,0 +1,390 @@
+{
+  "runAt": "2026-09-27T03:26:17.332Z",
+  "orders": {
+    "O_mount": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Собрать и повесить кухонные шкафы» [assembly] c=0.95",
+        "capability «просверлить отверстия в бетонной стене» [concrete_work] c=0.95",
+        "resource/required «нужен свой инструмент» [tool_use] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"инструмент\"} scope=whole_task mand=true"
+      ]
+    },
+    "O_move": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «перевезти диван и холодильник» [freight_transport] c=0.95",
+        "capability «погрузка на месте» [loading] c=0.9",
+        "resource/compatibility «на Газели» [van] c=0.95 cap={\"value\":1,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    },
+    "O_move_paid": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «перевезти диван и холодильник» [freight_transport] c=0.95",
+        "capability «погрузка на месте» [loading] c=0.9",
+        "resource/compatibility «на Газели» [van] c=0.95 cap={\"value\":1,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "V0:base": {
+      "source": "Есть Газель, права B/C, умею работать инструментом.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=fact mand=false",
+        "capability «права B/C» [driving] c=0.95",
+        "resource «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=fact mand=false"
+      ]
+    },
+    "V1_preference": {
+      "source": "Есть Газель, права B/C, умею работать инструментом. Хотел бы работу директором.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «права B/C» [driving] c=0.95",
+        "resource/available «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=whole_task mand=false",
+        "capability/scope:whole_task «Хотел бы работу директором» [] c=0.85"
+      ]
+    },
+    "V2_passive_condition": {
+      "source": "Есть Газель, права B/C, умею работать инструментом. Руководящие предложения рассматриваю от 500 тыс.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «права B/C» [driving] c=0.95",
+        "resource/available «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "V3_price_ban": {
+      "source": "Есть Газель, права B/C, умею работать инструментом. Заказы дешевле 500 тыс. мне не показывать.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «права B/C» [driving] c=0.95",
+        "resource «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "V4_refusal": {
+      "source": "Есть Газель, права B/C, умею работать инструментом. Не выполняю перевозки.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «права B/C» [driving] c=0.95",
+        "resource/available «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=whole_task mand=false",
+        "exclude/exclusion:whole_task «Не выполняю перевозки» [] c=0.95"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "V0:base",
+      "group": "V",
+      "variant": "base",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит Газель и права категории B/C, что соответствует перевозке мебели и техники. Навыки работы инструментом полезны для погрузки. Адреса не конфликтуют."
+      }
+    },
+    {
+      "key": "V0:base",
+      "group": "V",
+      "variant": "base",
+      "order": "O_move_paid",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит Газель и права категории B/C, что соответствует требованию перевозки дивана и холодильника на Газели. Навыки работы с инструментом могут помочь при погрузке. Местоположение не противоречит, поэтому профиль релевантен."
+      }
+    },
+    {
+      "key": "V0:base",
+      "group": "V",
+      "variant": "base",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.084,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт работы с инструментом и наличие автомобиля Газель, что подходит для перевозки и монтажа кухонных шкафов, включая сверление в бетоне. Требуется уточнить наличие конкретных инструментов для сверления бетона."
+      }
+    },
+    {
+      "key": "V1_preference",
+      "group": "V",
+      "variant": "V1_preference",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.218,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения Газели с правами B/C и умение работать инструментом, что соответствует перевозке мебели на Газели. Отсутствие опыта работы директором не мешает выполнению транспортной задачи."
+      }
+    },
+    {
+      "key": "V1_preference",
+      "group": "V",
+      "variant": "V1_preference",
+      "order": "O_move_paid",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.218,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения Газели с правами B/C и умение работать инструментом, что соответствует перевозке мебели и техники на Газели. Отсутствие опыта работы директором не мешает выполнению транспортной задачи."
+      }
+    },
+    {
+      "key": "V1_preference",
+      "group": "V",
+      "variant": "V1_preference",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.171,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт работы с инструментом и наличие собственного инструмента, что релевантно для сборки и крепления кухонных шкафов, несмотря на отсутствие прямого упоминания о подобных работах."
+      }
+    },
+    {
+      "key": "V2_passive_condition",
+      "group": "V",
+      "variant": "V2_passive_condition",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит Газель и права B/C, что соответствует перевозке дивана и холодильника. Умение работать инструментом и наличие транспорта подтверждают возможность выполнения заказа."
+      }
+    },
+    {
+      "key": "V2_passive_condition",
+      "group": "V",
+      "variant": "V2_passive_condition",
+      "order": "O_move_paid",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит Газель и права B/C, что соответствует требованию перевозки дивана и холодильника на Газели. Навыки работы с инструментом и опыт вождения подходят для погрузки и перевозки."
+      }
+    },
+    {
+      "key": "V2_passive_condition",
+      "group": "V",
+      "variant": "V2_passive_condition",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.084,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на наличие автомобиля Газель, водительских прав категорий B/C и умение работать инструментом, что соответствует требованиям по сборке и установке кухонных шкафов с использованием собственного инструмента. Отсутствуют ограничения, препятствующие выполнению заказа."
+      }
+    },
+    {
+      "key": "V3_price_ban",
+      "group": "V",
+      "variant": "V3_price_ban",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на наличие Газели и водительских прав B/C, что соответствует требованию перевозки дивана и холодильника на Газели. Навыки работы с инструментом могут помочь при погрузке. Отсутствие информации о конкретном опыте перевозки не является препятствием."
+      }
+    },
+    {
+      "key": "V3_price_ban",
+      "group": "V",
+      "variant": "V3_price_ban",
+      "order": "O_move_paid",
+      "expected": "REJECT_ALLOWED",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на наличие Газели и водительских прав категории B/C, что соответствует требованию перевозки дивана и холодильника на Газели. Навыки работы с инструментом могут помочь при погрузке. Цена заказа ниже желаемой, но это не влияет на техническую совместимость."
+      }
+    },
+    {
+      "key": "V3_price_ban",
+      "group": "V",
+      "variant": "V3_price_ban",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.084,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт работы с инструментом и наличие транспорта, что релевантно для сборки и крепления кухонных шкафов с просверливанием отверстий в бетонной стене. Требуется уточнить наличие конкретного инструмента для сверления бетона."
+      }
+    },
+    {
+      "key": "V4_refusal",
+      "group": "V",
+      "variant": "V4_refusal",
+      "order": "O_move",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "exclusion_mismatch",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "exclusion",
+          "profileEvidence": "Не выполняю перевозки.",
+          "orderEvidence": "Нужно перевезти диван и холодильник на Газели с улицы Ленина на Садовую, погрузка на месте."
+        },
+        "exclusiveScope": null,
+        "reason": "В профиле явно указано, что перевозки не выполняются, а заказ требует перевозки."
+      }
+    },
+    {
+      "key": "V4_refusal",
+      "group": "V",
+      "variant": "V4_refusal",
+      "order": "O_move_paid",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "exclusion_mismatch",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.144,
+      "review": {
+        "compatible": false,
+        "confidence": 1,
+        "hardConflict": {
+          "kind": "exclusion",
+          "profileEvidence": "Не выполняю перевозки.",
+          "orderEvidence": "Нужно перевезти диван и холодильник на Газели с улицы Ленина на Садовую, погрузка на месте."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль явно исключает перевозки, а заказ требует перевозки на Газели."
+      }
+    },
+    {
+      "key": "V4_refusal",
+      "group": "V",
+      "variant": "V4_refusal",
+      "order": "O_mount",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "exclusion_mismatch",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": true,
+      "docSim": 0.084,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "exclusion",
+          "profileEvidence": "Не выполняю перевозки.",
+          "orderEvidence": "Собрать и повесить кухонные шкафы, просверлить отверстия в бетонной стене, нужен свой инструмент."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на отказ от перевозок, но заказ связан с монтажом шкафов и сверлением, что соответствует навыкам работы с инструментом. Отказ от перевозок не препятствует выполнению данной работы."
+      }
+    }
+  ]
+}

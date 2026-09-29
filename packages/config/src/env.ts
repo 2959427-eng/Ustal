@@ -45,6 +45,9 @@ const envSchema = z
     PUSH_PROVIDER: z.enum(["expo", "mock"]).default("mock"),
 
     PROFILE_FREEFORM_EDITS_PER_HOUR: z.coerce.number().default(15),
+    // Phase 1 profile_facts (SHADOW): a separate per-input AI extraction of structured profile facts.
+    // Never read by matching/feed/public profile. "disabled" stops enqueueing new extraction jobs.
+    PROFILE_FACTS_EXTRACTION: z.enum(["enabled", "disabled"]).default("enabled"),
     CONTACT_UNLOCKS_PER_HOUR: z.coerce.number().default(30),
     ORDERS_PER_HOUR: z.coerce.number().default(20),
     REPORTS_PER_HOUR: z.coerce.number().default(20),

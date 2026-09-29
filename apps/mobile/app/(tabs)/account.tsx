@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -33,6 +33,8 @@ export default function AccountScreen() {
     try {
       await logout();
       router.replace("/onboarding");
+    } catch {
+      Alert.alert("Не удалось завершить выход", "Для безопасной отвязки уведомлений и очистки сессии повторите выход при доступной сети.");
     } finally {
       setLoggingOut(false);
     }

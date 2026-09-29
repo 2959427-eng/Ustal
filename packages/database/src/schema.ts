@@ -18,6 +18,9 @@ import {
   vector,
   uniqueIndex,
   index,
+  check,
+  foreignKey,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -174,7 +177,16 @@ export const profileSourceInputs = pgTable("profile_source_inputs", {
   // там нечего разделять, правка уже произошла в композере до отправки.
   status: varchar("status", { length: 20 }).notNull().default("confirmed"),
   createdAt: createdAt(),
-});
+  // Source revoke (2026-09-28): the owner withdrew this message from the whole profile. One semantics:
+  // facts derived from it are revoked, it is never (re-)extracted, never part of a future AI-profile
+  // build, and the current AI profile is rebuilt from the remaining messages if it contained it
+  // (matching then recalculates through rematch_requests). Raw text is kept only as internal audit.
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => ({
+  // Target of composite FKs from profile_facts/profile_fact_extractions: a fact's user_id must be the
+  // owner of its source input (DB-level ownership guarantee, not only application code).
+  idUserUnique: uniqueIndex("profile_source_inputs_id_user_unique").on(t.id, t.userId),
+}));
 
 export const capabilityProfiles = pgTable("capability_profiles", {
   id: id(),
@@ -188,6 +200,9 @@ export const capabilityProfiles = pgTable("capability_profiles", {
   // claude/pipeline-split-design.md): draft (extraction только что создал,
   // ещё не текущий профиль) -> applied (текущий) -> superseded (был applied,
   // заменён более новым) | discarded (пользователь отклонил черновик).
+  // Source revoke (2026-09-28): applied -> rebuild_pending (содержит отозванное сообщение; не
+  // используется matching/feed до пересборки) -> superseded; draft -> invalidated (построен на
+  // профиле с отозванным сообщением; неотозванный ввод переизвлекается поверх пересобранного профиля).
   status: varchar("status", { length: 20 }).notNull().default("applied"),
   createdAt: createdAt(),
 });
@@ -243,6 +258,115 @@ export const learnedPreferences = pgTable("learned_preferences", {
   createdAt: createdAt(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
+
+// ---------------------------------------------------------------------------
+// Phase 1 profile_facts — SHADOW MODE (claude/extended-ai-profile-architecture-2026-09-27.md)
+//
+// A separate AI extraction turns EACH confirmed profile_source_inputs row into structured facts.
+// Nothing in matching / feed / public profile / skills-resources reads these tables. The raw text
+// stays in profile_source_inputs (never overwritten), so any input can be re-extracted later.
+// ---------------------------------------------------------------------------
+
+/**
+ * One extraction attempt ledger row per (source input, pipeline/prompt/model version): idempotency,
+ * failures available for retry/reprocessing, and the version every fact was produced with.
+ * status: pending | succeeded | failed | skipped. error: technical code only, never user text.
+ */
+export const profileFactExtractions = pgTable(
+  "profile_fact_extractions",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sourceInputId: uuid("source_input_id").notNull(),
+    pipelineVersion: varchar("pipeline_version", { length: 50 }).notNull(),
+    promptVersion: varchar("prompt_version", { length: 30 }).notNull(),
+    model: varchar("model", { length: 100 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    factsCount: integer("facts_count"),
+    rejectedCount: integer("rejected_count"),
+    error: varchar("error", { length: 300 }),
+    createdAt: createdAt(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    versionUnique: uniqueIndex("profile_fact_extractions_version_unique").on(
+      t.sourceInputId, t.pipelineVersion, t.promptVersion, t.model,
+    ),
+    byUserStatus: index("profile_fact_extractions_user_status_idx").on(t.userId, t.status),
+    idUserUnique: uniqueIndex("profile_fact_extractions_id_user_unique").on(t.id, t.userId),
+    sourceOwner: foreignKey({
+      name: "profile_fact_extractions_source_owner_fk",
+      columns: [t.sourceInputId, t.userId],
+      foreignColumns: [profileSourceInputs.id, profileSourceInputs.userId],
+    }).onDelete("cascade"),
+    statusCheck: check("profile_fact_extractions_status_check",
+      sql`${t.status} in ('pending','succeeded','failed','skipped')`),
+  }),
+);
+
+/**
+ * Universal fact row. fact_type is a code-level registry (@ustal/validation PROFILE_FACT_TYPES);
+ * slot_key is the conflict identity computed by the server (single-valued type, or type + normalized
+ * label). status: active (current) | superseded (a later statement for the same slot wins) |
+ * replaced (this input was re-extracted by a newer pipeline; replaces_fact_id links the new row to
+ * the old one so later user confirmation/visibility can be carried over). At most one active fact
+ * per (user, slot) is enforced by the partial unique index.
+ */
+export const profileFacts = pgTable(
+  "profile_facts",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sourceInputId: uuid("source_input_id").notNull(),
+    extractionId: uuid("extraction_id").notNull(),
+    factType: varchar("fact_type", { length: 40 }).notNull(),
+    slotKey: varchar("slot_key", { length: 200 }).notNull(),
+    value: jsonb("value").$type<Record<string, unknown>>().notNull(),
+    evidence: text("evidence").notNull(),
+    confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+    assertion: varchar("assertion", { length: 10 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    // Phase 2A user control. user_decision: confirmed | corrected | revoked (null = AI only).
+    // user_value: the owner's corrected value (value keeps the AI output for audit/reprocessing).
+    // visibility: private (own profile / future internal matching only) | shareable (may be disclosed to a
+    // counterparty after an explicit owner action — never automatically). New facts are private.
+    userDecision: varchar("user_decision", { length: 10 }),
+    userValue: jsonb("user_value").$type<Record<string, unknown>>(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    visibility: varchar("visibility", { length: 10 }).notNull().default("private"),
+    supersededByFactId: uuid("superseded_by_fact_id").references((): AnyPgColumn => profileFacts.id, { onDelete: "set null" }),
+    replacesFactId: uuid("replaces_fact_id").references((): AnyPgColumn => profileFacts.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    oneActivePerSlot: uniqueIndex("profile_facts_active_slot_unique")
+      .on(t.userId, t.slotKey)
+      .where(sql`${t.status} = 'active'`),
+    byUserSlot: index("profile_facts_user_slot_idx").on(t.userId, t.slotKey),
+    bySource: index("profile_facts_source_idx").on(t.sourceInputId),
+    byExtraction: index("profile_facts_extraction_idx").on(t.extractionId),
+    sourceOwner: foreignKey({
+      name: "profile_facts_source_owner_fk",
+      columns: [t.sourceInputId, t.userId],
+      foreignColumns: [profileSourceInputs.id, profileSourceInputs.userId],
+    }).onDelete("cascade"),
+    extractionOwner: foreignKey({
+      name: "profile_facts_extraction_owner_fk",
+      columns: [t.extractionId, t.userId],
+      foreignColumns: [profileFactExtractions.id, profileFactExtractions.userId],
+    }).onDelete("cascade"),
+    statusCheck: check("profile_facts_status_check", sql`${t.status} in ('active','superseded','replaced','revoked')`),
+    decisionCheck: check("profile_facts_user_decision_check", sql`${t.userDecision} is null or ${t.userDecision} in ('confirmed','corrected','revoked')`),
+    // revoked status <=> revoked decision; a user value exists only for a correction.
+    revokedCheck: check("profile_facts_revoked_check", sql`(${t.status} = 'revoked') = (coalesce(${t.userDecision}, '') = 'revoked')`),
+    userValueCheck: check("profile_facts_user_value_check", sql`(${t.userValue} is null) = (coalesce(${t.userDecision}, '') <> 'corrected')`),
+    visibilityCheck: check("profile_facts_visibility_check", sql`${t.visibility} in ('private','shareable')`),
+    assertionCheck: check("profile_facts_assertion_check", sql`${t.assertion} in ('explicit','inferred')`),
+    confidenceCheck: check("profile_facts_confidence_check", sql`${t.confidence} >= 0 and ${t.confidence} <= 1`),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Онтология

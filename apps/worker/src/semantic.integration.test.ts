@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   assertLocalTestDatabase,
   getDb,
@@ -12,6 +12,7 @@ import type { SemanticFact } from "@ustal/validation";
 import { handleProfileExtraction } from "./handlers/profile-extraction.js";
 import { handleOrderExtraction } from "./handlers/order-extraction.js";
 import { handleMatchingRun } from "./handlers/matching-run.js";
+import { handleProfileFactsExtraction } from "./handlers/profile-facts-extraction.js";
 import { dispatchRematches } from "./rematch.js";
 import { reprocessOrder, reprocessProfile } from "./reprocess.js";
 import { requestRematch, prepareDocument } from "./semantic.js";
@@ -247,13 +248,98 @@ describe("semantic pipeline on real isolated PostgreSQL; fixture AI, no external
       expect(review).toHaveBeenCalledWith({profile:[source],order:[requested]}, expect.anything());
       expect(review).toHaveBeenCalledTimes(1);
       await db.transaction(tx => requestRematch(tx, u));
+      // 2026-09-27 (bug 3): a technical review failure is not incompatibility and must not abort the run.
+      // The run completes; the candidate stays per the pre-review decision, marked review_status=failed.
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
       review.mockRejectedValueOnce(new Error("review timeout"));
-      await expect(matches(oid, u)).rejects.toThrow("review timeout");
-      // The failed review must not replace the completed run or publish partial candidates.
-      expect((await db.select().from(schema.matchingRuns).where(eq(schema.matchingRuns.orderId, oid))).length).toBe(1);
-      expect(await matches(oid, u)).toBeDefined();
+      const failedRun = await matches(oid, u);
+      log.mockRestore();
       expect((await db.select().from(schema.matchingRuns).where(eq(schema.matchingRuns.orderId, oid))).length).toBe(2);
+      const [trace] = await db.select().from(schema.matchingTraces).where(and(eq(schema.matchingTraces.matchingRunId, (await db.select().from(schema.matchingRuns).where(eq(schema.matchingRuns.orderId, oid)).orderBy(desc(schema.matchingRuns.startedAt)))[0]!.id), eq(schema.matchingTraces.userId, u)));
+      expect(trace!.detail).toMatchObject({ review_status: "failed", review_unverified: true, review_error: { message: "review timeout" } });
+      // Low-cosine unmapped action: without a successful review there is no deterministic relevance, so the
+      // candidate is not invented into the feed (fail-open keeps only what deterministic matching supports).
+      expect(failedRun).toBeUndefined();
+      expect(await matches(oid, u)).toBeDefined();
+      expect((await db.select().from(schema.matchingRuns).where(eq(schema.matchingRuns.orderId, oid))).length).toBe(3);
     } finally { review.mockRestore(); city = previousCity; }
+  });
+  it("bug 3: one candidate's review failure never aborts the run; fail-open keeps it, hard conflicts stay", async () => {
+    const previousCity = city;
+    const [isolated] = await db.insert(schema.cities).values({name: `TEST review failure ${randomUUID()}`,regionName:"TEST",federalDistrict:"TEST",timezone:"Asia/Vladivostok",isActive:false}).returning();
+    city = isolated!.id; cities.push(city);
+    let calls = 0;
+    const review = vi.spyOn(mockProviders.extraction, "reviewSemantic").mockImplementation(async (input) => {
+      if (++calls === 1) throw Object.assign(new Error("Request timed out."), { name: "APIConnectionTimeoutError" });
+      if (input.profile[0] === "RF profile D")
+        return wrap({compatible:false,confidence:0.95,reason:"нет подходящего транспорта",hardConflict:{kind:"resource",profileEvidence:"RF profile D",orderEvidence:"RF order"}});
+      return wrap({compatible:true,confidence:0.95,reason:"Related delivery"});
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const a = await user();
+      const [ua, ub, uc, ud] = [await user(), await user(), await user(), await user()];
+      fixture("RF order", [{...fact("доставка RF",["delivery"],41),resourceCapacity:{value:900,unit:"литр",kind:null}}]);
+      fixture("RF profile A", [fact("доставка RF",["delivery"],41)]);
+      fixture("RF profile B", [fact("доставка RF",["delivery"],41)]);
+      fixture("RF profile C", [{...fact("доставка RF",["delivery"],41,"exclude"),constraintType:"exclusion",constraintScope:"whole_task"}]);
+      fixture("RF profile D", [fact("доставка RF",["delivery"],41)]);
+      await profile(ua!, "RF profile A"); await profile(ub!, "RF profile B"); await profile(uc!, "RF profile C"); await profile(ud!, "RF profile D");
+      const oid = await order(a, "RF order");
+      const run = await handleMatchingRun({ id: randomUUID(), data: { orderId: oid } } as never);
+      if (!("matchingRunId" in run)) throw Error("matching skipped");
+      const traces = await db.select().from(schema.matchingTraces).where(eq(schema.matchingTraces.matchingRunId, run.matchingRunId));
+      const cands = await db.select().from(schema.matchingCandidates).where(eq(schema.matchingCandidates.matchingRunId, run.matchingRunId));
+      const matched = new Set(cands.map((c) => c.userId));
+      expect(traces).toHaveLength(4); // every candidate was decided, the failure did not stop the loop
+      const failed = traces.filter((t) => (t.detail as { review_status?: string }).review_status === "failed");
+      expect(failed).toHaveLength(1);
+      expect(failed[0]!.detail).toMatchObject({ review_unverified: true, review_error: { name: "APIConnectionTimeoutError" } });
+      expect(matched.has(failed[0]!.userId)).toBe(true);           // fail-open: kept, not an AI confirmation
+      expect(traces.find((t) => t.userId === uc)!.detail).toMatchObject({ reason: "explicit_exclusion" });
+      expect(matched.has(uc!)).toBe(false);                        // independent hard rule is never cancelled
+      if (failed[0]!.userId !== ub) expect(matched.has(ub!)).toBe(true);
+      if (failed[0]!.userId !== ud) expect(matched.has(ud!)).toBe(false); // successful review + proven conflict
+      const [stored] = await db.select().from(schema.matchingRuns).where(eq(schema.matchingRuns.id, run.matchingRunId));
+      expect(stored!.completedAt).not.toBeNull();
+      expect(stored!.inputHash).toBeNull(); // never reused as a cache hit; the next job retries the review
+      const errorRuns = await db.select().from(schema.aiRuns).where(and(eq(schema.aiRuns.operationType, "semantic_pair_review"), eq(schema.aiRuns.status, "error")));
+      expect(errorRuns.some((r) => r.error === "Request timed out.")).toBe(true);
+      expect(log.mock.calls.flat().join(" ")).toContain("semantic_review_failed");
+    } finally { review.mockRestore(); log.mockRestore(); city = previousCity; }
+  });
+  it("Phase 1: profile_facts (shadow) never influence matching — identical inputs, identical run", async () => {
+    const a = await user(), u = await user();
+    fixture("Shadow facts profile", [fact("Погрузка shadow", ["loading"], 60)]);
+    fixture("Shadow facts order", [fact("Погрузить shadow", ["loading"], 60)]);
+    await profile(u, "Shadow facts profile");
+    const oid = await order(a, "Shadow facts order");
+    const run = () => handleMatchingRun({ id: randomUUID(), data: { orderId: oid } } as never);
+    const first = await run();
+    if (!("matchingRunId" in first)) throw Error("matching skipped");
+    expect(first.candidatesCount).toBeGreaterThan(0);
+    // A later message whose shadow facts would contradict the match if matching ever read them.
+    const text = "Больше не беру погрузку. Хочу работать директором склада, меньше 300 тыс. не рассматриваю.";
+    const spy = vi.spyOn(mockProviders.extraction, "extractProfileFacts").mockResolvedValue(wrap({ facts: [
+      { factType: "restriction", evidence: "не беру погрузку", value: { label: "погрузку", number: null, numberMax: null, unit: null, period: null, level: null, flag: null, timeframe: null, approximate: false }, assertion: "explicit", confidence: 0.95, sensitive: false },
+      { factType: "compensation", evidence: "меньше 300 тыс. не рассматриваю", value: { label: null, number: 300000, numberMax: null, unit: null, period: null, level: null, flag: null, timeframe: null, approximate: false }, assertion: "explicit", confidence: 0.95, sensitive: false },
+    ] }));
+    try {
+      const [src] = await db.insert(schema.profileSourceInputs).values({ userId: u, inputType: "text", rawText: text, status: "confirmed" }).returning();
+      expect(await handleProfileFactsExtraction({ id: randomUUID(), data: { userId: u, sourceInputId: src!.id } } as never)).toMatchObject({ status: "succeeded", facts: 2 });
+    } finally { spy.mockRestore(); }
+    const second = await run();
+    if (!("matchingRunId" in second)) throw Error("matching skipped");
+    // Same matching snapshot hash -> the completed run is reused: facts are not a matching input at all.
+    expect(second.matchingRunId).toBe(first.matchingRunId);
+    // Phase 2A: owner decisions (confirm / correct / revoke / visibility) do not touch matching either.
+    const facts = await db.select().from(schema.profileFacts).where(eq(schema.profileFacts.userId, u));
+    await db.update(schema.profileFacts).set({ userDecision: "confirmed", decidedAt: new Date(), visibility: "shareable" }).where(eq(schema.profileFacts.id, facts[0]!.id));
+    await db.update(schema.profileFacts).set({ status: "revoked", userDecision: "revoked", decidedAt: new Date() }).where(eq(schema.profileFacts.id, facts[1]!.id));
+    const third = await run();
+    if (!("matchingRunId" in third)) throw Error("matching skipped");
+    expect(third.matchingRunId).toBe(first.matchingRunId);
+    expect(await db.query.matchingCandidates.findFirst({ where: (t, { and, eq }) => and(eq(t.matchingRunId, second.matchingRunId), eq(t.userId, u)) })).toBeDefined();
   });
   it("deduplicates projected nodes and concurrent rematches; invalidates on profile watermark", async () => {
     const a=await user(),u=await user();

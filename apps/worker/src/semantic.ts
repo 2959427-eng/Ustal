@@ -3,9 +3,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
 import { getDb, schema, type Database } from "@ustal/database";
 import { semanticResultSchema, type SemanticFact } from "@ustal/validation";
-import { isUserAssetResource, narrowRefusalNodeIds, resolveProfileNegatives } from "./profile-negatives.js";
+import { dropCareerContext, isUserAssetResource, narrowRefusalNodeIds, resolveProfileNegatives } from "./profile-negatives.js";
 
-export const PIPELINE_VERSION = "semantic-v2.6";
+export const PIPELINE_VERSION = "semantic-v2.7";
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export interface PreparedFact extends SemanticFact {
   nodeIds: string[];
@@ -87,7 +87,12 @@ export async function prepareDocument(
       "Semantic normalization returned unsupported source evidence",
     );
 
-  const resolved = parsed.facts.map((raw) => {
+  // Career context (the person's own job search: desired position/salary, openness to offers,
+  // relocation or business-trip readiness) is never a constraint on service work: a refusal/scope/
+  // availability fact typed as career context is dropped, so "не готов к переезду в другой город"
+  // cannot reject moving orders or strip the moving skill node (recall-first). Positive facts stay.
+  const candidates = dropCareerContext(kind, parsed.facts);
+  const resolved = candidates.map((raw) => {
     const nonAsset = (raw.subjectType === "software_skill" || raw.subjectType === "qualification") &&
       raw.kind !== "exclude" && raw.constraintType !== "exclusion";
     const f = nonAsset ? { ...raw, kind: "capability" as const, resourceRole: "none" as const,

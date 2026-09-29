@@ -44,6 +44,15 @@ export interface StructuredExtractionProvider {
     meta: AiCallMeta,
   ): Promise<AiCallResult<CapabilityExtractionResult>>;
 
+  /**
+   * Phase 1 profile_facts (SHADOW): separate per-input extraction of structured profile facts. Independent
+   * of extractCapabilityProfile/normalizeMatching (frozen matching prompts are never extended).
+   */
+  extractProfileFacts(
+    input: { text: string },
+    meta: AiCallMeta,
+  ): Promise<AiCallResult<import("@ustal/validation").ProfileFactsExtraction>>;
+
   extractOrder(
     input: { text: string },
     meta: AiCallMeta,

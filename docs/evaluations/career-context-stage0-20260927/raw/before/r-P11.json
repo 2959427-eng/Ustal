@@ -1,0 +1,169 @@
+{
+  "runAt": "2026-09-27T03:26:06.875Z",
+  "orders": {
+    "O_trip_delivery": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Съездить в соседний посёлок, забрать и привезти стройматериалы» [freight_transport,delivery] c=0.95"
+      ]
+    },
+    "O_flat_move": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «помочь с переездом: перевезти вещи из квартиры в квартиру по городу» [moving_full,freight_transport] c=0.95",
+        "resource/required «нужен грузовой автомобиль» [vehicle_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":\"грузовой автомобиль\"} scope=whole_task mand=true"
+      ]
+    },
+    "O_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «перевезти диван и холодильник» [freight_transport] c=0.95",
+        "capability «погрузка на месте» [loading] c=0.9",
+        "resource/compatibility «на Газели» [van] c=0.95 cap={\"value\":1,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P11:base": {
+      "source": "Вожу грузы по городу и области на своей Газели.",
+      "facts": [
+        "capability/required «Вожу грузы по городу и области на своей Газели.» [freight_transport,driving] c=0.95",
+        "resource/available «Вожу грузы по городу и области на своей Газели.» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    },
+    "P11:career": {
+      "source": "Вожу грузы по городу и области на своей Газели. Был коммерческим директором транспортной компании. Командировки и работу вахтой не рассматриваю, ищу руководящую позицию в своём городе.",
+      "facts": [
+        "capability/available «Вожу грузы по городу и области» [freight_transport,driving] c=0.95",
+        "resource/available «на своей Газели» [van,vehicle_use] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=whole_task mand=false",
+        "capability «Был коммерческим директором транспортной компании» [business_services] c=0.9",
+        "exclude/exclusion:whole_task «Командировки и работу вахтой не рассматриваю» [] c=0.9"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P11:base",
+      "group": "P11",
+      "variant": "base",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.389,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на опыт перевозки грузов на Газели по городу и области, что соответствует требованию перевозки дивана и холодильника на Газели с указанного адреса. Погрузка на месте не противоречит профилю."
+      }
+    },
+    {
+      "key": "P11:base",
+      "group": "P11",
+      "variant": "base",
+      "order": "O_trip_delivery",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.355,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на опыт перевозки грузов на Газели по городу и области, что соответствует задаче перевозки стройматериалов в соседний посёлок."
+      }
+    },
+    {
+      "key": "P11:base",
+      "group": "P11",
+      "variant": "base",
+      "order": "O_flat_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.395,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на опыт перевозки грузов по городу и области на Газели, что соответствует требованию грузового автомобиля для переезда по городу."
+      }
+    },
+    {
+      "key": "P11:career",
+      "group": "P11",
+      "variant": "career",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.349,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения грузов на Газели по городу и области, что напрямую соответствует требованию перевозки дивана и холодильника на Газели с погрузкой. Отсутствие готовности к командировкам и вахтовой работе не конфликтует с локальной перевозкой в пределах города."
+      }
+    },
+    {
+      "key": "P11:career",
+      "group": "P11",
+      "variant": "career",
+      "order": "O_trip_delivery",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.301,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения грузов по городу и области на Газели, что соответствует перевозке стройматериалов в соседний посёлок. Отсутствие командировок и работы вахтой не противоречит заказу, так как поездка в соседний посёлок не обязательно требует длительного отсутствия."
+      }
+    },
+    {
+      "key": "P11:career",
+      "group": "P11",
+      "variant": "career",
+      "order": "O_flat_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.369,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на опыт в перевозках грузов по городу и области на собственной Газели, что соответствует требованию грузового автомобиля для переезда по городу."
+      }
+    }
+  ]
+}

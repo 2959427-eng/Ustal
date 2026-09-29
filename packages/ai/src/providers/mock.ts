@@ -38,6 +38,10 @@ export const mockExtraction: StructuredExtractionProvider = {
       resources: [],
     });
   },
+  async extractProfileFacts() {
+    // No pretend intelligence: integration tests inject recorded fixtures (vi.spyOn).
+    return wrap({ facts: [] });
+  },
   async extractOrder(input, _meta: AiCallMeta) {
     // Простейший keyword-heuristic, а не имитация NLP: без него extractOrder
     // всегда возвращал пустые requiredCapabilities/desiredResources, и

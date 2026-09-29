@@ -1,0 +1,543 @@
+{
+  "runAt": "2026-09-27T14:57:49.636Z",
+  "orders": {
+    "O_substation": {
+      "risk": 1,
+      "regulated": true,
+      "facts": [
+        "capability «Подключить трансформаторную подстанцию 10 кВ на предприятии.» [electrical_work] c=0.95",
+        "resource/compatibility «Подключить трансформаторную подстанцию 10 кВ на предприятии.» [] c=0.95 cap={\"value\":10,\"unit\":\"кВ\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_yard": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Подмести двор» [cleaning] c=0.95",
+        "capability «вынести мусор» [cleaning] c=0.9"
+      ]
+    },
+    "O_socket": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «отремонтировать розетку» [electrical_work] c=0.95",
+        "capability «заменить выключатель» [electrical_work] c=0.95"
+      ]
+    },
+    "O_chem_clean": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Генеральная уборка квартиры» [apartment_cleaning,cleaning] c=0.95",
+        "capability «отмыть плиту» [cleaning] c=0.9",
+        "capability «отмыть сантехнику» [cleaning] c=0.9"
+      ]
+    },
+    "O_roof_ac": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «Снять кондиционер» [ac_install] c=0.9",
+        "resource/compatibility «на крыше пятиэтажки» [] c=0.9 cap={\"value\":5,\"unit\":\"этаж\",\"kind\":null} scope=fact mand=false"
+      ]
+    },
+    "O_office_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «упаковать и перевезти 40 коробок» [moving_full] c=0.95",
+        "resource/required «нужен свой фургон» [van] c=0.95 st=physical_resource cap={\"value\":1,\"unit\":null,\"kind\":\"грузовой фургон\"} scope=whole_task mand=true",
+        "resource/compatibility «упаковать и перевезти 40 коробок» [] c=0.95 cap={\"value\":40,\"unit\":\"коробок\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_paint_fence": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Покрасить деревянный забор на даче, около 20 метров» [painting,garden_dacha] c=0.95",
+        "resource/compatibility «Покрасить деревянный забор на даче, около 20 метров» [] c=0.95 cap={\"value\":20,\"unit\":\"метров\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_truck_unload": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «разгрузить фуру» [unloading] c=0.95",
+        "resource/compatibility «фура» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"грузовой фургон\"} scope=whole_task mand=false",
+        "capability «разгрузить мешки цемента» [heavy_lifting] c=0.9"
+      ]
+    },
+    "O_ikea": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Собрать шкаф из ИКЕА» [assembly] c=0.95",
+        "capability «повесить полку» [basic_household_fixes] c=0.95"
+      ]
+    }
+  },
+  "profiles": {
+    "B1:base": {
+      "source": "Электрик, меняю розетки и выключатели.",
+      "facts": [
+        "capability «Электрик» [electrical_work] c=0.95",
+        "capability «меняю розетки» [electrical_work] c=0.9",
+        "capability «меняю выключатели» [electrical_work] c=0.9"
+      ]
+    },
+    "B1:career": {
+      "source": "Электрик, меняю розетки и выключатели. Не работаю с высоким напряжением.",
+      "facts": [
+        "capability «Электрик» [electrical_work] c=0.95",
+        "capability «меняю розетки и выключатели» [electrical_work] c=0.9",
+        "exclude/exclusion:whole_task «Не работаю с высоким напряжением» [] c=0.9"
+      ]
+    },
+    "B2:base": {
+      "source": "Делаю уборку квартир и дворов.",
+      "facts": [
+        "capability «уборка квартир» [apartment_cleaning] c=0.95",
+        "capability «уборка дворов» [cleaning] c=0.9"
+      ]
+    },
+    "B2:career": {
+      "source": "Делаю уборку квартир и дворов. Не работаю с бытовой химией.",
+      "facts": [
+        "capability «уборка квартир» [apartment_cleaning,cleaning] c=0.95",
+        "capability «уборка дворов» [cleaning] c=0.9",
+        "exclude/exclusion:whole_task «не работаю с бытовой химией» [] c=0.95"
+      ]
+    },
+    "B3:base": {
+      "source": "Грузчик, разгружаю машины, есть опыт монтажа.",
+      "facts": [
+        "capability «грузчик» [loading] c=0.95",
+        "capability «разгружаю машины» [unloading] c=0.9",
+        "capability «есть опыт монтажа» [assembly] c=0.85"
+      ]
+    },
+    "B3:career": {
+      "source": "Грузчик, разгружаю машины, есть опыт монтажа. Не работаю на высоте.",
+      "facts": [
+        "capability «грузчик» [loading] c=0.95",
+        "capability «разгружаю машины» [unloading] c=0.95",
+        "capability «есть опыт монтажа» [assembly] c=0.85",
+        "exclude/exclusion:whole_task «не работаю на высоте» [] c=0.95"
+      ]
+    },
+    "B4:base": {
+      "source": "Есть Газель, права B/C, умею работать инструментом.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=fact mand=false",
+        "capability «права B/C» [driving] c=0.95 st=qualification",
+        "resource «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=fact mand=false"
+      ]
+    },
+    "B4:career": {
+      "source": "Есть Газель, права B/C, умею работать инструментом. Не выполняю перевозки.",
+      "facts": [
+        "resource/available «Есть Газель» [van] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"газель\"} scope=fact mand=false",
+        "capability «права B/C» [driving] c=0.95 st=qualification",
+        "resource «умею работать инструментом» [tool_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":null} scope=fact mand=false",
+        "exclude/exclusion:fact «Не выполняю перевозки» [] c=0.95"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "B1:base",
+      "group": "B1",
+      "variant": "base",
+      "order": "O_substation",
+      "expected": "REJECT",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.368,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль электрика, выполняющего работы с электрическими устройствами, релевантен для подключения трансформаторной подстанции 10 кВ, хотя не указана конкретная квалификация для высоковольтных работ, требуется уточнение."
+      }
+    },
+    {
+      "key": "B1:base",
+      "group": "B1",
+      "variant": "base",
+      "order": "O_socket",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.656,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль электрика, который меняет розетки и выключатели, напрямую соответствует заказу на ремонт розетки и замену выключателя в квартире."
+      }
+    },
+    {
+      "key": "B1:career",
+      "group": "B1",
+      "variant": "career",
+      "order": "O_substation",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "exclusion_mismatch",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.389,
+      "reviewFailed": null,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "exclusion",
+          "profileEvidence": "Не работаю с высоким напряжением.",
+          "orderEvidence": "Подключить трансформаторную подстанцию 10 кВ на предприятии."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль явно указывает на отказ работать с высоким напряжением, тогда как заказ требует работы с трансформаторной подстанцией 10 кВ, что является высоким напряжением."
+      }
+    },
+    {
+      "key": "B1:career",
+      "group": "B1",
+      "variant": "career",
+      "order": "O_socket",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.637,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль электрика, меняющего розетки и выключатели, соответствует заказу на ремонт розетки и замену выключателя в квартире. Отсутствие работы с высоким напряжением не конфликтует с заказом."
+      }
+    },
+    {
+      "key": "B2:base",
+      "group": "B2",
+      "variant": "base",
+      "order": "O_chem_clean",
+      "expected": "REJECT",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.51,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт уборки квартир, что напрямую соответствует заказу на генеральную уборку квартиры с использованием бытовой химии."
+      }
+    },
+    {
+      "key": "B2:base",
+      "group": "B2",
+      "variant": "base",
+      "order": "O_yard",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.482,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт уборки дворов напрямую связан с подметанием двора и выносом мусора."
+      }
+    },
+    {
+      "key": "B2:career",
+      "group": "B2",
+      "variant": "career",
+      "order": "O_chem_clean",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "exclusion_mismatch",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.51,
+      "reviewFailed": null,
+      "review": {
+        "compatible": false,
+        "confidence": 1,
+        "hardConflict": {
+          "kind": "exclusion",
+          "profileEvidence": "Не работаю с бытовой химией.",
+          "orderEvidence": "Генеральная уборка квартиры с бытовой химией: отмыть плиту и сантехнику."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль явно указывает на отказ работать с бытовой химией, а заказ требует уборку с использованием бытовой химии."
+      }
+    },
+    {
+      "key": "B2:career",
+      "group": "B2",
+      "variant": "career",
+      "order": "O_yard",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "exact/exact",
+      "canonicalHit": true,
+      "docSim": 0.482,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на уборку дворов, что соответствует подметанию двора и выносу мусора. Отказ от работы с бытовой химией не препятствует выполнению данной задачи."
+      }
+    },
+    {
+      "key": "B3:base",
+      "group": "B3",
+      "variant": "base",
+      "order": "O_roof_ac",
+      "expected": "REJECT",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": false,
+      "docSim": 0.261,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт грузчика и монтажа предполагает навыки работы с физическими объектами и инструментами, что релевантно для снятия кондиционера на крыше. Требуется уточнить опыт работы на высоте и с кондиционерами."
+      }
+    },
+    {
+      "key": "B3:base",
+      "group": "B3",
+      "variant": "base",
+      "order": "O_truck_unload",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.495,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт грузчика и разгрузки машин напрямую соответствует задаче разгрузки фуры с цементом."
+      }
+    },
+    {
+      "key": "B3:career",
+      "group": "B3",
+      "variant": "career",
+      "order": "O_roof_ac",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "exclusion_mismatch",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": false,
+      "docSim": 0.261,
+      "reviewFailed": null,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "exclusion",
+          "profileEvidence": "Не работаю на высоте.",
+          "orderEvidence": "Снять кондиционер на крыше пятиэтажки."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль явно указывает на отказ работать на высоте, а заказ требует работы на крыше, что является высотой."
+      }
+    },
+    {
+      "key": "B3:career",
+      "group": "B3",
+      "variant": "career",
+      "order": "O_truck_unload",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.495,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт разгрузки машин и монтажа релевантен для разгрузки фуры с цементом. Отсутствие работы на высоте не мешает выполнению задачи на складе."
+      }
+    },
+    {
+      "key": "B4:base",
+      "group": "B4",
+      "variant": "base",
+      "order": "O_office_move",
+      "expected": "REJECT",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.122,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит Газель и права B/C, что соответствует требованию собственного фургона для перевозки коробок. Навыки работы с инструментом также полезны для упаковки."
+      }
+    },
+    {
+      "key": "B4:base",
+      "group": "B4",
+      "variant": "base",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": false,
+      "docSim": 0.115,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт работы с инструментом и наличие транспорта Газель, что может помочь в выполнении покраски забора. Отсутствуют ограничения, препятствующие выполнению задачи."
+      }
+    },
+    {
+      "key": "B4:base",
+      "group": "B4",
+      "variant": "base",
+      "order": "O_ikea",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": false,
+      "docSim": 0.09,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт работы с инструментом и наличие транспорта, что достаточно для сборки мебели и установки полки."
+      }
+    },
+    {
+      "key": "B4:career",
+      "group": "B4",
+      "variant": "career",
+      "order": "O_office_move",
+      "expected": "REJECT",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "exclusion_mismatch",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.122,
+      "reviewFailed": null,
+      "review": {
+        "compatible": false,
+        "confidence": 0.9,
+        "hardConflict": {
+          "kind": "exclusion",
+          "profileEvidence": "Не выполняю перевозки.",
+          "orderEvidence": "Переезд офиса: упаковать и перевезти 40 коробок, нужен свой фургон."
+        },
+        "exclusiveScope": null,
+        "reason": "Профиль явно исключает перевозки, а заказ требует перевозки коробок с использованием фургона."
+      }
+    },
+    {
+      "key": "B4:career",
+      "group": "B4",
+      "variant": "career",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": false,
+      "docSim": 0.115,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на наличие навыков работы с инструментом, что релевантно для покраски забора. Отказ от перевозок не конфликтует с покраской."
+      }
+    },
+    {
+      "key": "B4:career",
+      "group": "B4",
+      "variant": "career",
+      "order": "O_ikea",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/insufficient_capability_evidence",
+      "canonicalHit": false,
+      "docSim": 0.09,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль указывает на наличие навыков работы с инструментом и права на вождение, что релевантно для сборки мебели. Отказ от перевозок не конфликтует с задачей сборки шкафа и установки полки, так как перевозка не требуется."
+      }
+    }
+  ]
+}

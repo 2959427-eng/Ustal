@@ -2,7 +2,8 @@ import type PgBoss from "pg-boss";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
-import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
+import { buildAiRunRecord, getAiProviders, type AiCallResult } from "@ustal/ai";
+import type { SemanticReview } from "@ustal/validation";
 import { loadEnv } from "@ustal/config";
 import {
   cosine,
@@ -26,6 +27,49 @@ const asFact = (f: typeof schema.matchingFacts.$inferSelect): Fact => ({
 /** Source review gate: structured facts or, as a fallback, both source texts (review decides). */
 export function shouldRunSourceReview(input: { needsSourceReview: boolean; structuredEvidence: boolean; sourceTextsAvailable: boolean }): boolean {
   return input.needsSourceReview && (input.structuredEvidence || input.sourceTextsAvailable);
+}
+
+export type SourceReviewOutcome =
+  | { status: "ok"; result: AiCallResult<SemanticReview> }
+  | { status: "failed"; error: { name: string; code: string | number | null; message: string }; cause: Error };
+
+/**
+ * One candidate's source review. Never throws: a technical failure (timeout, provider error, malformed
+ * JSON, schema/evidence validation, exhausted repair attempts) is NOT evidence of incompatibility and must
+ * not abort matching of the other candidates. Logged for diagnostics without source text (evidence errors
+ * carry profile/order quotes in `diagnostic`, which is deliberately not copied).
+ */
+export async function runSourceReview(
+  call: () => Promise<AiCallResult<SemanticReview>>,
+  context: { orderId: string; userId: string },
+): Promise<SourceReviewOutcome> {
+  try {
+    return { status: "ok", result: await call() };
+  } catch (thrown) {
+    const cause = thrown instanceof Error ? thrown : new Error(String(thrown));
+    const raw = (cause as { code?: unknown; status?: unknown }).code ?? (cause as { status?: unknown }).status;
+    const error = {
+      name: cause.name,
+      code: typeof raw === "string" || typeof raw === "number" ? raw : null,
+      message: cause.message.slice(0, 300),
+    };
+    console.error(JSON.stringify({ event: "semantic_review_failed", ...context, error }));
+    return { status: "failed", error, cause };
+  }
+}
+
+/**
+ * review ok + proven conflict -> reject; review ok + no conflict -> keep; review failed -> the pre-review
+ * deterministic decision with review-only gates waived (fail-open for recall, trace.review_unverified),
+ * never counted as an AI-confirmed match and never cancelling an independent hard rule.
+ */
+export function decideAfterReview(
+  evaluation: Parameters<typeof evaluateSemantic>[0],
+  outcome: SourceReviewOutcome,
+) {
+  return outcome.status === "ok"
+    ? evaluateSemantic({ ...evaluation, semanticReview: outcome.result.data })
+    : evaluateSemantic({ ...evaluation, reviewUnavailable: true });
 }
 
 export async function handleMatchingRun(
@@ -287,6 +331,7 @@ export async function handleMatchingRun(
       .values({ orderId: order.id, startedAt: new Date(), inputHash }).returning();
     if (!run) throw new Error("Failed to start matching run");
     let reviews = 0;
+    let reviewFailures = 0;
     for (const candidate of [...shortlist].sort((a, b) => a.user_id.localeCompare(b.user_id))) {
       const profileDoc = currentDocs.get(candidate.profile_id);
       let facts: Fact[] = [];
@@ -373,6 +418,7 @@ export async function handleMatchingRun(
       // user unverified) and a future matching run — which starts its own fresh 100-review
       // budget — evaluates them again from scratch and can resolve it either way.
       let deferredReviewBudget = false;
+      let reviewFailure: Extract<SourceReviewOutcome, { status: "failed" }>["error"] | null = null;
       // Empty/insufficient structured extraction is not evidence of incompatibility:
       // when both source texts exist, the source review decides (never an automatic match).
       const structuredEvidence =
@@ -384,14 +430,16 @@ export async function handleMatchingRun(
       if (shouldRunSourceReview({ needsSourceReview, structuredEvidence, sourceTextsAvailable })) {
         if (reviews < SEMANTIC_POLICY.reviewLimit) {
           reviews++;
-          const meta = { operationType: "semantic_pair_review", traceId: job.id, promptVersion: "semantic-review-v8-limits", schemaVersion: "v1" };
+          const meta = { operationType: "semantic_pair_review", traceId: job.id, promptVersion: "semantic-review-v9-career", schemaVersion: "v1" };
           const started = new Date();
-          const reviewed = await getAiProviders().extraction.reviewSemantic({
+          const outcome = await runSourceReview(() => getAiProviders().extraction.reviewSemantic({
             profile: profileDoc?.sourceText ? [profileDoc.sourceText] : facts.filter((f) => f.kind === "capability" && f.confidence >= 0.5).map((f) => f.phrase),
             order: doc?.sourceText ? [doc.sourceText] : requirements.filter((f) => f.kind === "capability").map((f) => f.phrase),
-          }, meta);
-          await db.insert(schema.aiRuns).values(buildAiRunRecord(meta, started, { result: reviewed }));
-          result = evaluateSemantic({ ...evaluation, semanticReview: reviewed.data });
+          }, meta), { orderId: order.id, userId: candidate.user_id });
+          await db.insert(schema.aiRuns).values(buildAiRunRecord(meta, started,
+            outcome.status === "ok" ? { result: outcome.result } : { error: outcome.cause }));
+          if (outcome.status === "failed") { reviewFailure = outcome.error; reviewFailures++; }
+          result = decideAfterReview(evaluation, outcome);
         } else {
           deferredReviewBudget = true;
         }
@@ -405,6 +453,8 @@ export async function handleMatchingRun(
           detail: {
             ...result.trace,
             ...(deferredReviewBudget ? { deferred: true, deferredReason: "review_budget_exhausted" } : {}),
+            // Internal only (matching_traces/breakdown are never sent to clients): review not completed.
+            ...(reviewFailure ? { review_status: "failed", review_error: reviewFailure } : {}),
             profile_id: candidate.profile_id,
             profile_document_id: profileDoc?.id ?? null,
             order_document_id: doc?.id ?? null,
@@ -436,7 +486,9 @@ export async function handleMatchingRun(
       throw new Error("Order closed during matching");
     await db
       .update(schema.matchingRuns)
-      .set({ completedAt: new Date(), candidatesCount })
+      // A run with a failed review is published (fail-open) but never reused as a cache hit: the next
+      // matching job for this order recomputes and retries the review instead of freezing the degraded result.
+      .set({ completedAt: new Date(), candidatesCount, ...(reviewFailures > 0 ? { inputHash: null } : {}) })
       .where(eq(schema.matchingRuns.id, run.id));
     return { orderId: order.id, matchingRunId: run.id, candidatesCount };
   });

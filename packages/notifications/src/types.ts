@@ -9,9 +9,11 @@ export interface PushSendResult {
   ok: boolean;
   providerMessageId: string | null;
   error: string | null;
+  invalidToken?: boolean;
 }
 
 export interface PushProvider {
   readonly name: "expo" | "mock";
+  receipts?(ids: string[]): Promise<Record<string, PushSendResult>>;
   send(input: { expoPushToken: string; title: string; body: string; data?: Record<string, unknown> }): Promise<PushSendResult>;
 }

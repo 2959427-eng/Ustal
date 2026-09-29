@@ -48,8 +48,28 @@ function spans(source: string): string[] {
     visit(JSON.parse(source));
     return [...leaves, source];
   } catch {
-    return [...source.split(/[\n;!?]|\.(?=\s|$)/u).filter(Boolean), source];
+    return [...sentenceRuns(source), source];
   }
+}
+
+// Plain text: every sentence AND every run of up to MAX_RUN consecutive sentences, so a quote that
+// spans several sentences is checked against exactly the sentences it covers (not the whole text,
+// where an unrelated number in another sentence - "от 500 тыс." - would make a literal quote fail).
+const MAX_RUN = 8;
+function sentenceRuns(source: string): string[] {
+  const bounds: [number, number][] = [];
+  const separator = /[\n;!?]|\.(?=\s|$)/gu;
+  let start = 0;
+  for (const match of source.matchAll(separator)) {
+    const end = match.index! + match[0].length;
+    if (source.slice(start, match.index).trim()) bounds.push([start, end]);
+    start = end;
+  }
+  if (source.slice(start).trim()) bounds.push([start, source.length]);
+  const runs: string[] = [];
+  for (let i = 0; i < bounds.length; i++)
+    for (let j = i; j < Math.min(bounds.length, i + MAX_RUN); j++) runs.push(source.slice(bounds[i]![0], bounds[j]![1]));
+  return runs;
 }
 
 /** String/number leaf values of a JSON source (or the text itself when not JSON). */

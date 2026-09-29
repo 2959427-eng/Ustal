@@ -56,3 +56,17 @@ it("retains rejected evidence for case-level diagnosis without putting it in the
     expect((error as Error).message).not.toContain("invented");
   }
 });
+
+// Stage 0 (career context, 2026-09-27): a literal quote spanning several sentences is compared with
+// exactly the sentences it covers. Before the fix an unrelated number in another sentence ("от 500 тыс.")
+// made the quote ungrounded -> reviewSemantic threw 3x -> the whole matching run of the order failed.
+const careerProfile = "Бывший директор производства, управлял 300 сотрудниками. Есть Газель, права B/C, умею работать инструментом. Рассматриваю руководящие позиции от 500 тыс.";
+it("accepts a multi-sentence literal quote that omits an unrelated numeric sentence", () => {
+  expect(isGroundedEvidence("Бывший директор производства, управлял 300 сотрудниками. Есть Газель, права B/C, умею работать инструментом.", [careerProfile])).toBe(true);
+  expect(isGroundedEvidence("Есть Газель, права B/C, умею работать инструментом. Рассматриваю руководящие позиции от 500 тыс.", [careerProfile])).toBe(true);
+});
+it("still rejects a multi-sentence quote that drops a number or negation inside the sentences it covers", () => {
+  expect(isGroundedEvidence("Бывший директор производства, управлял сотрудниками. Есть Газель", [careerProfile])).toBe(false);
+  expect(isGroundedEvidence("Не работаю ночью. Вожу грузы.", ["Работаю ночью. Вожу грузы. Есть Газель."])).toBe(false);
+  expect(isGroundedEvidence("управлял 400 сотрудниками. Есть Газель", [careerProfile])).toBe(false);
+});

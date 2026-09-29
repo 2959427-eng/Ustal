@@ -6,10 +6,13 @@ import { getRuntimeConfig } from "@ustal/config";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
 import {
   editTranscriptSchema,
+  profileFactSourceParamSchema,
   profileInputSchema,
   updateProfileSchema,
 } from "@ustal/validation";
 import { withIdempotency } from "../lib/idempotency.js";
+import { enqueueProfileFacts } from "../lib/profile-facts.js";
+import { revokeProfileSourceInput } from "../lib/source-revoke.js";
 
 /**
  * Профиль возможностей (docs/api.md, docs/matching.md пайплайн профиля).
@@ -81,9 +84,18 @@ export default async function profileRoutes(app: FastifyInstance) {
     { preHandler: app.authenticate },
     async (request, reply) => {
       const result = await loadAppliedProfile(request.userId);
-      return reply.send(
-        result ?? { profile: null, capabilities: [], resources: [], unmapped: [] },
-      );
+      // Source revoke: while the profile is rebuilt from the remaining messages the old version (which
+      // still contains the revoked one) is neither shown nor used by matching.
+      const rebuilding = !!(await db.query.capabilityProfiles.findFirst({
+        where: and(
+          eq(schema.capabilityProfiles.userId, request.userId),
+          eq(schema.capabilityProfiles.status, "rebuild_pending"),
+        ),
+      }));
+      return reply.send({
+        ...(result ?? { profile: null, capabilities: [], resources: [], unmapped: [] }),
+        rebuilding,
+      });
     },
   );
 
@@ -271,6 +283,7 @@ export default async function profileRoutes(app: FastifyInstance) {
             userId: request.userId,
             sourceInputId: input.id,
           });
+          await enqueueProfileFacts(boss, { userId: request.userId, sourceInputId: input.id });
           return {
             status: 202 as const,
             body: { sourceInputId: input.id, status: "processing" as const },
@@ -300,7 +313,25 @@ export default async function profileRoutes(app: FastifyInstance) {
         transcript: input.transcript,
         transcriptCorrected: input.transcriptCorrected,
         createdAt: input.createdAt,
+        revokedAt: input.revokedAt,
       });
+    },
+  );
+
+  /**
+   * Revoke one of MY messages from the profile (2026-09-28): facts revoked, never used in any future
+   * AI-profile build; if the current profile contains it, it leaves matching at once and is rebuilt from
+   * the remaining messages (profileRebuild: "pending"). See lib/source-revoke.ts. Idempotent.
+   */
+  app.delete(
+    "/profile/inputs/:id",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const p = profileFactSourceParamSchema.safeParse({ sourceInputId: (request.params as { id: string }).id });
+      const result = p.success ? await revokeProfileSourceInput(request.userId, p.data.sourceInputId) : null;
+      if (!result)
+        return reply.code(404).send({ error: { code: "not_found", message: "Ввод не найден" } });
+      return reply.code(202).send({ sourceInputId: p.data!.sourceInputId, status: "revoked" as const, ...result });
     },
   );
 
@@ -319,11 +350,13 @@ export default async function profileRoutes(app: FastifyInstance) {
           .code(404)
           .send({ error: { code: "not_found", message: "Ввод не найден" } });
       }
-      if (input.status !== "awaiting_review") {
+      if (input.status !== "awaiting_review" || input.revokedAt) {
         return reply.code(409).send({
           error: {
             code: "invalid_status",
-            message: `Транскрипт нельзя редактировать в статусе "${input.status}"`,
+            message: input.revokedAt
+              ? "Сообщение отозвано"
+              : `Транскрипт нельзя редактировать в статусе "${input.status}"`,
           },
         });
       }
@@ -363,13 +396,15 @@ export default async function profileRoutes(app: FastifyInstance) {
               body: { error: { code: "not_found", message: "Ввод не найден" } },
             };
           }
-          if (input.status !== "awaiting_review") {
+          if (input.status !== "awaiting_review" || input.revokedAt) {
             return {
               status: 409 as const,
               body: {
                 error: {
                   code: "invalid_status",
-                  message: `Нельзя подтвердить транскрипт в статусе "${input.status}"`,
+                  message: input.revokedAt
+                    ? "Сообщение отозвано"
+                    : `Нельзя подтвердить транскрипт в статусе "${input.status}"`,
                 },
               },
             };
@@ -385,6 +420,7 @@ export default async function profileRoutes(app: FastifyInstance) {
             userId: request.userId,
             sourceInputId: input.id,
           });
+          await enqueueProfileFacts(boss, { userId: request.userId, sourceInputId: input.id });
 
           return {
             status: 202 as const,
@@ -491,6 +527,14 @@ export default async function profileRoutes(app: FastifyInstance) {
           ),
         });
         if (newerApplied) return false;
+        // Source revoke: a rebuild is pending, so every draft is based on text with a revoked message.
+        const rebuildPending = await tx.query.capabilityProfiles.findFirst({
+          where: and(
+            eq(schema.capabilityProfiles.userId, request.userId),
+            eq(schema.capabilityProfiles.status, "rebuild_pending"),
+          ),
+        });
+        if (rebuildPending) return false;
         await tx
           .update(schema.capabilityProfiles)
           .set({ status: "superseded" })

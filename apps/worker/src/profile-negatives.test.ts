@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUserAssetResource, narrowRefusalNodeIds, planNegativeOverrides, resolveProfileNegatives, supersededNodeIds, type ProfileFactLike } from "./profile-negatives.js";
+import { isUserAssetResource, narrowRefusalNodeIds, planNegativeOverrides, resolveProfileNegatives, supersededNodeIds, type ProfileFactLike, dropCareerContext } from "./profile-negatives.js";
 
 const v = (axis: number) => Array.from({ length: 8 }, (_, i) => (i === axis ? 1 : 0));
 const f = (kind: string, phrase: string, evidence: string, nodeIds: string[], axis: number, extra: Partial<ProfileFactLike> = {}): ProfileFactLike =>
@@ -98,5 +98,25 @@ describe("planNegativeOverrides: meaning-only refusal cancels the phrase, not a 
     const prior = [f("capability", "подрабатываю таксистом", "x", ["driving"], 2)];
     const current = [f("exclude", "работа таксистом", "y", [], 2, { constraintType: "exclusion" })];
     expect(planNegativeOverrides(current, prior).excludedNodeIds.has("driving")).toBe(true);
+  });
+});
+
+// Stage 0 career context (claude/extended-ai-profile-architecture-2026-09-27.md, 2026-09-27).
+describe("dropCareerContext", () => {
+  const f = (kind: string, constraintType: string, subjectType?: string) => ({ kind, constraintType, subjectType, phrase: kind });
+  it("drops a relocation refusal typed as career context, so it cannot reject moving orders", () => {
+    const facts = [f("capability", "none"), f("exclude", "exclusion", "career_context")];
+    expect(dropCareerContext("profile", facts)).toEqual([facts[0]]);
+  });
+  it("drops scope/availability constraints from job-search statements", () => {
+    expect(dropCareerContext("profile", [f("capability", "scope", "career_context"), f("availability", "availability", "career_context")])).toEqual([]);
+  });
+  it("keeps positive career facts and every non-career constraint (explicit refusals still work)", () => {
+    const facts = [f("capability", "none", "career_context"), f("exclude", "exclusion"), f("exclude", "exclusion", "unspecified"), f("availability", "availability")];
+    expect(dropCareerContext("profile", facts)).toEqual(facts);
+  });
+  it("never touches order facts", () => {
+    const facts = [f("exclude", "exclusion", "career_context")];
+    expect(dropCareerContext("order", facts)).toEqual(facts);
   });
 });

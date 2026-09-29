@@ -1,0 +1,167 @@
+{
+  "runAt": "2026-09-27T04:12:15.951Z",
+  "orders": {
+    "O_unload": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Нужен грузчик на 3 часа» [loading,unloading] c=0.95",
+        "capability «разгрузить машину со стройматериалами» [unloading] c=0.98",
+        "resource/compatibility «Нужен грузчик на 3 часа» [] c=0.95 cap={\"value\":3,\"unit\":\"часа\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_office_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «упаковать 40 коробок» [moving_full] c=0.95",
+        "capability «перевезти 40 коробок» [freight_transport] c=0.95",
+        "resource/required «нужен свой фургон» [van] c=0.99 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"грузовой фургон\"} scope=whole_task mand=true",
+        "resource/compatibility «упаковать 40 коробок» [] c=0.95 cap={\"value\":40,\"unit\":\"коробок\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_move": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability/required «перевезти диван и холодильник на Газели» [freight_transport] c=0.95",
+        "capability «перевезти диван и холодильник» [freight_transport] c=0.9",
+        "capability «погрузка на месте» [loading] c=0.9",
+        "resource/required «на Газели» [van] c=0.95 cap={\"value\":1,\"unit\":\"шт\",\"kind\":\"газель\"} scope=whole_task mand=true",
+        "resource/compatibility «перевезти диван и холодильник на Газели» [] c=0.95 cap={\"value\":1,\"unit\":\"шт\",\"kind\":\"газель\"} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P06:base": {
+      "source": "Грузчик, могу разгрузить и погрузить, есть свой фургон.",
+      "facts": [
+        "capability «Грузчик» [loading] c=0.95",
+        "capability «могу разгрузить» [unloading] c=0.9",
+        "capability «могу погрузить» [loading] c=0.9",
+        "resource/available «есть свой фургон» [van] c=0.95 st=physical_resource cap={\"value\":1,\"unit\":null,\"kind\":\"грузовой фургон\"} scope=whole_task mand=false"
+      ]
+    },
+    "P06:career": {
+      "source": "Грузчик, могу разгрузить и погрузить, есть свой фургон. Раньше руководил складом на 120 человек, сократил потери на 30%. Предпочитаю логистику. Готов к командировкам.",
+      "facts": [
+        "capability «грузчик» [loading] c=0.95",
+        "resource/available «есть свой фургон» [van] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"грузовой фургон\"} scope=whole_task mand=false",
+        "capability «могу разгрузить и погрузить» [unloading,loading] c=0.95",
+        "capability «руководил складом на 120 человек» [] c=0.9",
+        "capability «предпочитаю логистику» [] c=0.9 st=career_context",
+        "capability «готов к командировкам» [] c=0.9 st=career_context"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P06:base",
+      "group": "P06",
+      "variant": "base",
+      "order": "O_unload",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.639,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт и ресурсы для разгрузки машины, что соответствует требованию заказа."
+      }
+    },
+    {
+      "key": "P06:base",
+      "group": "P06",
+      "variant": "base",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.427,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт грузчика и наличие собственного фургона, что соответствует требованиям переезда офиса с упаковкой и перевозкой коробок."
+      }
+    },
+    {
+      "key": "P06:base",
+      "group": "P06",
+      "variant": "base",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "missing_mandatory_resource",
+      "preReview": "reject/missing_mandatory_resource",
+      "canonicalHit": true,
+      "docSim": 0.579,
+      "review": null
+    },
+    {
+      "key": "P06:career",
+      "group": "P06",
+      "variant": "career",
+      "order": "O_unload",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.556,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт грузчика и наличие собственного фургона, что напрямую соответствует требованию разгрузить машину со стройматериалами. Опыт руководства складом и предпочтение логистики подтверждают релевантность."
+      }
+    },
+    {
+      "key": "P06:career",
+      "group": "P06",
+      "variant": "career",
+      "order": "O_office_move",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "semantic-only",
+      "reason": "semantic-only",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.399,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт грузчика с собственным фургоном и навыки логистики, что соответствует требованиям переезда офиса с упаковкой и перевозкой коробок."
+      }
+    },
+    {
+      "key": "P06:career",
+      "group": "P06",
+      "variant": "career",
+      "order": "O_move",
+      "expected": "MATCH",
+      "decision": "REJECT",
+      "classification": "reject",
+      "reason": "missing_mandatory_resource",
+      "preReview": "reject/missing_mandatory_resource",
+      "canonicalHit": true,
+      "docSim": 0.493,
+      "review": null
+    }
+  ]
+}

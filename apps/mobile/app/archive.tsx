@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from "
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getMyOrders, getMyResponses } from "../src/api/my";
+import { myKeys, getMyOrders, getMyResponses } from "../src/api/my";
 import type { OrderStatus } from "../src/api/orders";
 import { colors, radii, spacing, typography } from "../src/theme/tokens";
 
@@ -38,8 +38,8 @@ export default function ArchiveScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [role, setRole] = useState<"executor" | "customer">("executor");
-  const orders = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders({ limit: 50 }) });
-  const responses = useQuery({ queryKey: ["my-responses"], queryFn: () => getMyResponses({ limit: 50 }) });
+  const orders = useQuery({ queryKey: myKeys.orders({ limit: 50 }), queryFn: () => getMyOrders({ limit: 50 }) });
+  const responses = useQuery({ queryKey: myKeys.responses({ limit: 50 }), queryFn: () => getMyResponses({ limit: 50 }) });
 
   const rows: Row[] =
     role === "customer"

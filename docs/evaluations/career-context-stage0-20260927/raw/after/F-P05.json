@@ -1,0 +1,74 @@
+{
+  "runAt": "2026-09-27T04:12:16.231Z",
+  "orders": {
+    "O_usn": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «заполнить и сдать декларацию за год для ИП на УСН» [accounting_help] c=0.95"
+      ]
+    }
+  },
+  "profiles": {
+    "P05:base": {
+      "source": "Бухгалтер, веду ИП и ООО на УСН, сдаю декларации.",
+      "facts": [
+        "capability «бухгалтер» [accounting_help] c=0.95",
+        "capability «веду ИП и ООО на УСН» [accounting_help] c=0.9",
+        "capability «сдаю декларации» [accounting_help] c=0.9"
+      ]
+    },
+    "P05:career": {
+      "source": "Бухгалтер, веду ИП и ООО на УСН, сдаю декларации. Бывший финансовый директор холдинга с бюджетом 2 млрд, MBA. Ищу позицию CFO от 600 тыс. в финтехе или ритейле. Командировки не рассматриваю.",
+      "facts": [
+        "capability «бухгалтер» [accounting_help] c=0.95",
+        "capability «веду ИП и ООО на УСН, сдаю декларации» [accounting_help] c=0.9",
+        "capability «бывший финансовый директор холдинга с бюджетом 2 млрд» [] c=0.9",
+        "capability «MBA» [] c=0.85",
+        "capability «ищу позицию CFO от 600 тыс. в финтехе или ритейле» [] c=0.95 st=career_context"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P05:base",
+      "group": "P05",
+      "variant": "base",
+      "order": "O_usn",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.665,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт ведения ИП и ООО на УСН и сдачи деклараций, что напрямую соответствует заказу на помощь ИП на УСН с заполнением и сдачей декларации."
+      }
+    },
+    {
+      "key": "P05:career",
+      "group": "P05",
+      "variant": "career",
+      "order": "O_usn",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/safety_review_required",
+      "canonicalHit": true,
+      "docSim": 0.434,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт ведения ИП на УСН и сдачи деклараций, что напрямую соответствует заказу на помощь ИП с заполнением и сдачей декларации."
+      }
+    }
+  ]
+}

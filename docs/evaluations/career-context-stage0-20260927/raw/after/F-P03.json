@@ -1,0 +1,111 @@
+{
+  "runAt": "2026-09-27T04:12:34.859Z",
+  "orders": {
+    "O_paint_fence": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Покрасить деревянный забор на даче, около 20 метров» [painting,garden_dacha] c=0.95",
+        "resource/compatibility «Покрасить деревянный забор на даче, около 20 метров» [] c=0.95 cap={\"value\":20,\"unit\":\"метров\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P03:base": {
+      "source": "Делаю ремонт квартир: покраска, шпаклёвка, укладка ламината.",
+      "facts": [
+        "capability «ремонт квартир» [repair] c=0.95",
+        "capability «покраска» [painting] c=0.95",
+        "capability «шпаклёвка» [plastering] c=0.95",
+        "capability «укладка ламината» [flooring] c=0.95"
+      ]
+    },
+    "P03:career": {
+      "source": "Бывший прораб, руководил бригадой 40 человек. Делаю ремонт квартир: покраска, шпаклёвка, укладка ламината. Хочу работу директором строительной компании, зарплата от 300 тысяч. К переезду не готов.",
+      "facts": [
+        "capability «прораб» [construction] c=0.9",
+        "capability «руководил бригадой 40 человек» [] c=0.85",
+        "capability «ремонт квартир» [repair] c=0.9",
+        "capability «покраска» [painting] c=0.9",
+        "capability «шпаклёвка» [plastering] c=0.9",
+        "capability «укладка ламината» [flooring] c=0.9",
+        "capability «Хочу работу директором строительной компании, зарплата от 300 тысяч» [] c=0.95 st=career_context",
+        "capability «К переезду не готов» [] c=0.95 st=career_context"
+      ]
+    },
+    "P03:cumulative": {
+      "source": "Делаю ремонт квартир: покраска, шпаклёвка, укладка ламината.\nПоследнее изменение пользователя:\nБывший прораб, руководил бригадой 40 человек. Хочу работу директором строительной компании, зарплата от 300 тысяч. К переезду не готов.",
+      "facts": [
+        "capability «ремонт квартир: покраска» [painting] c=0.95",
+        "capability «ремонт квартир: шпаклёвка» [plastering] c=0.95",
+        "capability «ремонт квартир: укладка ламината» [flooring] c=0.95",
+        "capability «бывший прораб, руководил бригадой 40 человек» [construction] c=0.9",
+        "capability «хочу работу директором строительной компании» [] c=0.9 st=career_context",
+        "capability «зарплата от 300 тысяч» [] c=0.9 st=career_context",
+        "capability «к переезду не готов» [] c=0.9 st=career_context"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P03:base",
+      "group": "P03",
+      "variant": "base",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.363,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт в покраске и ремонте квартир релевантен для покраски деревянного забора, хотя это и наружные работы. Требуется уточнить опыт работы с наружными деревянными поверхностями."
+      }
+    },
+    {
+      "key": "P03:career",
+      "group": "P03",
+      "variant": "career",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.337,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Опыт ремонта и покраски квартир, а также руководство бригадой, свидетельствует о наличии навыков и ресурсов для покраски деревянного забора."
+      }
+    },
+    {
+      "key": "P03:cumulative",
+      "group": "P03",
+      "variant": "cumulative",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.342,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт ремонта квартир, включая покраску, что напрямую связано с покраской деревянного забора. Опыт руководства бригадой подтверждает наличие необходимых навыков и ресурсов для выполнения работы."
+      }
+    }
+  ]
+}

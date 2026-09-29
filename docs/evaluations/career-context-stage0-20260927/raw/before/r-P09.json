@@ -1,0 +1,123 @@
+{
+  "runAt": "2026-09-27T03:23:40.994Z",
+  "orders": {
+    "O_mow": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Покосить траву на участке 10 соток» [lawn_mowing,garden_dacha] c=0.95",
+        "resource/compatibility «Покосить траву на участке 10 соток» [] c=0.95 cap={\"value\":10,\"unit\":\"соток\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    },
+    "O_paint_fence": {
+      "risk": 0,
+      "regulated": false,
+      "facts": [
+        "capability «Покрасить деревянный забор на даче, около 20 метров» [painting,garden_dacha] c=0.95",
+        "resource/compatibility «Покрасить деревянный забор на даче, около 20 метров» [] c=0.95 cap={\"value\":20,\"unit\":\"метров\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P09:base": {
+      "source": "Покрашу забор, покошу траву, есть газонокосилка.",
+      "facts": [
+        "capability «Покрашу забор» [painting,fence_building] c=0.95",
+        "capability «покошу траву» [lawn_mowing] c=0.95",
+        "resource/available «есть газонокосилка» [lawn_mower] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"газонокосилка\"} scope=whole_task mand=false"
+      ]
+    },
+    "P09:career": {
+      "source": "IT-менеджер, руководил командой разработки из 60 человек, английский C1. Ищу позицию CTO, удалённо, от 700 тысяч. Покрашу забор, покошу траву, есть газонокосилка — подработки беру.",
+      "facts": [
+        "capability «IT-менеджер, руководил командой разработки из 60 человек» [business_services] c=0.95",
+        "capability «Ищу позицию CTO» [business_services] c=0.9",
+        "capability «покрашу забор» [fence_building,painting] c=0.9",
+        "capability «покошу траву» [lawn_mowing] c=0.95",
+        "resource/available «есть газонокосилка» [lawn_mower] c=0.95 cap={\"value\":1,\"unit\":null,\"kind\":\"газонокосилка\"} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P09:base",
+      "group": "P09",
+      "variant": "base",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.502,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт и оборудование для покраски забора, что напрямую соответствует заказу."
+      }
+    },
+    {
+      "key": "P09:base",
+      "group": "P09",
+      "variant": "base",
+      "order": "O_mow",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.473,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт и оборудование для покоса травы, что соответствует заказу на покос травы на участке."
+      }
+    },
+    {
+      "key": "P09:career",
+      "group": "P09",
+      "variant": "career",
+      "order": "O_paint_fence",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.283,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт и ресурсы для покраски забора (наличие газонокосилки и готовность к подработкам), что соответствует заказу на покраску деревянного забора."
+      }
+    },
+    {
+      "key": "P09:career",
+      "group": "P09",
+      "variant": "career",
+      "order": "O_mow",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.326,
+      "review": {
+        "compatible": true,
+        "confidence": 0.9,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт и ресурсы для покоса травы (газонокосилка), что соответствует заказу на покос травы на участке."
+      }
+    }
+  ]
+}

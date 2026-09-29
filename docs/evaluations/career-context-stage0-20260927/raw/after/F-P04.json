@@ -1,0 +1,75 @@
+{
+  "runAt": "2026-09-27T04:12:06.391Z",
+  "orders": {
+    "O_math": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «Нужен репетитор по математике для школьника 8 класса, 2 раза в неделю.» [tutoring_school] c=0.95",
+        "resource/compatibility «Нужен репетитор по математике для школьника 8 класса, 2 раза в неделю.» [] c=0.95 cap={\"value\":2,\"unit\":\"раза в неделю\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P04:base": {
+      "source": "Преподаю математику, готовлю к ОГЭ и ЕГЭ.",
+      "facts": [
+        "capability «Преподаю математику, готовлю к ОГЭ и ЕГЭ.» [] c=0.9 st=career_context",
+        "capability «Преподаю математику, готовлю к ОГЭ и ЕГЭ.» [teaching,tutoring_school] c=0.95"
+      ]
+    },
+    "P04:career": {
+      "source": "Кандидат физико-математических наук, 15 лет был завучем школы. Преподаю математику, готовлю к ОГЭ и ЕГЭ. Хотел бы должность директора школы. Готов к релокации в Москву или Санкт-Петербург.",
+      "facts": [
+        "capability «Кандидат физико-математических наук» [] c=0.95 st=qualification",
+        "capability «15 лет был завучем школы» [] c=0.9",
+        "capability «Хотел бы должность директора школы» [] c=0.9 st=career_context",
+        "capability «Готов к релокации в Москву или Санкт-Петербург» [] c=0.9 st=career_context",
+        "capability «Преподаю математику» [teaching] c=0.95",
+        "capability «Готовлю к ОГЭ и ЕГЭ» [tutoring_school] c=0.95"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P04:base",
+      "group": "P04",
+      "variant": "base",
+      "order": "O_math",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.479,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт преподавания математики и подготовки к экзаменам, что соответствует заказу на репетитора по математике для школьника 8 класса."
+      }
+    },
+    {
+      "key": "P04:career",
+      "group": "P04",
+      "variant": "career",
+      "order": "O_math",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "exact",
+      "reason": "exact",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.448,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт преподавания математики и подготовки к экзаменам, что напрямую соответствует заказу на репетитора по математике для школьника 8 класса."
+      }
+    }
+  ]
+}

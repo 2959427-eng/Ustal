@@ -137,7 +137,9 @@ describe("USTAL generic resource matching: hard vs soft signals", () => {
         },
       ];
       const result = run(caps, reqs);
-      expect(result.reason).toBe("missing_mandatory_resource");
+      // 2026-09-27 (bug 2): a profile silent about a mandatory resource is unverified, not missing — the source review decides; still no match without it.
+      expect(result.matchType).toBeNull();
+      expect(result.reason).toBe("physical_compatibility_unverified");
     });
   });
 

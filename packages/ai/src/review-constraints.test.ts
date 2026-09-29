@@ -1,6 +1,6 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { SemanticReview } from "@ustal/validation";
-import { applyReviewConstraints } from "./review-constraints.js";
+import { applyRefusalVerification, applyReviewConstraints } from "./review-constraints.js";
 import { EvidenceValidationError } from "./evidence-validation.js";
 
 const positive: SemanticReview = { compatible: true, confidence: .8, reason: "Related capability", hardConflict: null };
@@ -127,4 +127,41 @@ it("BH-066 pattern: a translated JSON field name is rejected, the literal value 
   const conflict = (orderEvidence: string) => ({ hardConflict: { kind: "exclusion" as const, profileEvidence: "не работаю с бытовой химией", orderEvidence }, compatible: false });
   expect(() => apply(p, o, conflict("требуется бытовая химия"))).toThrow(EvidenceValidationError);
   expect(apply(p, o, conflict("бытовая химия"))).toMatchObject({ compatible: false, hardConflict: { kind: "exclusion" } });
+});
+
+// P07 (2026-09-27, live): hardConflict=scope contradicting the model's own exclusiveScope inventory (requested=null).
+describe("scope conflicts must be confirmed by the exclusiveScope inventory", () => {
+  const p = "Муж на час: собираю мебель. Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.";
+  const o = "Собрать и повесить кухонные шкафы, просверлить отверстия в бетонной стене, нужен свой инструмент.";
+  const ev = "Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.";
+  it("requested=null (order does not state that dimension) suppresses the scope conflict", () => {
+    expect(apply(p, o, { compatible: false, confidence: 1, reason: "только машиностроение",
+      hardConflict: { kind: "scope", profileEvidence: ev, orderEvidence: o },
+      exclusiveScope: { profileEvidence: ev, orderEvidence: o, allowed: ["интересные предложения в машиностроении"], requested: null, requestedWithinAllowed: false } }))
+      .toMatchObject({ compatible: true, hardConflict: null });
+  });
+  it("a confirmed exclusive-scope conflict still rejects (Android only vs iOS)", () => {
+    expect(apply("Android only", "iOS application", { compatible: false, hardConflict: { kind: "scope", profileEvidence: "Android only", orderEvidence: "iOS application" },
+      exclusiveScope: { profileEvidence: "Android only", orderEvidence: "iOS application", allowed: ["Android"], requested: "iOS", requestedWithinAllowed: false } }))
+      .toMatchObject({ compatible: false, hardConflict: { kind: "scope" } });
+  });
+});
+
+// Bug 1 (2026-09-27): a refusal acts only on its own target (focused verification of exclusion conflicts).
+describe("applyRefusalVerification", () => {
+  const exclusion: SemanticReview = { compatible: false, confidence: 0.9, reason: "отказ",
+    hardConflict: { kind: "exclusion", profileEvidence: "Не выполняю перевозки.", orderEvidence: "Собрать и повесить кухонные шкафы" } };
+  it("V4: the order does not involve the refused activity -> no hard conflict, candidate kept", () => {
+    expect(applyRefusalVerification(exclusion, { involves: false })).toMatchObject({ compatible: true, hardConflict: null });
+  });
+  it("a confirmed refusal keeps the reject", () => {
+    expect(applyRefusalVerification(exclusion, { involves: true })).toMatchObject({ compatible: false, hardConflict: { kind: "exclusion" } });
+  });
+  it("no verdict (technical failure of the check) keeps the successful review's proven conflict", () => {
+    expect(applyRefusalVerification(exclusion, null)).toMatchObject({ compatible: false, hardConflict: { kind: "exclusion" } });
+  });
+  it("other conflict kinds are never touched", () => {
+    const scope: SemanticReview = { ...exclusion, hardConflict: { kind: "scope", profileEvidence: "a", orderEvidence: "b" } };
+    expect(applyRefusalVerification(scope, { involves: false })).toBe(scope);
+  });
 });

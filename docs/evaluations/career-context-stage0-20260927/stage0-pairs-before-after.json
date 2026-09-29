@@ -1,0 +1,794 @@
+[
+ {
+  "profile": "P01:base",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "P01:base",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:base",
+  "order": "O_nails",
+  "expected": "REJECT",
+  "before": "REJECT",
+  "before_reason": "domain_mismatch",
+  "before_hardConflict": {
+   "kind": "domain",
+   "profileEvidence": "Есть Газель, права B/C, умею работать инструментом.",
+   "orderEvidence": "Сделать маникюр на дому."
+  },
+  "after": "REJECT",
+  "after_reason": "domain_mismatch"
+ },
+ {
+  "profile": "P01:base",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "missing_mandatory_resource",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:base",
+  "order": "O_truck_c",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:career",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "P01:career",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:career",
+  "order": "O_nails",
+  "expected": "REJECT",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "REJECT",
+  "after_reason": "domain_mismatch"
+ },
+ {
+  "profile": "P01:career",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:career",
+  "order": "O_truck_c",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:cumulative",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "P01:cumulative",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:cumulative",
+  "order": "O_nails",
+  "expected": "REJECT",
+  "before": "REJECT",
+  "before_reason": "domain_mismatch",
+  "before_hardConflict": {
+   "kind": "domain",
+   "profileEvidence": "Есть Газель, права B/C, умею работать инструментом.",
+   "orderEvidence": "Сделать маникюр на дому."
+  },
+  "after": "REJECT",
+  "after_reason": "domain_mismatch"
+ },
+ {
+  "profile": "P01:cumulative",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "missing_mandatory_resource",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P01:cumulative",
+  "order": "O_truck_c",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P02:base",
+  "order": "O_socket",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P02:career",
+  "order": "O_socket",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P03:base",
+  "order": "O_paint_fence",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P03:career",
+  "order": "O_paint_fence",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P03:cumulative",
+  "order": "O_paint_fence",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P04:base",
+  "order": "O_math",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P04:career",
+  "order": "O_math",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P05:base",
+  "order": "O_usn",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P05:career",
+  "order": "O_usn",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P06:base",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "REJECT",
+  "after_reason": "missing_mandatory_resource"
+ },
+ {
+  "profile": "P06:base",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "P06:base",
+  "order": "O_unload",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P06:career",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "REJECT",
+  "after_reason": "missing_mandatory_resource"
+ },
+ {
+  "profile": "P06:career",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "P06:career",
+  "order": "O_unload",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P07:base",
+  "order": "O_ikea",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P07:base",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P07:career",
+  "order": "O_ikea",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "scope_mismatch",
+  "before_hardConflict": {
+   "kind": "scope",
+   "profileEvidence": "Работу активно не ищу, рассматриваю только интересные предложения в машиностроении.",
+   "orderEvidence": "Собрать шкаф из ИКЕА и повесить полку."
+  },
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P07:career",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P07:cumulative",
+  "order": "O_ikea",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P07:cumulative",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P08:base",
+  "order": "O_truck_c",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P08:career",
+  "order": "O_truck_c",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P09:base",
+  "order": "O_mow",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P09:base",
+  "order": "O_paint_fence",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P09:career",
+  "order": "O_mow",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P09:career",
+  "order": "O_paint_fence",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P10:base",
+  "order": "O_flat_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P10:base",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "missing_mandatory_resource",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P10:base",
+  "order": "O_unload",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P10:career",
+  "order": "O_flat_move",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "explicit_exclusion",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P10:career",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "explicit_exclusion",
+  "before_hardConflict": null,
+  "after": "REJECT",
+  "after_reason": "missing_mandatory_resource"
+ },
+ {
+  "profile": "P10:career",
+  "order": "O_unload",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "location_mismatch",
+  "before_hardConflict": {
+   "kind": "location",
+   "profileEvidence": "К переезду в другой город не готов.",
+   "orderEvidence": "Нужен грузчик на 3 часа: разгрузить машину со стройматериалами."
+  },
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P10:cumulative",
+  "order": "O_flat_move",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "explicit_exclusion",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P10:cumulative",
+  "order": "O_office_move",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "explicit_exclusion",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P10:cumulative",
+  "order": "O_unload",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "P11:base",
+  "order": "O_flat_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "REJECT",
+  "after_reason": "missing_mandatory_resource"
+ },
+ {
+  "profile": "P11:base",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "probable"
+ },
+ {
+  "profile": "P11:base",
+  "order": "O_trip_delivery",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P11:career",
+  "order": "O_flat_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "REJECT",
+  "after_reason": "missing_mandatory_resource"
+ },
+ {
+  "profile": "P11:career",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "probable"
+ },
+ {
+  "profile": "P11:career",
+  "order": "O_trip_delivery",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P12:base",
+  "order": "O_paint_fence",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "exact",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "P12:career",
+  "order": "O_paint_fence",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "scope_mismatch",
+  "before_hardConflict": {
+   "kind": "scope",
+   "profileEvidence": "Рассматриваю только позиции арт-директора или креативного директора от 400 тысяч.",
+   "orderEvidence": "Покрасить деревянный забор на даче, около 20 метров."
+  },
+  "after": "MATCH",
+  "after_reason": "exact"
+ },
+ {
+  "profile": "Q10:base",
+  "order": "O_flat_move",
+  "expected": "MATCH",
+  "before": null,
+  "before_reason": null,
+  "before_hardConflict": null,
+  "after": "REJECT",
+  "after_reason": "missing_mandatory_resource"
+ },
+ {
+  "profile": "Q10:career",
+  "order": "O_flat_move",
+  "expected": "MATCH",
+  "before": null,
+  "before_reason": null,
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V0:base",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "V0:base",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V0:base",
+  "order": "O_move_paid",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V1_preference",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "V1_preference",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V1_preference",
+  "order": "O_move_paid",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V2_passive_condition",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "V2_passive_condition",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V2_passive_condition",
+  "order": "O_move_paid",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V3_price_ban",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "semantic-only",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "semantic-only"
+ },
+ {
+  "profile": "V3_price_ban",
+  "order": "O_move",
+  "expected": "MATCH",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V3_price_ban",
+  "order": "O_move_paid",
+  "expected": "REJECT_ALLOWED",
+  "before": "MATCH",
+  "before_reason": "strong",
+  "before_hardConflict": null,
+  "after": "MATCH",
+  "after_reason": "strong"
+ },
+ {
+  "profile": "V4_refusal",
+  "order": "O_mount",
+  "expected": "MATCH",
+  "before": "REJECT",
+  "before_reason": "exclusion_mismatch",
+  "before_hardConflict": {
+   "kind": "exclusion",
+   "profileEvidence": "Не выполняю перевозки.",
+   "orderEvidence": "Собрать и повесить кухонные шкафы, просверлить отверстия в бетонной стене, нужен свой инструмент."
+  },
+  "after": "REJECT",
+  "after_reason": "exclusion_mismatch"
+ },
+ {
+  "profile": "V4_refusal",
+  "order": "O_move",
+  "expected": "REJECT",
+  "before": "REJECT",
+  "before_reason": "exclusion_mismatch",
+  "before_hardConflict": {
+   "kind": "exclusion",
+   "profileEvidence": "Не выполняю перевозки.",
+   "orderEvidence": "Нужно перевезти диван и холодильник на Газели с улицы Ленина на Садовую, погрузка на месте."
+  },
+  "after": "REJECT",
+  "after_reason": "exclusion_mismatch"
+ },
+ {
+  "profile": "V4_refusal",
+  "order": "O_move_paid",
+  "expected": "REJECT",
+  "before": "REJECT",
+  "before_reason": "exclusion_mismatch",
+  "before_hardConflict": {
+   "kind": "exclusion",
+   "profileEvidence": "Не выполняю перевозки.",
+   "orderEvidence": "Нужно перевезти диван и холодильник на Газели с улицы Ленина на Садовую, погрузка на месте."
+  },
+  "after": "REJECT",
+  "after_reason": "exclusion_mismatch"
+ }
+]

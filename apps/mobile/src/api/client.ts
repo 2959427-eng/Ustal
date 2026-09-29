@@ -2,14 +2,19 @@ import Constants from "expo-constants";
 import { router } from "expo-router";
 import { ApiClient } from "@ustal/api-client";
 import { getAccessToken } from "./session";
+import { productionApiUrl } from "../../config/api-url";
 
-const baseUrl = (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ?? "http://localhost:4000";
+const configuredUrl = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
+const baseUrl = !__DEV__ || Constants.expoConfig?.extra?.release
+  ? productionApiUrl(configuredUrl)
+  : configuredUrl ?? "http://localhost:4000";
 
 // Кэш access token хранится в globalThis, а не в переменной модуля: при Fast Refresh/повторной
 // инициализации client.ts переменная модуля обнулялась (или у разных экземпляров модуля она была своя),
 // и запросы уходили без Authorization — «Missing bearer token», хотя пользователь вошёл.
 const tokenStore = globalThis as { __ustalAccessToken?: string | null };
 const readCachedToken = (): string | null => tokenStore.__ustalAccessToken ?? null;
+let tokenRevision = 0;
 
 export const apiClient = new ApiClient({
   baseUrl,
@@ -36,8 +41,8 @@ export const apiClient = new ApiClient({
   // Аккаунт заблокирован админом (403 account_blocked): выходим из сессии и возвращаем на онбординг.
   onAccountBlocked: () => {
     void (async () => {
-      const { logout } = await import("./auth");
-      await logout();
+      const { expireLocalSession } = await import("./auth");
+      await expireLocalSession();
       router.replace("/onboarding");
     })();
   },
@@ -49,14 +54,16 @@ export const apiClient = new ApiClient({
   refreshAccessToken: async () => {
     const { refreshSession } = await import("./auth");
     const result = await refreshSession();
+    if (result.state === "session_invalid" || result.state === "no_local_session") router.replace("/onboarding");
     return result.state === "refreshed";
   },
 });
 
 export async function primeTokenCache(): Promise<void> {
+  const revision = tokenRevision;
   const stored = await getAccessToken();
   // Не затираем токен, который логин/refresh уже успел положить, пока шло чтение из хранилища.
-  if (readCachedToken() === null) tokenStore.__ustalAccessToken = stored;
+  if (revision === tokenRevision && readCachedToken() === null) tokenStore.__ustalAccessToken = stored;
 }
 
 /**
@@ -77,7 +84,7 @@ export async function primeTokenCache(): Promise<void> {
  * _layout.tsx), и при каждом Fast Refresh, который задел этот модуль — и
  * сама подтягивает токен из SecureStore, не дожидаясь ремонта RootLayout.
  */
-void primeTokenCache();
+void primeTokenCache().catch(() => {});
 
 /** Для сборки URL файлов, отдаваемых напрямую (не через apiClient.request), например GET /media/{id} — см. src/api/media.ts. */
 export function getApiBaseUrl(): string {
@@ -85,5 +92,6 @@ export function getApiBaseUrl(): string {
 }
 
 export function setCachedAccessToken(token: string | null): void {
+  tokenRevision += 1;
   tokenStore.__ustalAccessToken = token;
 }

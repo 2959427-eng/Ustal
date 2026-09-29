@@ -1,0 +1,83 @@
+{
+  "runAt": "2026-09-27T14:53:50.467Z",
+  "orders": {
+    "O_truck_c": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «водитель с правами категории C» [driving] c=0.95 st=qualification",
+        "capability «перевезти стройматериалы 4 тонны» [freight_transport] c=0.9",
+        "resource/provided_by_customer «на грузовике заказчика» [vehicle_use] c=0.9 cap={\"value\":null,\"unit\":null,\"kind\":\"грузовик\"} scope=whole_task mand=false",
+        "capability «перевезти стройматериалы по городу» [delivery] c=0.9",
+        "resource/compatibility «перевезти стройматериалы 4 тонны» [] c=0.9 cap={\"value\":4,\"unit\":\"тонны\",\"kind\":null} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P08:base": {
+      "source": "Водитель, права категорий B, C, E, стаж 15 лет, есть легковой автомобиль.",
+      "facts": [
+        "capability «Водитель, права категорий B, C, E, стаж 15 лет» [] c=0.95 st=career_context",
+        "capability «права категорий B, C, E» [driving] c=0.99 st=qualification",
+        "resource/available «есть легковой автомобиль» [car] c=0.99 st=physical_resource cap={\"value\":1,\"unit\":\"шт\",\"kind\":\"легковой автомобиль\"} scope=whole_task mand=false"
+      ]
+    },
+    "P08:career": {
+      "source": "Водитель, права категорий B, C, E, стаж 15 лет, есть легковой автомобиль. Был начальником автоколонны на 80 машин, руководил 100 водителями. Хочу работать руководителем транспортного отдела, зарплата от 250 тысяч. Не готов к переезду в другой город.",
+      "facts": [
+        "capability «права категорий B, C, E» [driving] c=0.95 st=qualification",
+        "resource/available «есть легковой автомобиль» [car] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"легковой автомобиль\"} scope=whole_task mand=false",
+        "capability «стаж 15 лет» [driving] c=0.9",
+        "capability «водитель» [driving] c=0.9",
+        "capability «начальник автоколонны на 80 машин» [] c=0.85",
+        "capability «руководил 100 водителями» [] c=0.85",
+        "capability «Хочу работать руководителем транспортного отдела, зарплата от 250 тысяч» [] c=0.9 st=career_context",
+        "capability «Не готов к переезду в другой город» [] c=0.9 st=career_context"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P08:base",
+      "group": "P08",
+      "variant": "base",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.526,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения с категорией C и наличие легкового автомобиля, что соответствует требованию перевозки грузов на грузовике. Отсутствие информации о наличии грузовика не исключает возможность выполнения задачи, так как заказчик предоставляет грузовик."
+      }
+    },
+    {
+      "key": "P08:career",
+      "group": "P08",
+      "variant": "career",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.548,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения с категорией C и опыт работы с грузовиками, что соответствует требованию перевозки стройматериалов грузовиком. Наличие собственного легкового автомобиля не мешает выполнению заказа. Отсутствие готовности к переезду не конфликтует с перевозкой по городу."
+      }
+    }
+  ]
+}

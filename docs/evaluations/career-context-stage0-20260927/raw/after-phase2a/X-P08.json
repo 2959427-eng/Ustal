@@ -1,0 +1,83 @@
+{
+  "runAt": "2026-09-27T15:33:44.735Z",
+  "orders": {
+    "O_truck_c": {
+      "risk": 1,
+      "regulated": false,
+      "facts": [
+        "capability «водитель с правами категории C» [driving] c=0.95 st=qualification",
+        "capability «перевезти стройматериалы 4 тонны» [freight_transport] c=0.9",
+        "resource/compatibility «на грузовике заказчика» [vehicle_use] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"грузовик\"} scope=whole_task mand=false"
+      ]
+    }
+  },
+  "profiles": {
+    "P08:base": {
+      "source": "Водитель, права категорий B, C, E, стаж 15 лет, есть легковой автомобиль.",
+      "facts": [
+        "capability «Водитель, права категорий B, C, E, стаж 15 лет» [driving] c=0.95 st=career_context",
+        "capability «права категории B» [] c=0.9 st=qualification",
+        "capability «права категории C» [] c=0.9 st=qualification",
+        "capability «права категории E» [] c=0.9 st=qualification",
+        "resource/available «есть легковой автомобиль» [car] c=0.95 st=physical_resource cap={\"value\":null,\"unit\":null,\"kind\":\"легковой автомобиль\"} scope=whole_task mand=false"
+      ]
+    },
+    "P08:career": {
+      "source": "Водитель, права категорий B, C, E, стаж 15 лет, есть легковой автомобиль. Был начальником автоколонны на 80 машин, руководил 100 водителями. Хочу работать руководителем транспортного отдела, зарплата от 250 тысяч. Не готов к переезду в другой город.",
+      "facts": [
+        "capability «права категорий B, C, E» [driving] c=0.95 st=qualification",
+        "resource/available «есть легковой автомобиль» [car] c=0.95 cap={\"value\":null,\"unit\":null,\"kind\":\"легковой автомобиль\"} scope=whole_task mand=false",
+        "capability «стаж 15 лет» [driving] c=0.9",
+        "capability «водитель» [driving] c=0.9",
+        "capability «начальник автоколонны на 80 машин» [] c=0.85",
+        "capability «руководил 100 водителями» [] c=0.85",
+        "capability «Хочу работать руководителем транспортного отдела, зарплата от 250 тысяч» [] c=0.9 st=career_context",
+        "capability «Не готов к переезду в другой город» [] c=0.9 st=career_context"
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "P08:base",
+      "group": "P08",
+      "variant": "base",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.509,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения и права категории C, что соответствует требованию перевозки стройматериалов грузовиком. Наличие легкового автомобиля не мешает выполнению задачи на грузовике заказчика."
+      }
+    },
+    {
+      "key": "P08:career",
+      "group": "P08",
+      "variant": "career",
+      "order": "O_truck_c",
+      "expected": "MATCH",
+      "decision": "MATCH",
+      "classification": "strong",
+      "reason": "strong",
+      "preReview": "reject/physical_compatibility_unverified",
+      "canonicalHit": true,
+      "docSim": 0.498,
+      "reviewFailed": null,
+      "review": {
+        "compatible": true,
+        "confidence": 0.95,
+        "hardConflict": null,
+        "exclusiveScope": null,
+        "reason": "Профиль содержит опыт вождения с категорией C и опыт работы с грузовиками, что соответствует требованию перевозки стройматериалов грузовиком. Наличие собственного легкового автомобиля и опыт руководства автоколонной подтверждают компетентность в транспортной сфере. Отсутствие готовности к переезду не влияет на выполнение локальной перевозки по городу."
+      }
+    }
+  ]
+}

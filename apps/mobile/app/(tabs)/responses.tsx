@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable } from "
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getMyResponses, type MyResponseItem } from "../../src/api/my";
+import { myKeys, getMyResponses, type MyResponseItem } from "../../src/api/my";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
 const STATUS_LABELS: Record<MyResponseItem["status"], string> = {
@@ -23,7 +23,7 @@ export default function ResponsesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["my-responses"],
+    queryKey: myKeys.responses(),
     queryFn: () => getMyResponses(),
   });
 

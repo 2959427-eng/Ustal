@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { getDb, schema } from "@ustal/database";
 import { registerDeviceSchema } from "@ustal/validation";
+import { and, eq } from "drizzle-orm";
 
 /**
  * Регистрация устройства для push (docs/api.md «Уведомления и устройства»):
@@ -14,6 +15,13 @@ import { registerDeviceSchema } from "@ustal/validation";
  */
 export default async function devicesRoutes(app: FastifyInstance) {
   const db = getDb();
+
+  app.delete("/devices", { preHandler: app.authenticate }, async (request, reply) => {
+    const body = registerDeviceSchema.parse(request.body);
+    await db.update(schema.deviceInstallations).set({ isActive: false })
+      .where(and(eq(schema.deviceInstallations.userId, request.userId), eq(schema.deviceInstallations.expoPushToken, body.expoPushToken)));
+    return reply.code(204).send();
+  });
 
   app.post("/devices", { preHandler: app.authenticate }, async (request, reply) => {
     const body = registerDeviceSchema.parse(request.body);
