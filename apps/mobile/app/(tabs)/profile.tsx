@@ -8,6 +8,7 @@ import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 import { getProfile, submitProfileInput, getProfileDraft, applyProfileDraft, discardProfileDraft, recognizedLabels } from "../../src/api/profile";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
+import { PROFILE_INPUT_PENDING_KEY, type ProfileInputPending } from "../../src/lib/profile-draft";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 45000;
@@ -118,7 +119,10 @@ export default function ProfileScreen() {
       const idempotencyKey = generateIdempotencyKey("profile-input");
       await submitProfileInput({ inputType: "text", text: trimmed }, idempotencyKey);
       setText("");
-      setWaiting(true);
+      // 2026-09-30: сразу в «Мой профиль» — статус AI и «Проверить и применить» показываются там.
+      queryClient.setQueryData<ProfileInputPending>(PROFILE_INPUT_PENDING_KEY, { at: Date.now(), prevDraftId: draft?.draft?.id ?? null });
+      void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
+      router.navigate("/(tabs)/account");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Не удалось отправить. Попробуйте ещё раз.");
     } finally {

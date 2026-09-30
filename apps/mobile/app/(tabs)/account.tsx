@@ -11,6 +11,7 @@ import { getMyReputation } from "../../src/api/reviews";
 import { getCities } from "../../src/api/cities";
 import { AuthorAvatar } from "../../src/components/AuthorAvatar";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
+import { ProfileSkillsStatus } from "../../src/components/ProfileSkillsStatus";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
 /**
@@ -107,6 +108,7 @@ export default function AccountScreen() {
             )}
           </View>
         )}
+        <ProfileSkillsStatus />
       </View>
 
       {reputation && <ReputationBlock reputation={reputation} />}

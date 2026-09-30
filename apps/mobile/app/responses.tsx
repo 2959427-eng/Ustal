@@ -2,8 +2,8 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable } from "
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { myKeys, getMyResponses, type MyResponseItem } from "../../src/api/my";
-import { colors, spacing, typography, radii } from "../../src/theme/tokens";
+import { myKeys, getMyResponses, type MyResponseItem } from "../src/api/my";
+import { colors, spacing, typography, radii } from "../src/theme/tokens";
 
 const STATUS_LABELS: Record<MyResponseItem["status"], string> = {
   active: "Ожидает решения",
@@ -20,7 +20,6 @@ const STATUS_LABELS: Record<MyResponseItem["status"], string> = {
  * в двух местах.
  */
 export default function ResponsesScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: myKeys.responses(),
@@ -29,9 +28,6 @@ export default function ResponsesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
-      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12}>
-        <Text style={styles.backText}>← Назад</Text>
-      </Pressable>
       <Text style={styles.title}>Мои отклики</Text>
 
       {isLoading && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
@@ -85,8 +81,6 @@ function ResponseRow({ item }: { item: MyResponseItem }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
-  back: { marginBottom: spacing.xs },
-  backText: { ...typography.body, color: colors.primary },
   title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
   empty: { ...typography.body, color: colors.textSecondary },
   spinner: { marginTop: spacing.lg },

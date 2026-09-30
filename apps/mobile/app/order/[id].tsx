@@ -1,4 +1,5 @@
 import { getOrderView } from "../../src/api/order-view";
+import { useMarkOrderNotificationsRead } from "../../src/notifications/badges";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { OrderHeaderBlock } from "../../src/components/OrderHeaderBlock";
 import { useEffect, useState } from "react";
@@ -74,6 +75,7 @@ export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  useMarkOrderNotificationsRead(id);
 
   const orderQuery = useQuery({
     queryKey: ["order", id],

@@ -174,7 +174,6 @@ export default function EditProfileScreen() {
                 <Text style={styles.hintText}>Пока ничего не рассказали — AI соберёт профиль из голоса или текста.</Text>
               )
             )}
-            <PrimaryButton label="Изменить навыки и ресурсы" variant="secondary" onPress={() => router.navigate("/(tabs)/profile")} />
 
             {saveError && <Text style={styles.error}>{saveError}</Text>}
             {saved && <Text style={styles.success}>Сохранено</Text>}

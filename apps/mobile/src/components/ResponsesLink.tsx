@@ -17,7 +17,7 @@ import { colors, spacing, typography } from "../theme/tokens";
 export function ResponsesLink() {
   const router = useRouter();
   return (
-    <Pressable onPress={() => router.push("/(tabs)/responses")} hitSlop={8} accessibilityRole="button" style={styles.link}>
+    <Pressable onPress={() => router.push("/responses")} hitSlop={8} accessibilityRole="button" style={styles.link}>
       <Text style={styles.text}>Мои отклики →</Text>
     </Pressable>
   );

@@ -61,9 +61,6 @@ export default function ArchiveScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text style={styles.back}>← Назад</Text>
-      </Pressable>
       <Text style={styles.title}>{role === "executor" ? "История" : "Архив заказов"}</Text>
       <View style={styles.segments}>
         {(["executor", "customer"] as const).map((r) => (
@@ -93,7 +90,6 @@ export default function ArchiveScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg, gap: spacing.md },
-  back: { color: colors.primary, fontSize: 16 },
   title: { ...typography.title, color: colors.textPrimary },
   segments: { flexDirection: "row", gap: spacing.sm },
   segment: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: radii.button, backgroundColor: colors.surface },

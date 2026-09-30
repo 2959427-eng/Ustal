@@ -4,12 +4,12 @@ import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HomeHeader } from "../../src/components/HomeHeader";
-import { ArchiveLink } from "../../src/components/ArchiveLink";
-import { ResponsesLink } from "../../src/components/ResponsesLink";
+import { useNotificationBadges } from "../../src/notifications/badges";
+import { QuickActions } from "../../src/components/QuickActions";
 import { OrderCard } from "../../src/components/OrderCard";
 import { ContactButtons } from "../../src/components/ContactButtons";
 import { getFeed } from "../../src/api/feed";
-import { getMyOrders, getMyResponses } from "../../src/api/my";
+import { getMyResponses } from "../../src/api/my";
 import { getCities } from "../../src/api/cities";
 import { createResponse } from "../../src/api/responses";
 import { ApiRequestError } from "@ustal/api-client";
@@ -52,7 +52,7 @@ export default function OpportunitiesScreen() {
 
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
   const { data: cities } = useQuery({ queryKey: ["cities"], queryFn: getCities });
-  const { data: myOrders } = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders() });
+  const badges = useNotificationBadges();
   const { data: myResponses } = useQuery({ queryKey: ["my-responses"], queryFn: () => getMyResponses({ limit: 100 }) });
   const cityName = (cityId: string) => cities?.find((c) => c.id === cityId)?.name ?? cityId;
 
@@ -88,8 +88,8 @@ export default function OpportunitiesScreen() {
       <View style={[styles.headerPad, { paddingTop: insets.top + spacing.sm }]}>
         <HomeHeader
           active="opportunities"
-          opportunitiesCount={visibleItems.length}
-          ordersCount={myOrders?.items.filter((o) => !o.archived).length}
+          opportunitiesCount={badges.opportunities}
+          ordersCount={badges.orders}
         />
       </View>
 
@@ -100,8 +100,7 @@ export default function OpportunitiesScreen() {
        * MyResponseItem (apps/mobile/src/api/my.ts).
        */}
       <View style={styles.extras}>
-        <ResponsesLink />
-        <ArchiveLink label="История →" />
+        <QuickActions />
       </View>
 
       {isLoading && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
@@ -176,7 +175,7 @@ export default function OpportunitiesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  extras: { paddingHorizontal: spacing.lg, gap: spacing.xs, marginBottom: spacing.sm },
+  extras: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   headerPad: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
   cardWrapper: { marginBottom: spacing.sm },

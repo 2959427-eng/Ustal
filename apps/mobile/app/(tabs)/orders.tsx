@@ -8,8 +8,8 @@ import { SwipeToDelete } from "../../src/components/SwipeToDelete";
 import { canDeleteOrder } from "../../src/lib/order-delete";
 import { cancelOrder } from "../../src/api/orders";
 import { HomeHeader } from "../../src/components/HomeHeader";
-import { ArchiveLink } from "../../src/components/ArchiveLink";
-import { getFeed } from "../../src/api/feed";
+import { useNotificationBadges } from "../../src/notifications/badges";
+import { OrdersQuickActions } from "../../src/components/QuickActions";
 import { myKeys, getMyOrders, type MyOrderItem } from "../../src/api/my";
 import type { OrderStatus } from "../../src/api/orders";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
@@ -44,10 +44,10 @@ export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
   const { data, isLoading, isError, isRefetching, refetch } = useQuery({ queryKey: myKeys.orders(), queryFn: () => getMyOrders() });
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
-  const { data: feed } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
 
   // Архивные заказы (оценены/пропущены, не выполнены, закрыты) живут в «Архиве заказов».
   const activeOrders = (data?.items ?? []).filter((o) => !o.archived);
+  const badges = useNotificationBadges();
 
   const [needText, setNeedText] = useState("");
   const canContinue = needText.trim().length > 0;
@@ -75,9 +75,9 @@ export default function OrdersScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View style={[styles.headerPad, { paddingTop: insets.top + spacing.sm }]}>
-            <HomeHeader active="orders" opportunitiesCount={feed?.items.length} ordersCount={activeOrders.length} />
+            <HomeHeader active="orders" opportunitiesCount={badges.opportunities} ordersCount={badges.orders} />
             <View style={styles.linksRow}>
-              <ArchiveLink />
+              <OrdersQuickActions />
             </View>
           </View>
         }
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   photo: { width: 64, height: 64, borderRadius: radii.md },
   container: { flex: 1, backgroundColor: colors.background },
   headerPad: { marginBottom: spacing.md },
-  linksRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  linksRow: { marginTop: spacing.md },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
   empty: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.sm },
   spinner: { marginTop: spacing.lg, marginBottom: spacing.md },
