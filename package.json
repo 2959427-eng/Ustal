@@ -21,7 +21,12 @@
     "dev:api": "npm run dev -w @ustal/api",
     "dev:worker": "npm run dev -w @ustal/worker",
     "dev:admin": "npm run dev -w @ustal/admin",
-    "dev:mobile": "npm run start -w @ustal/mobile"
+    "dev:mobile": "npm run start -w @ustal/mobile",
+    "blind:verify-isolation": "npm run blind:verify-isolation -w @ustal/blind-evaluation",
+    "blind:setup-db": "npm run blind:setup-db -w @ustal/blind-evaluation",
+    "blind:load-data": "npm run blind:load-data -w @ustal/blind-evaluation",
+    "blind:evaluate": "npm run blind:evaluate -w @ustal/blind-evaluation --",
+    "blind:analyze": "npm run blind:analyze -w @ustal/blind-evaluation"
   },
   "devDependencies": {
     "drizzle-orm": "^0.45.2",

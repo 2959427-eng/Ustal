@@ -12,12 +12,17 @@ import {
   varchar,
   boolean,
   integer,
+  bigint,
   numeric,
   timestamp,
   jsonb,
   vector,
   uniqueIndex,
   index,
+  check,
+  foreignKey,
+  primaryKey,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -65,19 +70,32 @@ export const userProfiles = pgTable("user_profiles", {
   acceptedRulesAt: timestamp("accepted_rules_at", { withTimezone: true }).notNull(),
   acceptedPdnAt: timestamp("accepted_pdn_at", { withTimezone: true }).notNull(),
   avatarMediaId: uuid("avatar_media_id"),
+  /** «О себе» — короткое описание, видно в публичном профиле. */
+  about: varchar("about", { length: 500 }),
   createdAt: createdAt(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const userSessions = pgTable("user_sessions", {
-  id: id(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  refreshTokenHash: text("refresh_token_hash").notNull(),
-  deviceInfo: text("device_info"),
-  issuedAt: createdAt(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-});
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    refreshTokenHash: text("refresh_token_hash").notNull(),
+    // Цепочка ротации refresh-токенов: у первой сессии (register/login) — новый familyId,
+    // у каждой последующей (после /auth/refresh) — familyId родителя. При обнаружении reuse
+    // (уже отозванный refresh предъявлен снова) отзывается вся family одним запросом — иначе
+    // токен, угнанный и использованный раньше владельца, оставлял бы рабочую сессию у атакующего.
+    familyId: uuid("family_id").notNull(),
+    deviceInfo: text("device_info"),
+    issuedAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    familyIdIdx: index("user_sessions_family_id_idx").on(t.familyId),
+  }),
+);
 
 export const deviceInstallations = pgTable(
   "device_installations",
@@ -161,7 +179,53 @@ export const profileSourceInputs = pgTable("profile_source_inputs", {
   // там нечего разделять, правка уже произошла в композере до отправки.
   status: varchar("status", { length: 20 }).notNull().default("confirmed"),
   createdAt: createdAt(),
-});
+  // Source revoke (2026-09-28): the owner withdrew this message from the whole profile. One semantics:
+  // facts derived from it are revoked, it is never (re-)extracted, never part of a future AI-profile
+  // build, and the current AI profile is rebuilt from the remaining messages if it contained it
+  // (matching then recalculates through rematch_requests). Raw text is kept only as internal audit.
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => ({
+  // Target of composite FKs from profile_facts/profile_fact_extractions: a fact's user_id must be the
+  // owner of its source input (DB-level ownership guarantee, not only application code).
+  idUserUnique: uniqueIndex("profile_source_inputs_id_user_unique").on(t.id, t.userId),
+}));
+
+/**
+ * Состояние автоматической обработки сообщения профиля (QA 2026-10-14, дефект №2). Хранится отдельно от
+ * задач pg-boss: архивирование задач, перезапуск worker или новая задача не сбрасывают счётчик неудач.
+ * Одна строка на сообщение и этап (transcribe — STT, extraction — AI-разбор).
+ *  - state: processing (идёт попытка) | retrying (последняя попытка не удалась, будет повтор) |
+ *    exhausted (лимит неудач исчерпан — автоматически больше не ставится в AI) | succeeded.
+ *  - lease_until/lease_owner: аренда попытки — одновременно сообщение обрабатывает только один worker;
+ *    истёкшая аренда (worker остановился посреди попытки) засчитывается как неудача.
+ *  - manual_resets/manual_reset_at: явный ручной повтор (retry-profile-input-cli) обнуляет счётчик.
+ */
+export const profileInputRecovery = pgTable("profile_input_recovery", {
+  sourceInputId: uuid("source_input_id").notNull(),
+  stage: varchar("stage", { length: 20 }).notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  state: varchar("state", { length: 20 }).notNull().default("processing"),
+  attempts: integer("attempts").notNull().default(0),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lastError: text("last_error"),
+  firstFailedAt: timestamp("first_failed_at", { withTimezone: true }),
+  lastFailedAt: timestamp("last_failed_at", { withTimezone: true }),
+  exhaustedAt: timestamp("exhausted_at", { withTimezone: true }),
+  succeededAt: timestamp("succeeded_at", { withTimezone: true }),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  leaseOwner: varchar("lease_owner", { length: 100 }),
+  manualResets: integer("manual_resets").notNull().default(0),
+  manualResetAt: timestamp("manual_reset_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.sourceInputId, t.stage] }),
+  sourceInputFk: foreignKey({ name: "profile_input_recovery_source_input_fk", columns: [t.sourceInputId],
+    foreignColumns: [profileSourceInputs.id] }).onDelete("cascade"),
+  stateIdx: index("profile_input_recovery_state_idx").on(t.state),
+  stageCheck: check("profile_input_recovery_stage_check", sql`${t.stage} in ('transcribe', 'extraction')`),
+  stateCheck: check("profile_input_recovery_state_check", sql`${t.state} in ('processing', 'retrying', 'exhausted', 'succeeded')`),
+}));
 
 export const capabilityProfiles = pgTable("capability_profiles", {
   id: id(),
@@ -170,13 +234,24 @@ export const capabilityProfiles = pgTable("capability_profiles", {
   profileVersion: integer("profile_version").notNull(),
   extractionVersion: varchar("extraction_version", { length: 50 }).notNull(),
   embeddingModel: varchar("embedding_model", { length: 100 }),
+  sourceInputId: uuid("source_input_id").references(() => profileSourceInputs.id),
   // Пауза «Подтверждение изменений» (экран 10 screens.md,
   // claude/pipeline-split-design.md): draft (extraction только что создал,
   // ещё не текущий профиль) -> applied (текущий) -> superseded (был applied,
   // заменён более новым) | discarded (пользователь отклонил черновик).
+  // Source revoke (2026-09-28): applied -> rebuild_pending (содержит отозванное сообщение; не
+  // используется matching/feed до пересборки) -> superseded; draft -> invalidated (построен на
+  // профиле с отозванным сообщением; неотозванный ввод переизвлекается поверх пересобранного профиля).
   status: varchar("status", { length: 20 }).notNull().default("applied"),
   createdAt: createdAt(),
-});
+  // Вектор документа этой версии устарел (2026-10-17, прямое действие кнопкой изменило текст навыков или у части
+  // факта нет вектора). Пока true, matching НЕ использует вектор документа/профиля как положительный сигнал
+  // (retrieval и documentSimilarity) — временная потеря recall вместо ложных совпадений по убранному навыку.
+  // Сбрасывает только worker (profile_embedding_refresh) для ЭТОЙ версии вместе с записью нового вектора.
+  embeddingStale: boolean("embedding_stale").notNull().default(false),
+}, (t) => ({
+  embeddingStale: index("capability_profiles_embedding_stale_idx").on(t.userId).where(sql`embedding_stale`),
+}));
 
 export const userCapabilities = pgTable("user_capabilities", {
   id: id(),
@@ -229,6 +304,115 @@ export const learnedPreferences = pgTable("learned_preferences", {
   createdAt: createdAt(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
+
+// ---------------------------------------------------------------------------
+// Phase 1 profile_facts — SHADOW MODE (claude/extended-ai-profile-architecture-2026-09-27.md)
+//
+// A separate AI extraction turns EACH confirmed profile_source_inputs row into structured facts.
+// Nothing in matching / feed / public profile / skills-resources reads these tables. The raw text
+// stays in profile_source_inputs (never overwritten), so any input can be re-extracted later.
+// ---------------------------------------------------------------------------
+
+/**
+ * One extraction attempt ledger row per (source input, pipeline/prompt/model version): idempotency,
+ * failures available for retry/reprocessing, and the version every fact was produced with.
+ * status: pending | succeeded | failed | skipped. error: technical code only, never user text.
+ */
+export const profileFactExtractions = pgTable(
+  "profile_fact_extractions",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sourceInputId: uuid("source_input_id").notNull(),
+    pipelineVersion: varchar("pipeline_version", { length: 50 }).notNull(),
+    promptVersion: varchar("prompt_version", { length: 30 }).notNull(),
+    model: varchar("model", { length: 100 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    factsCount: integer("facts_count"),
+    rejectedCount: integer("rejected_count"),
+    error: varchar("error", { length: 300 }),
+    createdAt: createdAt(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    versionUnique: uniqueIndex("profile_fact_extractions_version_unique").on(
+      t.sourceInputId, t.pipelineVersion, t.promptVersion, t.model,
+    ),
+    byUserStatus: index("profile_fact_extractions_user_status_idx").on(t.userId, t.status),
+    idUserUnique: uniqueIndex("profile_fact_extractions_id_user_unique").on(t.id, t.userId),
+    sourceOwner: foreignKey({
+      name: "profile_fact_extractions_source_owner_fk",
+      columns: [t.sourceInputId, t.userId],
+      foreignColumns: [profileSourceInputs.id, profileSourceInputs.userId],
+    }).onDelete("cascade"),
+    statusCheck: check("profile_fact_extractions_status_check",
+      sql`${t.status} in ('pending','succeeded','failed','skipped')`),
+  }),
+);
+
+/**
+ * Universal fact row. fact_type is a code-level registry (@ustal/validation PROFILE_FACT_TYPES);
+ * slot_key is the conflict identity computed by the server (single-valued type, or type + normalized
+ * label). status: active (current) | superseded (a later statement for the same slot wins) |
+ * replaced (this input was re-extracted by a newer pipeline; replaces_fact_id links the new row to
+ * the old one so later user confirmation/visibility can be carried over). At most one active fact
+ * per (user, slot) is enforced by the partial unique index.
+ */
+export const profileFacts = pgTable(
+  "profile_facts",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sourceInputId: uuid("source_input_id").notNull(),
+    extractionId: uuid("extraction_id").notNull(),
+    factType: varchar("fact_type", { length: 40 }).notNull(),
+    slotKey: varchar("slot_key", { length: 200 }).notNull(),
+    value: jsonb("value").$type<Record<string, unknown>>().notNull(),
+    evidence: text("evidence").notNull(),
+    confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+    assertion: varchar("assertion", { length: 10 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    // Phase 2A user control. user_decision: confirmed | corrected | revoked (null = AI only).
+    // user_value: the owner's corrected value (value keeps the AI output for audit/reprocessing).
+    // visibility: private (own profile / future internal matching only) | shareable (may be disclosed to a
+    // counterparty after an explicit owner action — never automatically). New facts are private.
+    userDecision: varchar("user_decision", { length: 10 }),
+    userValue: jsonb("user_value").$type<Record<string, unknown>>(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    visibility: varchar("visibility", { length: 10 }).notNull().default("private"),
+    supersededByFactId: uuid("superseded_by_fact_id").references((): AnyPgColumn => profileFacts.id, { onDelete: "set null" }),
+    replacesFactId: uuid("replaces_fact_id").references((): AnyPgColumn => profileFacts.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    oneActivePerSlot: uniqueIndex("profile_facts_active_slot_unique")
+      .on(t.userId, t.slotKey)
+      .where(sql`${t.status} = 'active'`),
+    byUserSlot: index("profile_facts_user_slot_idx").on(t.userId, t.slotKey),
+    bySource: index("profile_facts_source_idx").on(t.sourceInputId),
+    byExtraction: index("profile_facts_extraction_idx").on(t.extractionId),
+    sourceOwner: foreignKey({
+      name: "profile_facts_source_owner_fk",
+      columns: [t.sourceInputId, t.userId],
+      foreignColumns: [profileSourceInputs.id, profileSourceInputs.userId],
+    }).onDelete("cascade"),
+    extractionOwner: foreignKey({
+      name: "profile_facts_extraction_owner_fk",
+      columns: [t.extractionId, t.userId],
+      foreignColumns: [profileFactExtractions.id, profileFactExtractions.userId],
+    }).onDelete("cascade"),
+    statusCheck: check("profile_facts_status_check", sql`${t.status} in ('active','superseded','replaced','revoked')`),
+    decisionCheck: check("profile_facts_user_decision_check", sql`${t.userDecision} is null or ${t.userDecision} in ('confirmed','corrected','revoked')`),
+    // revoked status <=> revoked decision; a user value exists only for a correction.
+    revokedCheck: check("profile_facts_revoked_check", sql`(${t.status} = 'revoked') = (coalesce(${t.userDecision}, '') = 'revoked')`),
+    userValueCheck: check("profile_facts_user_value_check", sql`(${t.userValue} is null) = (coalesce(${t.userDecision}, '') <> 'corrected')`),
+    visibilityCheck: check("profile_facts_visibility_check", sql`${t.visibility} in ('private','shareable')`),
+    assertionCheck: check("profile_facts_assertion_check", sql`${t.assertion} in ('explicit','inferred')`),
+    confidenceCheck: check("profile_facts_confidence_check", sql`${t.confidence} >= 0 and ${t.confidence} <= 1`),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Онтология
@@ -299,6 +483,8 @@ export const orders = pgTable("orders", {
   normalizedTitle: text("normalized_title"),
   normalizedDescription: text("normalized_description"),
   priceMinor: integer("price_minor"),
+  // Заказчик готов рассмотреть отклик с другой ценой; если false — поле «ваша цена» у исполнителя не показывается.
+  acceptsPriceOffers: boolean("accepts_price_offers").notNull().default(false),
   currency: varchar("currency", { length: 3 }).notNull().default("RUB"),
   desiredAt: timestamp("desired_at", { withTimezone: true }),
   status: varchar("status", { length: 20 }).notNull().default("draft"),
@@ -311,6 +497,14 @@ export const orders = pgTable("orders", {
   createdAt: createdAt(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),
+  // Показ волнами до лимита откликов (2026-10-15, @ustal/domain order-delivery): номер текущей волны и время её
+  // начала, признак «подходящие люди закончились» и закрытие приёма откликов (заказчиком или по лимиту).
+  deliveryWave: integer("delivery_wave").notNull().default(1),
+  // Номер волны, подбор которой уже опубликован (0 — ещё ни одного прогона): следующая волна — только после него.
+  deliveredWave: integer("delivered_wave").notNull().default(0),
+  deliveryWaveAt: timestamp("delivery_wave_at", { withTimezone: true }),
+  deliveryExhaustedAt: timestamp("delivery_exhausted_at", { withTimezone: true }),
+  responsesClosedAt: timestamp("responses_closed_at", { withTimezone: true }),
   // НЕТ: required_executors_count, confirmed_executors_count, price_per_executor,
   //      agreed_price, team_size — сознательно, см. docs/data-model.md
 });
@@ -395,6 +589,14 @@ export const orderAssignments = pgTable(
     // текстовое поле, см. architecture.md §5. Заполняется только веткой
     // not-completed; для completed остаётся null.
     notCompletedReason: text("not_completed_reason"),
+    // Security-этап «исполнитель не должен зависать в работе» (2026-09-22):
+    // исполнитель может сам отметить, что работа сделана ("completed") или
+    // что выполнить не получилось ("issue") — это ТОЛЬКО сигнал заказчику,
+    // сам заказ/assignment не переводит: окончательное решение (complete /
+    // not-completed, см. routes/assignments.ts) по-прежнему только у
+    // заказчика. Пусто, пока исполнитель ничего не отмечал.
+    executorReport: varchar("executor_report", { length: 20 }),
+    executorReportAt: timestamp("executor_report_at", { withTimezone: true }),
   },
   (t) => ({
     // исполнитель не может быть дважды выбран в один заказ
@@ -423,6 +625,53 @@ export const reviews = pgTable(
   },
   (t) => ({
     onePerDirection: uniqueIndex("reviews_from_to_unique").on(t.fromUserId, t.toUserId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Оценки по заказу (MVP): одна запись = одна сторона закрыла «Оценить».
+// rating NULL = пропуск. to_role — в какой роли оценивают получателя.
+// ---------------------------------------------------------------------------
+
+export const orderRatings = pgTable(
+  "order_ratings",
+  {
+    id: id(),
+    orderId: uuid("order_id").notNull().references(() => orders.id),
+    fromUserId: uuid("from_user_id").notNull().references(() => users.id),
+    toUserId: uuid("to_user_id").notNull().references(() => users.id),
+    toRole: varchar("to_role", { length: 10 }).notNull(),
+    rating: integer("rating"),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    onePerSide: uniqueIndex("order_ratings_order_from_unique").on(t.orderId, t.fromUserId),
+    byRecipient: index("order_ratings_to_user_idx").on(t.toUserId, t.toRole),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Подтверждение телефона (OTP): готово заранее, включается флагом
+// PHONE_VERIFICATION_MODE (packages/config/src/env.ts) без переделки
+// регистрации. Код хранится только хешем; purpose разделяет анонимную
+// регистрацию ("register") и подтверждение уже существующего аккаунта
+// ("existing_user", предлагается постепенно при входе).
+// ---------------------------------------------------------------------------
+
+export const phoneOtpCodes = pgTable(
+  "phone_otp_codes",
+  {
+    id: id(),
+    phone: varchar("phone", { length: 20 }).notNull(),
+    purpose: varchar("purpose", { length: 20 }).notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    byPhonePurpose: index("phone_otp_codes_phone_purpose_idx").on(t.phone, t.purpose, t.createdAt),
   }),
 );
 
@@ -503,12 +752,69 @@ export const aiRuns = pgTable("ai_runs", {
   traceId: varchar("trace_id", { length: 100 }).notNull(),
 });
 
+/**
+ * Variant B (2026-10-15): content-addressed memo of successful AI review verdicts (semantic pair review,
+ * general-access refusal check). cache_key = sha256 of review type + provider/model + prompt/schema version +
+ * the exact AI input, so any change of profile/order/restriction text or version yields a new key; rows are
+ * never updated. Only successful, non-degraded verdicts are stored; technical failures are never cached.
+ */
+/**
+ * Direct revoke/restore пунктов профиля без AI (2026-10-17): журнал решений пользователя.
+ * Действующее состояние — в версиях capability_profiles (маркеры removed_by_user / lifted в matching_facts);
+ * журнал нужен, чтобы решение кнопкой пережило переборку профиля из сообщений (rebuild/reprocess) — у такого
+ * решения нет сообщения — и для аудита «убрано пользователем». Append-only.
+ * identity: { family, nodeIds, key } (как samePoint guard) или для ограничения { kind, phrase, evidence };
+ * snapshot: исходные факты/строки пункта (для восстановления).
+ */
+export const profileItemDecisions = pgTable(
+  "profile_item_decisions",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    action: varchar("action", { length: 10 }).notNull(),
+    family: varchar("family", { length: 20 }).notNull(),
+    identity: jsonb("identity").notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    profileVersion: integer("profile_version").notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
+    // Полный детерминированный порядок решений (2026-10-17): decided_at, затем seq (монотонный, порядок записи).
+    seq: bigint("seq", { mode: "number" }).generatedByDefaultAsIdentity(),
+  },
+  (t) => ({ userTime: index("profile_item_decisions_user_idx").on(t.userId, t.decidedAt) }),
+);
+
+/**
+ * УСТАРЕЛО (2026-10-17, аудит Codex №3): запросы пересчёта векторов из миграции 0024; механизм заменён флагом
+ * capability_profiles.embedding_stale (0025 переносит ожидающие запросы во флаг). Таблица оставлена как переходная
+ * (окружения, где 0024 уже применена) и не используется кодом; удаление — отдельной миграцией после релиза.
+ */
+export const profileEmbeddingRefreshRequests = pgTable("profile_embedding_refresh_requests", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+
+export const aiReviewCache = pgTable(
+  "ai_review_cache",
+  {
+    id: id(),
+    cacheKey: varchar("cache_key", { length: 64 }).notNull(),
+    reviewType: varchar("review_type", { length: 50 }).notNull(),
+    model: varchar("model", { length: 100 }).notNull(),
+    promptVersion: varchar("prompt_version", { length: 60 }).notNull(),
+    result: jsonb("result").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ keyUnique: uniqueIndex("ai_review_cache_key_unique").on(t.cacheKey) }),
+);
+
 export const matchingRuns = pgTable("matching_runs", {
   id: id(),
   orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   candidatesCount: integer("candidates_count"),
+  inputHash: varchar("input_hash", { length: 64 }),
 });
 
 export const matchingCandidates = pgTable("matching_candidates", {
@@ -516,9 +822,64 @@ export const matchingCandidates = pgTable("matching_candidates", {
   matchingRunId: uuid("matching_run_id").notNull().references(() => matchingRuns.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id),
   score: numeric("score", { precision: 5, scale: 2 }).notNull(),
-  matchType: varchar("match_type", { length: 20 }).notNull(), // exact|probable|new_opportunity
+  matchType: varchar("match_type", { length: 20 }).notNull(), // exact|probable (legacy rows may hold other values; varchar, no enum)
   explanation: text("explanation").notNull(),
   breakdown: jsonb("breakdown").notNull().default({}),
+}, (t) => ({ runUserUnique: uniqueIndex("matching_candidates_run_user_unique").on(t.matchingRunId, t.userId) }));
+
+/** Immutable processing snapshots; original profile/order text is never overwritten by backfill. */
+export const matchingDocuments = pgTable("matching_documents", {
+  id: id(),
+  profileId: uuid("profile_id").references(() => capabilityProfiles.id, { onDelete: "cascade" }),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+  processingVersion: varchar("processing_version", { length: 100 }).notNull(),
+  sourceHash: varchar("source_hash", { length: 64 }).notNull(),
+  sourceText: text("source_text").notNull(),
+  embeddingModel: varchar("embedding_model", { length: 100 }).notNull(),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
+  processedAt: createdAt(),
+}, (t) => ({
+  profileVersion: uniqueIndex("matching_docs_profile_version").on(t.profileId, t.processingVersion, t.sourceHash),
+  orderVersion: uniqueIndex("matching_docs_order_version").on(t.orderId, t.processingVersion, t.sourceHash),
+}));
+
+export const matchingFacts = pgTable("matching_facts", {
+  id: id(),
+  documentId: uuid("document_id").notNull().references(() => matchingDocuments.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 20 }).notNull(),
+  constraintType: varchar("constraint_type", { length: 30 }).notNull().default("none"),
+  constraintScope: varchar("constraint_scope", { length: 30 }).notNull().default("fact"),
+  resourceRole: varchar("resource_role", { length: 30 }).notNull().default("none"),
+  resourceCapacity: jsonb("resource_capacity").$type<{ value: number | null; unit: string | null; kind: string | null }>().notNull().default({ value: null, unit: null, kind: null }),
+  phrase: text("phrase").notNull(),
+  // Profile items (2026-10-15): short normalized display label (null = show phrase) and descriptive
+  // attributes of an owned resource ({key, value, unit}). Display/profile only — matching does not read them.
+  label: text("label"),
+  attributes: jsonb("attributes").$type<{ key: string; value: string | number; unit: string | null }[]>().notNull().default([]),
+  evidence: text("evidence").notNull(),
+  nodeIds: jsonb("node_ids").$type<string[]>().notNull().default([]),
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+  mandatory: boolean("mandatory").notNull(),
+  startHour: integer("start_hour"),
+  endHour: integer("end_hour"),
+  // ISO weekday numbering local to the order's city: 0=Mon..6=Sun. Null = unspecified.
+  daysOfWeek: jsonb("days_of_week").$type<number[] | null>(),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
+}, (t) => ({ byDocument: index("matching_facts_document_idx").on(t.documentId) }));
+
+export const matchingTraces = pgTable("matching_traces", {
+  id: id(),
+  matchingRunId: uuid("matching_run_id").notNull().references(() => matchingRuns.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  decision: varchar("decision", { length: 30 }).notNull(),
+  detail: jsonb("detail").notNull(),
+}, (t) => ({ byRun: index("matching_traces_run_idx").on(t.matchingRunId) }));
+
+/** Transactional coalescing outbox: profile changes survive a queue/network failure. */
+export const rematchRequests = pgTable("rematch_requests", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  requestedAt: createdAt(),
+  cursor: uuid("cursor"),
 });
 
 export const auditLogs = pgTable(

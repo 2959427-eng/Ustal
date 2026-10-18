@@ -1,5 +1,5 @@
 import { getDb, schema } from "@ustal/database";
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 export interface OntologyMatch {
   ontologyNodeId: string;
@@ -14,34 +14,94 @@ export interface OntologyMatch {
  * создать ontology_candidates запись (см. createOntologyCandidate) и НЕ
  * блокировать безопасный заказ/профиль.
  */
-export async function findOntologyNodeForPhrase(phrase: string): Promise<OntologyMatch | null> {
+export async function findOntologyNodeForPhrase(
+  phrase: string,
+): Promise<OntologyMatch | null> {
   const db = getDb();
   const normalized = phrase.trim().toLowerCase();
 
   const byName = await db.query.ontologyNodes.findFirst({
     where: (t, { eq: eqOp, and, sql }) =>
-      and(eqOp(t.status, "active"), sql`lower(${t.nameRu}) = ${normalized}`),
+      and(
+        eqOp(t.status, "active"),
+        sql`(lower(${t.nameRu}) = ${normalized} OR lower(${t.canonicalKey}) = ${normalized})`,
+      ),
   });
-  if (byName) return { ontologyNodeId: byName.id, canonicalKey: byName.canonicalKey, matchedVia: "canonical_key" };
+  if (byName)
+    return {
+      ontologyNodeId: byName.id,
+      canonicalKey: byName.canonicalKey,
+      matchedVia: "canonical_key",
+    };
 
-  const bySynonym = await db.query.ontologySynonyms.findFirst({
-    where: (t, { sql }) => sql`lower(${t.phraseRu}) = ${normalized}`,
-  });
-  if (bySynonym) {
-    const node = await db.query.ontologyNodes.findFirst({
-      where: eq(schema.ontologyNodes.id, bySynonym.ontologyNodeId),
-    });
-    if (node) return { ontologyNodeId: node.id, canonicalKey: node.canonicalKey, matchedVia: "synonym" };
-  }
+  const matches = await db
+    .select({
+      id: schema.ontologyNodes.id,
+      canonicalKey: schema.ontologyNodes.canonicalKey,
+    })
+    .from(schema.ontologySynonyms)
+    .innerJoin(
+      schema.ontologyNodes,
+      eq(schema.ontologyNodes.id, schema.ontologySynonyms.ontologyNodeId),
+    )
+    .where(
+      and(
+        eq(schema.ontologyNodes.status, "active"),
+        sql`lower(${schema.ontologySynonyms.phraseRu}) = ${normalized}`,
+      ),
+    )
+    .limit(2);
+  if (matches.length === 1)
+    return {
+      ontologyNodeId: matches[0]!.id,
+      canonicalKey: matches[0]!.canonicalKey,
+      matchedVia: "synonym",
+    };
 
   return null;
 }
 
-export async function createOntologyCandidate(rawPhrase: string, suggestedNodeIds: string[]): Promise<void> {
+export async function createOntologyCandidate(
+  rawPhrase: string,
+  suggestedNodeIds: string[],
+): Promise<void> {
   const db = getDb();
   await db.insert(schema.ontologyCandidates).values({
     rawPhrase,
     suggestedNodeIds,
     status: "pending",
   });
+}
+
+/** Upper bound per document: a long cumulative profile must not flood the moderation queue. */
+export const MAX_CANDIDATES_PER_DOCUMENT = 20;
+
+/**
+ * Records phrases with no ontology node as pending ontology_candidates (moderated in the admin
+ * panel: merge as a synonym of an existing node, or reject). Never creates or activates nodes.
+ * A phrase is skipped when it already resolves to a node or already has a candidate in ANY
+ * status (pending -> already queued, merged -> now a synonym, rejected -> admin said no), so
+ * re-extracting the cumulative profile text does not duplicate rows. Returns how many were added.
+ */
+export async function recordOntologyCandidates(phrases: string[]): Promise<number> {
+  const db = getDb();
+  const seen = new Set<string>();
+  let added = 0;
+  for (const raw of phrases) {
+    if (added >= MAX_CANDIDATES_PER_DOCUMENT) break;
+    const phrase = raw.trim();
+    const key = phrase.toLowerCase();
+    if (!phrase || phrase.length > 200 || seen.has(key)) continue;
+    seen.add(key);
+    if (await findOntologyNodeForPhrase(phrase)) continue;
+    const [existing] = await db
+      .select({ id: schema.ontologyCandidates.id })
+      .from(schema.ontologyCandidates)
+      .where(sql`lower(${schema.ontologyCandidates.rawPhrase}) = ${key}`)
+      .limit(1);
+    if (existing) continue;
+    await createOntologyCandidate(phrase, []);
+    added++;
+  }
+  return added;
 }

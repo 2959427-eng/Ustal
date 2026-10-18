@@ -5,13 +5,18 @@ import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { loadEnv } from "@ustal/config";
+import { getSql } from "@ustal/database";
 import authenticatePlugin from "./plugins/authenticate.js";
 import authRoutes from "./routes/auth.js";
+import otpRoutes from "./routes/otp.js";
+import phoneVerificationRoutes from "./routes/phone-verification.js";
 import meRoutes from "./routes/me.js";
 import citiesRoutes from "./routes/cities.js";
 import profileRoutes from "./routes/profile.js";
+import profileFactsRoutes from "./routes/profile-facts.js";
 import mediaRoutes from "./routes/media.js";
 import ordersRoutes from "./routes/orders.js";
+import orderViewRoutes from "./routes/order-view.js";
 import feedRoutes from "./routes/feed.js";
 import responsesRoutes from "./routes/responses.js";
 import contactsRoutes from "./routes/contacts.js";
@@ -22,10 +27,46 @@ import blocksRoutes from "./routes/blocks.js";
 import myRoutes from "./routes/my.js";
 import notificationsRoutes from "./routes/notifications.js";
 import devicesRoutes from "./routes/devices.js";
+import usersRoutes from "./routes/users.js";
 
 export async function buildApp() {
   const env = loadEnv();
-  const app = Fastify({ logger: { level: env.LOG_LEVEL } });
+  // За Caddy без trustProxy request.ip — адрес самого Caddy, и лимиты считаются ОДНИМ счётчиком на всех клиентов.
+  // Число хопов, а не `true`: иначе клиент подделывает IP заголовком X-Forwarded-For.
+  const app = Fastify({ logger: { level: env.LOG_LEVEL }, trustProxy: env.TRUST_PROXY_HOPS > 0 ? env.TRUST_PROXY_HOPS : false });
+
+  // Глобальный обработчик ошибок ставится ДО регистрации плагинов и маршрутов (QA 2026-10-14, D3): Fastify
+  // наследует обработчик в дочерние контексты только в момент регистрации, поэтому прежний вызов в конце
+  // buildApp() до маршрутов не доходил — ошибки валидации уходили клиенту как 500 вместе с текстом SQL-запроса.
+  app.setErrorHandler((error, _request, reply) => {
+    if (error.name === "ZodError") {
+      return reply.code(400).send({ error: { code: "validation_error", message: error.message } });
+    }
+    // Ошибки Postgres из-за ввода клиента — не сбой сервера:
+    // 22P02 — значение не того формата (как правило, id в адресе не uuid) → такого объекта нет;
+    // 22021 / 22P05 — недопустимый символ (например, NUL) в тексте → некорректный запрос.
+    const pgCode = (error as { cause?: { code?: string }; code?: string }).cause?.code ?? (error as { code?: string }).code;
+    if (pgCode === "22P02") {
+      return reply.code(404).send({ error: { code: "not_found", message: "Не найдено" } });
+    }
+    if (pgCode === "22021" || pgCode === "22P05") {
+      return reply.code(400).send({ error: { code: "validation_error", message: "Текст содержит недопустимые символы" } });
+    }
+    app.log.error(error);
+    const statusCode = error.statusCode ?? 500;
+    // На 5xx (в том числе непойманные исключения вроде "Failed to create ...")
+    // не отдаём клиенту error.message — это может утечь внутренние детали
+    // (текст ошибки Postgres, путь к файлу и т.п.). Полный текст всё ещё
+    // уходит в app.log.error(error) выше. Для всех остальных статусов (4xx —
+    // валидация, not_found, rate_limited и т.д.) поведение не изменилось.
+    const isServerError = statusCode >= 500;
+    return reply.code(statusCode).send({
+      error: {
+        code: isServerError ? "internal_error" : "error",
+        message: isServerError ? "Внутренняя ошибка сервера" : error.message,
+      },
+    });
+  });
 
   // CORS в основном имеет смысл для браузерных клиентов (Origin-заголовок) —
   // мобильное приложение (fetch из React Native) и админка (прямой доступ к
@@ -66,14 +107,25 @@ export async function buildApp() {
 
   await app.register(authenticatePlugin);
 
-  app.get("/health", async () => ({ status: "ok" }));
+  app.get("/health", async (_request, reply) => {
+    try {
+      await getSql()`SELECT 1`;
+      return { status: "ok" };
+    } catch {
+      return reply.code(503).send({ status: "unavailable" });
+    }
+  });
 
   await app.register(authRoutes);
+  await app.register(otpRoutes);
+  await app.register(phoneVerificationRoutes);
   await app.register(meRoutes);
   await app.register(citiesRoutes);
   await app.register(profileRoutes);
+  await app.register(profileFactsRoutes);
   await app.register(mediaRoutes);
   await app.register(ordersRoutes);
+  await app.register(orderViewRoutes);
   await app.register(feedRoutes);
   await app.register(responsesRoutes);
   await app.register(contactsRoutes);
@@ -84,32 +136,13 @@ export async function buildApp() {
   await app.register(myRoutes);
   await app.register(notificationsRoutes);
   await app.register(devicesRoutes);
+  await app.register(usersRoutes);
   // Админка НЕ проходит через этот Fastify-инстанс: apps/admin (Next.js)
   // обращается к БД напрямую через @ustal/database (server components/
   // actions), со своей сессионной авторизацией admin_users — так было
   // заложено уже в Фазе 1 (apps/admin/package.json зависит от
   // @ustal/database, а не от api-клиента) и подтверждено в Фазе 8. Разделы
   // /admin/* в docs/api.md описывают операции, а не обязательный REST-слой.
-
-  app.setErrorHandler((error, _request, reply) => {
-    if (error.name === "ZodError") {
-      return reply.code(400).send({ error: { code: "validation_error", message: error.message } });
-    }
-    app.log.error(error);
-    const statusCode = error.statusCode ?? 500;
-    // На 5xx (в том числе непойманные исключения вроде "Failed to create ...")
-    // не отдаём клиенту error.message — это может утечь внутренние детали
-    // (текст ошибки Postgres, путь к файлу и т.п.). Полный текст всё ещё
-    // уходит в app.log.error(error) выше. Для всех остальных статусов (4xx —
-    // валидация, not_found, rate_limited и т.д.) поведение не изменилось.
-    const isServerError = statusCode >= 500;
-    return reply.code(statusCode).send({
-      error: {
-        code: isServerError ? "internal_error" : "error",
-        message: isServerError ? "Внутренняя ошибка сервера" : error.message,
-      },
-    });
-  });
 
   return app;
 }

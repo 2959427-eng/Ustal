@@ -9,13 +9,18 @@ export const updateProfileSchema = z
     whatsappPhone: ruPhoneSchema.nullable().optional(),
     /** Фото профиля — id из POST /media (kind: "photo"), null снимает аватар. */
     avatarMediaId: z.string().uuid().nullable().optional(),
+    /** «О себе» — короткое описание, null очищает. */
+    about: z.string().trim().max(500).nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "Нужно указать хотя бы одно поле" });
 export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
 
+// Символ NUL (\u0000) Postgres не хранит в text: убираем его, а не отвечаем 500 (QA 2026-10-14, D9).
+const withoutNul = (s: string) => s.replace(/\u0000/g, "");
+
 export const profileInputSchema = z.object({
   inputType: z.enum(["text", "voice"]),
-  text: z.string().min(1).max(4000).optional(),
+  text: z.string().min(1).max(4000).transform(withoutNul).refine((s) => s.length > 0, { message: "Текст пуст" }).optional(),
   audioMediaId: z.string().uuid().optional(),
 }).refine((v) => (v.inputType === "text" ? !!v.text : !!v.audioMediaId), {
   message: "text обязателен для inputType=text, audioMediaId — для inputType=voice",
@@ -27,7 +32,7 @@ export type ProfileInputRequest = z.infer<typeof profileInputSchema>;
  * PATCH /profile/inputs/{id} — правка распознанного текста ДО подтверждения.
  */
 export const editTranscriptSchema = z.object({
-  transcriptCorrected: z.string().min(1).max(4000),
+  transcriptCorrected: z.string().min(1).max(4000).transform(withoutNul).refine((s) => s.length > 0, { message: "Текст пуст" }),
 });
 export type EditTranscriptRequest = z.infer<typeof editTranscriptSchema>;
 
@@ -39,7 +44,17 @@ export const capabilityExtractionResultSchema = z.object({
   capabilities: z.array(
     z.object({
       label: z.string(),
-      proficiency: z.enum(["unknown", "basic", "experienced", "professional"]),
+      // AI structured output for this field is not strict-JSON-schema-guaranteed
+      // (the surrounding object uses z.record() elsewhere, which blocks strict mode),
+      // so a model can occasionally emit a value outside this enum (observed: "inferred",
+      // likely confused with the sibling evidenceType enum). The retry loop in
+      // structuredCompletion (packages/ai/src/providers/openai.ts) already asks the model
+      // to self-correct first; this preprocess is only the last-resort safety net so one
+      // stray enum value degrades to "unknown" instead of throwing and losing the whole case.
+      proficiency: z.preprocess(
+        (v) => (["unknown", "basic", "experienced", "professional"].includes(v as string) ? v : "unknown"),
+        z.enum(["unknown", "basic", "experienced", "professional"]),
+      ),
       evidenceType: z.enum(["explicit", "inferred", "completed_order", "behavior"]),
       confidence: z.number().min(0).max(1),
     }),
@@ -51,6 +66,7 @@ export const capabilityExtractionResultSchema = z.object({
         "vehicle",
         "tool",
         "equipment",
+        "material",
         "property",
         "space",
         "audience",

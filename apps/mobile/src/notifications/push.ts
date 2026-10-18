@@ -1,79 +1,57 @@
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
 import { apiClient } from "../api/client";
+import { withDeadline } from "../lib/deadline";
 
-/**
- * Push-регистрация устройства (POST /devices, Фаза 5 — backend готов давно,
- * но мобильный клиент никогда не вызывал getExpoPushTokenAsync/этот
- * эндпоинт, см. architecture.md §5 п.30). Показывать баннер уведомления,
- * когда приложение открыто на переднем плане — по умолчанию Expo его
- * скрывает, если явно не задать handler.
- */
-
-let registrationInFlight = false;
+const TOKEN_KEY = "ustal.pushToken";
+let registration: Promise<void> | null = null;
+let generation = 0;
 let lastRegisteredToken: string | null = null;
 
-/**
- * Идемпотентно на бэкенде (upsert по expoPushToken) — безопасно звать при
- * каждом запуске приложения для уже вошедшего пользователя, а не только
- * один раз при первом логине (например, после переустановки на другой
- * аккаунт токен должен переписать владельца). Ошибки (нет прав, эмулятор
- * без Google Play Services, отсутствующий EAS projectId до `eas init`) не
- * должны мешать пользоваться остальным приложением — поэтому только логируем.
- */
-export async function ensurePushRegistered(): Promise<void> {
-  if (registrationInFlight) return;
-  if (Platform.OS !== "ios" && Platform.OS !== "android") return;
-  // Importing expo-notifications itself triggers an error in Android Expo Go.
-  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return;
-
-  registrationInFlight = true;
-  try {
-    const Notifications = await import("expo-notifications");
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
-    });
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== "granted") {
-      // eslint-disable-next-line no-console
-      console.log("Push: разрешение на уведомления не получено, регистрация пропущена.");
-      return;
-    }
-
-    // extra.eas.projectId появится вместе с eas.json после `eas init`
-    // (см. architecture.md §5 п.30) — до этого момента SDK может всё равно
-    // вернуть Expo push token в managed-режиме разработки, поэтому не
-    // блокируем регистрацию на его отсутствии.
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
-    const tokenResponse = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-    const expoPushToken = tokenResponse.data;
-
-    if (expoPushToken === lastRegisteredToken) return; // уже зарегистрирован в этом запуске
-
-    await apiClient.request("/devices", {
-      method: "POST",
-      body: JSON.stringify({ expoPushToken, platform: Platform.OS }),
-    });
-    lastRegisteredToken = expoPushToken;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.log("Push: регистрация устройства не удалась (не критично для остального приложения):", err);
-  } finally {
-    registrationInFlight = false;
-  }
+export function ensurePushRegistered(): Promise<void> {
+  if (registration) return registration;
+  const current = generation;
+  const task = register(current).catch(() => {
+    // No token or provider payload in production logs. In-app notifications still work.
+  }).finally(() => { if (registration === task) registration = null; });
+  registration = task;
+  return task;
 }
 
-/** Вызывать при логауте — на следующий вход нужно перерегистрировать токен на нового пользователя. */
+async function register(current: number): Promise<void> {
+  if (!["ios", "android"].includes(Platform.OS) || Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return;
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+  if (!projectId) return; // Never ask Expo to infer the project from an unrelated client.
+  const Notifications = await import("expo-notifications");
+  Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }) });
+  if (Platform.OS === "android" && Notifications.setNotificationChannelAsync) {
+    await Notifications.setNotificationChannelAsync("default", { name: "USTAL", importance: Notifications.AndroidImportance.HIGH });
+  }
+  let { status } = await Notifications.getPermissionsAsync();
+  if (status !== "granted") ({ status } = await Notifications.requestPermissionsAsync());
+  if (status !== "granted" || current !== generation) return;
+  const { data: token } = await withDeadline(Notifications.getExpoPushTokenAsync({ projectId }), 15_000);
+  if (current !== generation || token === lastRegisteredToken) return;
+  // Remember before POST: a timed-out response does not prove the server did not register it.
+  await withDeadline(SecureStore.setItemAsync(TOKEN_KEY, token));
+  if (current !== generation) return;
+  await apiClient.request("/devices", { method: "POST", body: JSON.stringify({ expoPushToken: token, platform: Platform.OS }) });
+  if (current === generation) lastRegisteredToken = token;
+}
+
+export async function unregisterPush(): Promise<void> {
+  generation += 1;
+  if (registration) await withDeadline(registration, 25_000);
+  const token = lastRegisteredToken ?? await withDeadline(SecureStore.getItemAsync(TOKEN_KEY));
+  if (!token) return;
+  // Caller must not report successful logout until this is acknowledged.
+  await apiClient.request("/devices", { method: "DELETE", body: JSON.stringify({ expoPushToken: token, platform: Platform.OS }) });
+  await withDeadline(SecureStore.deleteItemAsync(TOKEN_KEY));
+  lastRegisteredToken = null;
+}
+
 export function resetPushRegistrationState(): void {
+  generation += 1;
   lastRegisteredToken = null;
 }

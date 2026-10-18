@@ -24,6 +24,14 @@ export const mockStt: SpeechToTextProvider = {
 };
 
 export const mockExtraction: StructuredExtractionProvider = {
+  async reviewSemantic() { return wrap({ compatible: false, confidence: 0, reason: "No live semantic judgment in mock provider" }); },
+  // «Простые задачи»: без живой модели путь general access не включается (trained — «не использовать путь»).
+  async classifyOrderAccess() { return wrap({ accessLevel: "trained" as const, explicitRequirements: [], reason: "No live access classification in mock provider" }); },
+  async checkRefusal() { return wrap({ involves: false, reason: "No live refusal check in mock provider" }); },
+  async normalizeMatching() {
+    // No pretend semantic intelligence. Integration tests inject recorded provider fixtures.
+    return wrap({ facts: [] });
+  },
   async extractCapabilityProfile(input, _meta: AiCallMeta) {
     return wrap({
       summary: `Извлечено из: "${input.text.slice(0, 60)}"`,
@@ -32,6 +40,10 @@ export const mockExtraction: StructuredExtractionProvider = {
       ],
       resources: [],
     });
+  },
+  async extractProfileFacts() {
+    // No pretend intelligence: integration tests inject recorded fixtures (vi.spyOn).
+    return wrap({ facts: [] });
   },
   async extractOrder(input, _meta: AiCallMeta) {
     // Простейший keyword-heuristic, а не имитация NLP: без него extractOrder

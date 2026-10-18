@@ -1,12 +1,16 @@
 import { useCallback, useState } from "react";
-import { View, Text, TextInput, KeyboardAvoidingView, Platform, StyleSheet, FlatList, Pressable, ActivityIndicator, Image } from "react-native";
+import { View, Text, TextInput, KeyboardAvoidingView, Platform, StyleSheet, FlatList, Pressable, ActivityIndicator, Image, Alert } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { getMediaUrl } from "../../src/api/media";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SwipeToDelete } from "../../src/components/SwipeToDelete";
+import { canDeleteOrder } from "../../src/lib/order-delete";
+import { cancelOrder } from "../../src/api/orders";
 import { HomeHeader } from "../../src/components/HomeHeader";
-import { getFeed } from "../../src/api/feed";
-import { getMyOrders, type MyOrderItem } from "../../src/api/my";
+import { useNotificationBadges } from "../../src/notifications/badges";
+import { OrdersQuickActions } from "../../src/components/QuickActions";
+import { myKeys, getMyOrders, type MyOrderItem } from "../../src/api/my";
 import type { OrderStatus } from "../../src/api/orders";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
@@ -17,6 +21,9 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   moderation_hold: "На проверке",
   published: "Опубликован",
   negotiating: "Идут переговоры",
+  in_progress: "В работе",
+  completed: "Выполнен",
+  not_completed: "Не выполнен",
   closed: "Закрыт",
   expired: "Истёк",
   cancelled: "Отменён",
@@ -35,18 +42,12 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 export default function OrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data, isLoading, isError, isRefetching, refetch } = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders() });
+  const { data, isLoading, isError, isRefetching, refetch } = useQuery({ queryKey: myKeys.orders(), queryFn: () => getMyOrders() });
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
-  const { data: feed } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
 
-  // 2026-09-14: «Мои заказы» — активный список, отменённые (status='cancelled',
-  // см. app/order/[id].tsx — «Удалить заказ»/«Отменить заказ») не должны
-  // висеть в нём вперемешку с текущими. Отдельного экрана истории/архива в
-  // приложении пока нет, поэтому фильтрация — только здесь, только для
-  // отображения списка. GET /my/orders и его использование в других местах
-  // (HomeHeader ordersCount ниже, счётчик "Мои заказы" в account.tsx — оба
-  // читают тот же getMyOrders()) не трогаем, чтобы не менять поведение там.
-  const activeOrders = (data?.items ?? []).filter((item) => item.status !== "cancelled");
+  // Архивные заказы (оценены/пропущены, не выполнены, закрыты) живут в «Архиве заказов».
+  const activeOrders = (data?.items ?? []).filter((o) => o.status !== "cancelled" && !o.archived);
+  const badges = useNotificationBadges();
 
   const [needText, setNeedText] = useState("");
   const canContinue = needText.trim().length > 0;
@@ -57,10 +58,13 @@ export default function OrdersScreen() {
       pathname: "/(tabs)/create",
       params: { prefillText: needText.trim() },
     });
+    // Текст уже передан на экран создания заказа; вкладка «Заказы» остаётся примонтированной,
+    // поэтому без очистки в поле после публикации висел бы прошлый заказ.
+    setNeedText("");
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior="padding">
       <FlatList
         refreshing={isRefetching}
         onRefresh={() => { void refetch(); }}
@@ -71,7 +75,10 @@ export default function OrdersScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View style={[styles.headerPad, { paddingTop: insets.top + spacing.sm }]}>
-            <HomeHeader active="orders" opportunitiesCount={feed?.items.length} ordersCount={data?.items.length} />
+            <HomeHeader active="orders" opportunitiesCount={badges.opportunities} ordersCount={badges.orders} />
+            <View style={styles.linksRow}>
+              <OrdersQuickActions />
+            </View>
           </View>
         }
         ListEmptyComponent={
@@ -124,19 +131,44 @@ export default function OrdersScreen() {
 
 function MyOrderRow({ item }: { item: MyOrderItem }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const confirmDelete = () => {
+    Alert.alert("Удалить заказ?", "Заказ пропадёт из ленты исполнителей и из вашего списка.", [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: "Удалить",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await cancelOrder(item.id);
+            void queryClient.invalidateQueries({ queryKey: ["my-orders"] });
+          } catch (err) {
+            Alert.alert("Не удалось удалить заказ", err instanceof Error ? err.message : "Попробуйте ещё раз.");
+          }
+        },
+      },
+    ]);
+  };
+
   return (
-    <Pressable style={styles.myOrderRow} onPress={() => router.push({ pathname: "/order/[id]", params: { id: item.id } })}>
+    <SwipeToDelete enabled={canDeleteOrder(item.status)} onDelete={confirmDelete}>
+    <Pressable style={[styles.myOrderRow, { marginBottom: 0 }]} onPress={() => router.push({ pathname: "/order/[id]", params: { id: item.id } })}>
       <Text style={styles.myOrderTitle}>{item.normalizedTitle ?? (item.status === "processing_failed" ? "Не удалось обработать заказ" : "Обрабатывается…")}</Text>
       {!!item.photoMediaIds?.length && <View style={styles.photoRow}>
         {item.photoMediaIds.slice(0, 4).map((id) => <Image key={id} source={{ uri: getMediaUrl(id) }} style={styles.photo} accessibilityLabel="Фото заказа" />)}
       </View>}
       <View style={styles.myOrderFooter}>
-        <Text style={styles.myOrderStatus}>{STATUS_LABELS[item.status]}</Text>
+        <Text style={item.ratingPending ? styles.myOrderStatusPending : styles.myOrderStatus}>
+          {item.ratingPending ? "Оценить" : STATUS_LABELS[item.status]}
+          {!!item.activeResponsesCount && ` · откликов: ${item.activeResponsesCount}`}
+        </Text>
         {item.priceMinor != null && (
           <Text style={styles.myOrderPrice}>{(item.priceMinor / 100).toLocaleString("ru-RU")} ₽</Text>
         )}
       </View>
     </Pressable>
+    </SwipeToDelete>
   );
 }
 
@@ -145,6 +177,7 @@ const styles = StyleSheet.create({
   photo: { width: 64, height: 64, borderRadius: radii.md },
   container: { flex: 1, backgroundColor: colors.background },
   headerPad: { marginBottom: spacing.md },
+  linksRow: { marginTop: spacing.md },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
   empty: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.sm },
   spinner: { marginTop: spacing.lg, marginBottom: spacing.md },
@@ -163,6 +196,7 @@ const styles = StyleSheet.create({
   myOrderTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   myOrderFooter: { flexDirection: "row", justifyContent: "space-between" },
   myOrderStatus: { ...typography.caption, color: colors.textTertiary },
+  myOrderStatusPending: { ...typography.caption, fontWeight: "700", color: colors.primary },
   myOrderPrice: { ...typography.subtitle, fontWeight: "700", color: colors.primary },
   composerDock: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.background },
   composer: {

@@ -1,0 +1,2 @@
+ALTER TABLE "matching_facts" ALTER COLUMN "resource_capacity" SET DEFAULT '{"value":null,"unit":null,"kind":null}'::jsonb;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN "accepts_price_offers" boolean DEFAULT false NOT NULL;

@@ -1,11 +1,13 @@
+import { notifyUser } from "../lib/notify.js";
+import { authorTitle } from "../lib/order-text.js";
 import type { FastifyInstance } from "fastify";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb, getSql, schema } from "@ustal/database";
-import { assertOrderTransition } from "@ustal/domain";
-import { getBoss, JOB_TYPES } from "@ustal/queue";
+import { getRuntimeConfig } from "@ustal/config";
+import { assertOrderTransition, MAX_ACTIVE_RESPONSES, responsesOpen } from "@ustal/domain";
+import { getBoss, JOB_TYPES, matchingRunJobOptions } from "@ustal/queue";
 import { createOrderSchema, editOrderTranscriptSchema } from "@ustal/validation";
 import { withIdempotency } from "../lib/idempotency.js";
-import { notifyUser } from "../lib/notify.js";
 
 /**
  * Заказы (docs/api.md, docs/matching.md пайплайн заказа). `POST /orders`
@@ -73,34 +75,78 @@ export default async function ordersRoutes(app: FastifyInstance) {
         return { status: 404, body: { error: { code: "not_found", message: "Профиль пользователя не найден" } } };
       }
 
+      // Анти-abuse: без лимита создание заказа можно скриптом гонять сколько угодно раз в
+      // минуту (под общим 100/мин на IP) — каждый реальный запуск стоит денег на AI-провайдере
+      // (extraction + embedding + модерация), поэтому нужен отдельный per-user потолок.
+      const config = getRuntimeConfig();
+      const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const mediaIdsToCheck = [...body.mediaIds, ...(body.audioMediaId ? [body.audioMediaId] : [])];
-      if (mediaIdsToCheck.length > 0) {
-        const owned = await db.query.media.findMany({
-          where: and(inArray(schema.media.id, mediaIdsToCheck), eq(schema.media.ownerId, request.userId)),
-        });
-        if (owned.length !== mediaIdsToCheck.length) {
-          return {
-            status: 400,
-            body: { error: { code: "media_not_found", message: "Один или несколько mediaId не найдены или принадлежат другому пользователю" } },
-          };
-        }
-      }
 
-      // Пауза «Проверка транскрипции» (экран 9/11, claude/pipeline-split-design.md):
-      // voice-заказ сначала уходит только на STT (ORDER_TRANSCRIBE) и ждёт
-      // подтверждения — sourceText остаётся пустым до confirm-transcript.
-      // text-заказ — без изменений, sourceText заполнен сразу, extraction сразу.
-      const [order] = await db
-        .insert(schema.orders)
-        .values({
-          authorId: request.userId,
-          cityId: authorProfile.cityId,
-          sourceText: body.inputType === "text" ? (body.text ?? null) : null,
-          sourceStatus: body.inputType === "voice" ? "transcribing" : "confirmed",
-          priceMinor: body.priceMinor ?? null,
-          status: "draft",
-        })
-        .returning();
+      // Security-фикс (2026-09-22): count (лимит ORDERS_PER_HOUR) и insert шли
+      // отдельными запросами вне транзакции — под параллельными запросами
+      // одного автора оба (и больше) могли пройти проверку лимита до того, как
+      // хоть один insert зафиксируется, и лимит превышался на гонке (тот же
+      // класс бага, что был у contact-unlocks, см. pg_advisory_xact_lock в
+      // routes/contacts.ts). pg_advisory_xact_lock по userId сериализует
+      // конкурентные запросы одного и того же автора на время транзакции.
+      let rateLimited = false;
+      let mediaInvalid = false;
+      const order = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${request.userId}))`);
+
+        const recentOrders = await tx.query.orders.findMany({
+          where: and(eq(schema.orders.authorId, request.userId), gt(schema.orders.createdAt, hourAgo)),
+        });
+        if (recentOrders.length >= config.rateLimits.ordersPerHour) {
+          rateLimited = true;
+          return undefined;
+        }
+
+        if (mediaIdsToCheck.length > 0) {
+          const owned = await tx.query.media.findMany({
+            where: and(inArray(schema.media.id, mediaIdsToCheck), eq(schema.media.ownerId, request.userId)),
+          });
+          if (owned.length !== mediaIdsToCheck.length) {
+            mediaInvalid = true;
+            return undefined;
+          }
+        }
+
+        // Пауза «Проверка транскрипции» (экран 9/11, claude/pipeline-split-design.md):
+        // voice-заказ сначала уходит только на STT (ORDER_TRANSCRIBE) и ждёт
+        // подтверждения — sourceText остаётся пустым до confirm-transcript.
+        // text-заказ — без изменений, sourceText заполнен сразу, extraction сразу.
+        const [row] = await tx
+          .insert(schema.orders)
+          .values({
+            authorId: request.userId,
+            cityId: authorProfile.cityId,
+            sourceText: body.inputType === "text" ? (body.text ?? null) : null,
+            sourceStatus: body.inputType === "voice" ? "transcribing" : "confirmed",
+            priceMinor: body.priceMinor ?? null,
+            acceptsPriceOffers: body.acceptsPriceOffers ?? false,
+            status: "draft",
+          })
+          .returning();
+        return row;
+      });
+      if (rateLimited) {
+        return {
+          status: 429,
+          body: {
+            error: {
+              code: "rate_limited",
+              message: `Не более ${config.rateLimits.ordersPerHour} заказов в час`,
+            },
+          },
+        };
+      }
+      if (mediaInvalid) {
+        return {
+          status: 400,
+          body: { error: { code: "media_not_found", message: "Один или несколько mediaId не найдены или принадлежат другому пользователю" } },
+        };
+      }
       if (!order) throw new Error("Failed to create order");
 
       const mediaRows: (typeof schema.orderMedia.$inferInsert)[] = body.mediaIds.map((mediaId, position) => ({
@@ -155,14 +201,19 @@ export default async function ordersRoutes(app: FastifyInstance) {
     ]);
 
     const rawResult = latestExtraction?.rawResult as { contextualChips?: string[] } | undefined;
+    const activeResponsesCount = (await db.select({ activeResponsesCount: sql<number>`count(*)::int` }).from(schema.responses)
+      .where(and(eq(schema.responses.orderId, order.id), eq(schema.responses.status, "active"))))[0]?.activeResponsesCount ?? 0;
 
     return reply.send({
       id: order.id,
       status: order.status,
       cityId: order.cityId,
-      normalizedTitle: order.normalizedTitle,
-      normalizedDescription: order.normalizedDescription,
+      // Заголовок и описание — из текста автора, не придуманные AI.
+      normalizedTitle: authorTitle(order.sourceText) ?? order.normalizedTitle,
+      // Показываем текст автора, а не пересказ AI: AI ничего не должен дописывать.
+      normalizedDescription: order.sourceText ?? order.normalizedDescription,
       priceMinor: order.priceMinor,
+      acceptsPriceOffers: order.acceptsPriceOffers,
       currency: order.currency,
       riskLevel: order.riskLevel,
       moderationStatus: order.moderationStatus,
@@ -175,6 +226,12 @@ export default async function ordersRoutes(app: FastifyInstance) {
       // ownership уже проверен выше.
       sourceStatus: order.sourceStatus,
       transcript: order.transcript,
+      // Приём откликов (2026-10-15): лимит, «Достаточно откликов», номер волны показа.
+      activeResponsesCount,
+      responseLimit: MAX_ACTIVE_RESPONSES,
+      responsesClosed: !!refreshed?.responsesClosedAt,
+      acceptingResponses: ["published", "negotiating"].includes(order.status) && responsesOpen({ responsesClosedAt: refreshed?.responsesClosedAt ?? null }, activeResponsesCount),
+      deliveryWave: refreshed?.deliveryWave ?? 1,
     });
   });
 
@@ -272,24 +329,11 @@ export default async function ordersRoutes(app: FastifyInstance) {
     // заказ должен появиться в лентах кандидатов сразу после публикации, а не
     // ждать какого-то отдельного шага.
     const boss = await getBoss();
-    await boss.send(JOB_TYPES.MATCHING_RUN, { orderId: order.id });
+    await boss.send(JOB_TYPES.MATCHING_RUN, { orderId: order.id }, matchingRunJobOptions());
 
     return reply.send({ id: updated?.id, status: updated?.status, publishedAt: updated?.publishedAt });
   });
 
-  /**
-   * 2026-09-14: «Удалить заказ» / «Отменить заказ» на экране заказа
-   * (claude/plan.md) — один и тот же backend-переход (assertOrderTransition
-   * в любом случае допускает только "cancelled", не отдельный "deleted" —
-   * не вводим новый статус), разница между двумя кнопками целиком на
-   * клиенте (подпись/текст подтверждения в зависимости от того, выбран ли
-   * уже исполнитель). Раньше этот эндпоинт существовал в api-клиенте
-   * (src/api/orders.ts), но не был подключён ни к одному экрану и не решал
-   * судьбу активных откликов/назначений — по сути висел бы "заказ отменён,
-   * а отклики остались active". Логика ниже — тот же паттерн, что и
-   * POST /orders/{id}/close (assignments.ts): резолвим хвосты в транзакции,
-   * уведомляем вне неё.
-   */
   app.post("/orders/:id/cancel", { preHandler: app.authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, id) });
@@ -302,57 +346,39 @@ export default async function ordersRoutes(app: FastifyInstance) {
         .send({ error: { code: "invalid_status", message: `Нельзя отменить заказ из статуса "${order.status}"` } });
     }
 
-    assertOrderTransition(order.status as never, "cancelled");
+    // «Удалить заказ» = отмена: пока по заказу есть выбранный исполнитель, удалять нельзя
+    // (это уже договорённость — её закрывают/завершают штатным путём).
+    const assignment = await db.query.orderAssignments.findFirst({
+      where: eq(schema.orderAssignments.orderId, order.id),
+    });
+    if (assignment) {
+      return reply.code(409).send({
+        error: { code: "has_assignment", message: "По заказу уже выбран исполнитель — удалить его нельзя" },
+      });
+    }
 
-    const { activeResponses, selectedAssignments } = await db.transaction(async (tx) => {
-      const activeResponses = await tx.query.responses.findMany({
+    assertOrderTransition(order.status as never, "cancelled");
+    const activeResponses = await db.transaction(async (tx) => {
+      const active = await tx.query.responses.findMany({
         where: and(eq(schema.responses.orderId, id), eq(schema.responses.status, "active")),
       });
-      if (activeResponses.length > 0) {
-        await tx
-          .update(schema.responses)
-          .set({ status: "not_selected", updatedAt: new Date() })
-          .where(and(eq(schema.responses.orderId, id), eq(schema.responses.status, "active")));
-      }
-
-      // Выбранный (но ещё не завершённый) исполнитель — если он есть,
-      // именно это и есть случай «Отменить заказ» из ТЗ, а не «Удалить».
-      // completed/not_completed назначения не трогаем — работа уже
-      // состоялась, отменять там нечего (см. domain AssignmentStatus).
-      const selectedAssignments = await tx.query.orderAssignments.findMany({
-        where: and(eq(schema.orderAssignments.orderId, id), eq(schema.orderAssignments.status, "selected")),
-      });
-      if (selectedAssignments.length > 0) {
-        await tx
-          .update(schema.orderAssignments)
-          .set({ status: "cancelled" })
-          .where(and(eq(schema.orderAssignments.orderId, id), eq(schema.orderAssignments.status, "selected")));
-      }
-
-      await tx.update(schema.orders).set({ status: "cancelled" }).where(eq(schema.orders.id, id));
-
-      return { activeResponses, selectedAssignments };
+      await tx.update(schema.orders).set({ status: "cancelled" }).where(eq(schema.orders.id, order.id));
+      // Активные отклики закрываем, чтобы исполнители не ждали решения по удалённому заказу.
+      await tx
+        .update(schema.responses)
+        .set({ status: "not_selected", updatedAt: new Date() })
+        .where(and(eq(schema.responses.orderId, order.id), eq(schema.responses.status, "active")));
+      return active;
     });
 
-    for (const r of activeResponses) {
-      await notifyUser(r.executorId, "order_cancelled_response", {
-        orderId: id,
-        responseId: r.id,
-        title: "Заказ отменён",
-        body: order.normalizedTitle ? `Автор отменил заказ «${order.normalizedTitle}»` : "Автор отменил заказ",
-      });
+    // Retain main's cancellation notice without undoing the RC assignment guard.
+    // A push/queue failure must not turn an already saved cancellation into HTTP 500.
+    for (const response of activeResponses) {
+      await notifyUser(response.executorId, "order_cancelled_response", {
+        orderId: id, responseId: response.id,
+        title: "Заказ отменён", body: "Автор отменил заказ",
+      }).catch(() => request.log.warn({ orderId: id }, "Cancellation notification failed"));
     }
-    for (const a of selectedAssignments) {
-      await notifyUser(a.executorId, "order_cancelled_assignment", {
-        orderId: id,
-        assignmentId: a.id,
-        title: "Заказ отменён",
-        body: order.normalizedTitle
-          ? `Автор отменил заказ «${order.normalizedTitle}», на который вас выбрали`
-          : "Автор отменил заказ, на который вас выбрали",
-      });
-    }
-
     return reply.code(204).send();
   });
 }

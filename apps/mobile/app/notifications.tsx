@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getNotifications, markNotificationRead } from "../src/api/notifications";
 import type { AppNotification } from "../src/api/notifications";
@@ -15,6 +16,7 @@ import { colors, spacing, typography, radii } from "../src/theme/tokens";
  */
 export default function NotificationsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["notifications"],
@@ -32,7 +34,7 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
       <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12}>
         <Text style={styles.backText}>← Назад</Text>
       </Pressable>

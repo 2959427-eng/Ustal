@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, Image, Pressable, StyleSheet, ActivityIndicator, Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { ApiRequestError } from "@ustal/api-client";
 import { uploadMedia } from "../api/media";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
@@ -19,6 +20,21 @@ interface Props {
 }
 
 const MAX_PHOTOS_DEFAULT = 10;
+
+/** Короткая техническая причина сбоя — чтобы по скриншоту было видно, что именно сломалось. */
+function describeError(cause: unknown, asset?: ImagePicker.ImagePickerAsset): string {
+  const where = asset
+    ? ` [${asset.mimeType ?? "тип?"}, ${asset.uri.split(":")[0]}, ${asset.fileSize ? Math.round(asset.fileSize / 1024) + " КБ" : "размер?"}]`
+    : "";
+  if (cause instanceof ApiRequestError) {
+    return `HTTP ${cause.status}${cause.code ? ` ${cause.code}` : ""}: ${cause.message}${where}`;
+  }
+  const text = (cause instanceof Error ? cause.message : String(cause))
+    .replace(/(?:https?|file|content):\/\/\S+/gi, "[адрес скрыт]")
+    .replace(/Bearer\s+\S+/gi, "[токен скрыт]")
+    .slice(0, 200);
+  return `${text || "неизвестная ошибка"}${where}`;
+}
 
 /**
  * Добавление фотографий (раздел 12 ТЗ) — камера или галерея. Каждое фото
@@ -75,11 +91,13 @@ export function PhotoPicker({ photos, onChange, disabled, max = MAX_PHOTOS_DEFAU
       // упавшим.
       const uploaded: PickedPhoto[] = [];
       let failedCount = 0;
+      let lastDetail = "";
       for (const asset of result.assets.slice(0, remaining)) {
         try {
           uploaded.push(await uploadAsset(asset));
-        } catch {
+        } catch (cause) {
           failedCount += 1;
+          lastDetail = describeError(cause, asset);
         }
       }
       if (uploaded.length > 0) {
@@ -88,12 +106,12 @@ export function PhotoPicker({ photos, onChange, disabled, max = MAX_PHOTOS_DEFAU
       if (failedCount > 0) {
         setError(
           uploaded.length > 0
-            ? `Не удалось загрузить ${failedCount} из ${result.assets.length} фото. Остальные добавлены — попробуйте загрузить недостающие ещё раз.`
-            : "Не удалось загрузить фото. Попробуйте ещё раз.",
+            ? `Не удалось загрузить ${failedCount} из ${result.assets.length} фото. Остальные добавлены — попробуйте загрузить недостающие ещё раз. (${lastDetail})`
+            : `Не удалось загрузить фото. Попробуйте ещё раз. (${lastDetail})`,
         );
       }
-    } catch {
-      setError("Не удалось загрузить фото. Попробуйте ещё раз.");
+    } catch (cause) {
+      setError(`Не удалось выбрать фото. (${describeError(cause)})`);
     } finally {
       setUploading(false);
     }

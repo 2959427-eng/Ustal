@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { apiClient, getApiBaseUrl } from "./client";
 
 export type MediaKind = "photo" | "audio";
@@ -54,6 +55,17 @@ export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promis
   let blob: Blob;
   if (file.file) {
     blob = file.file;
+  } else if (Platform.OS === "android" && file.uri.startsWith("file://")) {
+    // 2026-09-21 fix (Android): fetch("file://...") в expo/fetch идёт через OkHttp-интерцептор,
+    // который НЕ раскодирует %-последовательности в пути. В Expo Go кэш лежит в каталоге
+    // ExperienceData/%40anonymous%2F... — путь из пикера закодирован, интерцептор ищет файл
+    // по закодированному имени, не находит и отвечает 404 -> «Не удалось прочитать выбранный файл».
+    // expo-file-system разбирает URI сам (Uri.parse), File реализует Blob и читается напрямую.
+    const { File: LocalFile } = await import("expo-file-system");
+    const local = new LocalFile(file.uri);
+    if (!local.exists) throw new Error("Выбранный файл не найден на устройстве.");
+    form.append("file", local as unknown as Blob, file.name);
+    return apiClient.uploadForm<MediaUploaded>("/media", form);
   } else {
     const response = await fetch(file.uri);
     if (!response.ok) throw new Error("Не удалось прочитать выбранный файл.");

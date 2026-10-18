@@ -1,0 +1,25 @@
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example
+.git
+**/.next
+**/dist
+**/coverage
+**/*.log
+**/*.dump
+**/*.bak
+**/*.tmp
+**/data
+docs/evaluations
+.ai-bridge
+
+# RC hygiene: evidence, scratch files and test sources are never runtime inputs.
+**/*.test.*
+**/*.spec.*
+**/tests
+**/FINAL_VERIFICATION.txt
+**/FIXTURE_CHANGES_REPORT.txt
+**/fix_test3.txt
+.expo-local
+agent-orchestrator

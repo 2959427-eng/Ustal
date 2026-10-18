@@ -1,3 +1,5 @@
+import { consumeOrderRoute } from "../../src/notifications/navigation";
+import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useState } from "react";
 import { ActivityIndicator, Text, TextInput, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
@@ -17,7 +19,7 @@ export default function LoginScreen() {
     setSubmitting(true);
     try {
       await login(phone, password);
-      router.replace("/(tabs)");
+      router.replace(consumeOrderRoute() ?? "/(tabs)");
       void ensurePushRegistered();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось войти");
@@ -27,7 +29,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoid style={styles.container}>
       <Text style={styles.title}>Вход</Text>
       <TextInput
         style={styles.input}
@@ -52,7 +54,7 @@ export default function LoginScreen() {
       ) : (
         <PrimaryButton label="Войти" onPress={onSubmit} />
       )}
-    </View>
+    </KeyboardAvoid>
   );
 }
 

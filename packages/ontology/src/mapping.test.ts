@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { findOntologyNodeForPhrase } from "./mapping.js";
+import { assertLocalTestDatabase } from "@ustal/database";
+assertLocalTestDatabase();
 
 /**
  * Регрессионный тест на РЕАЛЬНОЙ БД — findOntologyNodeForPhrase ходит прямо в

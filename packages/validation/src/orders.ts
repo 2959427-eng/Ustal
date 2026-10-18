@@ -5,6 +5,7 @@ export const createOrderSchema = z.object({
   text: z.string().min(1).max(4000).optional(),
   audioMediaId: z.string().uuid().optional(),
   priceMinor: z.number().int().positive().optional(),
+  acceptsPriceOffers: z.boolean().optional(),
   mediaIds: z.array(z.string().uuid()).max(10).default([]),
 }).refine((v) => (v.inputType === "text" ? !!v.text : !!v.audioMediaId), {
   message: "text обязателен для inputType=text, audioMediaId — для inputType=voice",
@@ -37,6 +38,25 @@ export const orderExtractionResultSchema = z.object({
   contextualChips: z.array(z.string()).default([]),
 });
 export type OrderExtractionResult = z.infer<typeof orderExtractionResultSchema>;
+
+/**
+ * Уровень доступа заказа (2026-10-15, «простые задачи»). Отдельная классификация, не часть извлечения заказа:
+ * general — средний взрослый без подготовки может выполнить ОСНОВНОЙ результат после обычного бытового объяснения,
+ * без профессионального опыта/образования, лицензии/допуска, специального инструмента/оборудования и повышенного
+ * риска. Используется ТОЛЬКО как основание дополнительного пути показа (general access); любое другое значение
+ * означает лишь «этот путь не использовать» и не влияет на прежний подбор.
+ * explicitRequirements — требования ЗАДАЧИ, явно сказанные в тексте заказа (не свойства человека).
+ */
+export const ORDER_ACCESS_VERSION = "order-access-v1";
+export const orderAccessSchema = z.object({
+  accessLevel: z.enum(["general", "trained", "specialized", "regulated"]),
+  explicitRequirements: z.array(z.object({
+    kind: z.enum(["experience", "education", "license", "certificate", "portfolio", "tool", "equipment", "physical", "team", "other"]),
+    evidence: z.string().min(1).max(300),
+  })).max(10),
+  reason: z.string().min(1).max(400),
+});
+export type OrderAccess = z.infer<typeof orderAccessSchema>;
 
 // JSON Schema, которую обязана вернуть ModerationProvider для AI-модерации
 // пограничных случаев (packages/ai/src/providers/openai.ts) — тот же контракт,
@@ -80,19 +100,8 @@ export const notCompletedSchema = z.object({
 });
 export type NotCompletedRequest = z.infer<typeof notCompletedSchema>;
 
-export const reviewSchema = z.object({
-  toUserId: z.string().uuid(),
-  orderId: z.string().uuid(),
-  rating: z.number().int().min(1).max(5),
-  text: z.string().max(1000).optional(),
+// POST /orders/{id}/rating — оценка 1–5 или пропуск (rating: null). Без текста.
+export const rateOrderSchema = z.object({
+  rating: z.number().int().min(1).max(5).nullable(),
 });
-export type ReviewRequest = z.infer<typeof reviewSchema>;
-
-// PATCH /reviews/{id} — правка своего отзыва: rating обязателен (отзыв без
-// оценки бессмыслен), orderId/toUserId неизменны после создания (иначе это
-// уже другой отзыв — пара from/to зафиксирована на INSERT).
-export const updateReviewSchema = z.object({
-  rating: z.number().int().min(1).max(5),
-  text: z.string().max(1000).nullable().optional(),
-});
-export type UpdateReviewRequest = z.infer<typeof updateReviewSchema>;
+export type RateOrderRequest = z.infer<typeof rateOrderSchema>;

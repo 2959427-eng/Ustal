@@ -1,42 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-APP_DIR="$REPO_ROOT/infra/timeweb/app"
-
 cd "$REPO_ROOT"
-git pull --ff-only
-
-cd "$APP_DIR"
-if [ ! -f .env ]; then
-  echo "Missing $APP_DIR/.env. Copy .env.example to .env and fill production values." >&2
-  exit 1
+: "${DEPLOY_SHA:?Set DEPLOY_SHA to the reviewed release commit}"
+[ -z "$(git status --porcelain)" ] || { echo "Dirty release tree: stop and preserve changes." >&2; exit 1; }
+[ "$(git rev-parse HEAD)" = "$(git rev-parse "$DEPLOY_SHA^{commit}")" ] || { echo "HEAD differs from DEPLOY_SHA" >&2; exit 1; }
+# No implicit git pull: deploy exactly the reviewed checkout.
+cd infra/timeweb/app
+[ -f .env ] || { echo "Fill the production .env first" >&2; exit 1; }
+chmod 600 .env
+compose=(docker compose -f docker-compose.prod.yml)
+"${compose[@]}" config --quiet
+"${compose[@]}" build api worker admin migrate
+# Validate without logging values or contacting external providers.
+"${compose[@]}" run --rm --no-deps api node --import tsx --input-type=module -e 'import {loadEnv} from "@ustal/config"; loadEnv(); console.log("Production env valid")'
+"${compose[@]}" up -d --wait db
+# On upgrades: take and verify a backup BEFORE this point; stop writers for migrations.
+"${compose[@]}" stop api worker admin
+"${compose[@]}" run --rm --no-deps migrate
+if [ "${FIRST_DEPLOY:-0}" = "1" ]; then
+  "${compose[@]}" run --rm --no-deps api npm run db:seed
+  "${compose[@]}" run --rm --no-deps api npm run db:seed-admin
 fi
-
-set -a
-# shellcheck disable=SC1091
-. ./.env
-set +a
-
-: "${API_DOMAIN:?API_DOMAIN is required}"
-: "${ADMIN_DOMAIN:?ADMIN_DOMAIN is required}"
-: "${POSTGRES_USER:?POSTGRES_USER is required}"
-: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
-: "${POSTGRES_DB:?POSTGRES_DB is required}"
-: "${OPENAI_BASE_URL:?OPENAI_BASE_URL is required in production}"
-: "${OPENAI_API_KEY:?OPENAI_API_KEY must contain RELAY_CLIENT_TOKEN, not the real OpenAI key}"
-
-if printf '%s' "$OPENAI_BASE_URL" | grep -q 'api\.openai\.com'; then
-  echo "OPENAI_BASE_URL must point to the protected Timeweb EU relay, not api.openai.com." >&2
-  exit 1
-fi
-
-docker compose -f docker-compose.prod.yml config >/dev/null
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec -T api npm run db:migrate
-docker compose -f docker-compose.prod.yml exec -T api npm run db:seed
-docker compose -f docker-compose.prod.yml exec -T api npm run db:seed-admin
-curl -fsS "https://${API_DOMAIN}/health" >/dev/null
-
-echo "App deployed and health check passed: https://${API_DOMAIN}/health"
+"${compose[@]}" up -d --wait
+printf 'Services started at %s. Run relay/storage verification and production-smoke.mjs.\n' "$(git rev-parse HEAD)"

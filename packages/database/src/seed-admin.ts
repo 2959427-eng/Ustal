@@ -1,4 +1,5 @@
 import argon2 from "argon2";
+import { loadDotenvOnce } from "@ustal/config";
 import { eq } from "drizzle-orm";
 import { getDb, getSql, schema } from "./client.js";
 
@@ -12,9 +13,14 @@ import { getDb, getSql, schema } from "./client.js";
  *   ADMIN_SEED_PASSWORD (по умолчанию admin-dev-password-change-me)
  */
 async function main() {
+  loadDotenvOnce();
   const email = (process.env.ADMIN_SEED_EMAIL ?? "admin@ustal.local").toLowerCase();
   const password = process.env.ADMIN_SEED_PASSWORD ?? "admin-dev-password-change-me";
 
+  if (process.env.NODE_ENV === "production" && (
+    !process.env.ADMIN_SEED_EMAIL || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || /@ustal\.local$|example\./i.test(email) ||
+    !process.env.ADMIN_SEED_PASSWORD || password.length < 16 || /change-me|<SET_ME>|^dev-|^test-/i.test(password)
+  )) throw new Error("Production seed-admin requires explicit ADMIN_SEED_EMAIL and a non-default password of at least 16 characters");
   const db = getDb();
   const existing = await db.query.adminUsers.findFirst({ where: eq(schema.adminUsers.email, email) });
   if (existing) {
@@ -26,7 +32,7 @@ async function main() {
     // eslint-disable-next-line no-console
     console.log(`admin_users: создан "${email}".`);
     // eslint-disable-next-line no-console
-    console.warn("ВНИМАНИЕ: dev-пароль по умолчанию, смените перед боевым использованием.");
+    console.log("Admin credentials supplied through environment; password is never printed.");
   }
 
   await getSql().end();

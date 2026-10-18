@@ -10,5 +10,6 @@ export { expoPushProvider } from "./providers/expo.js";
 /** Единая точка получения провайдера — читает PUSH_PROVIDER из конфигурации. */
 export function getPushProvider(): PushProvider {
   const env = loadEnv();
+  if (env.NODE_ENV === "production" && env.PUSH_PROVIDER !== "expo") throw new Error("Production push requires PUSH_PROVIDER=expo");
   return env.PUSH_PROVIDER === "expo" ? expoPushProvider : mockPushProvider;
 }

@@ -17,3 +17,10 @@ Claude outputs/
 video/
 timeweb-*.txt
 expo-*.svg
+
+# Local development artifacts (2026-09-26)
+apps/*/data/media/
+*.dump
+/stage*
+/scratch-*
+/*.bat

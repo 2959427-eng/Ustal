@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, TextInput, Pressable, Modal, StyleSheet } from "react-native";
 import { submitReport } from "../api/reports";
 import type { ReportTargetType } from "../api/reports";
+import { KeyboardAvoid } from "./KeyboardAvoid";
 import { PrimaryButton } from "./PrimaryButton";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
@@ -57,7 +58,7 @@ export function ReportModal({ visible, onClose, targetType, targetId }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <View style={styles.backdrop}>
+      <KeyboardAvoid style={styles.backdrop}>
         <View style={styles.sheet}>
           {done ? (
             <>
@@ -92,7 +93,7 @@ export function ReportModal({ visible, onClose, targetType, targetId }: Props) {
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoid>
     </Modal>
   );
 }

@@ -1,6 +1,10 @@
+import { authorTitle } from "../lib/order-text.js";
 import type { FastifyInstance } from "fastify";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
+import { customerOrderArchived, executorResponseArchived } from "../lib/reputation.js";
+import { isContactAccessOpen } from "../lib/contact-access.js";
+import { blockedCounterparts } from "../lib/blocks.js";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -26,8 +30,9 @@ export default async function myRoutes(app: FastifyInstance) {
   app.get("/my/orders", { preHandler: app.authenticate }, async (request, reply) => {
     const { limit, offset } = pagination(request.query);
     const rows = await db.query.orders.findMany({
-      where: eq(schema.orders.authorId, request.userId),
-      orderBy: (t, { desc: d }) => d(t.createdAt),
+      // Удалённые (cancelled) заказы в списке не показываем; в БД остаются для истории.
+      where: and(eq(schema.orders.authorId, request.userId), ne(schema.orders.status, "cancelled")),
+      orderBy: (t, { desc: d }) => [d(t.createdAt), d(t.id)],
       limit,
       offset,
     });
@@ -35,13 +40,32 @@ export default async function myRoutes(app: FastifyInstance) {
       where: inArray(schema.orderMedia.orderId, rows.map((o) => o.id)),
       orderBy: (t, { asc }) => asc(t.position),
     }) : [];
+    // Счётчик активных откликов: отозванные (withdrawn) не считаются.
+    const counts = rows.length
+      ? await db
+          .select({ orderId: schema.responses.orderId, n: sql<number>`count(*)::int` })
+          .from(schema.responses)
+          .where(and(inArray(schema.responses.orderId, rows.map((o) => o.id)), eq(schema.responses.status, "active")))
+          .groupBy(schema.responses.orderId)
+      : [];
+    const activeByOrder = new Map(counts.map((c) => [c.orderId, c.n]));
+    const myRatings = rows.length
+      ? await db.query.orderRatings.findMany({
+          where: and(eq(schema.orderRatings.fromUserId, request.userId), inArray(schema.orderRatings.orderId, rows.map((o) => o.id))),
+        })
+      : [];
+    const ratedOrderIds = new Set(myRatings.map((r) => r.orderId));
     return reply.send({
       items: rows.map((o) => ({
         id: o.id,
+        activeResponsesCount: activeByOrder.get(o.id) ?? 0,
         photoMediaIds: media.filter((m) => m.orderId === o.id && m.position >= 0).map((m) => m.mediaId),
         status: o.status,
+        // «Оценить»: заказ выполнен, а моя оценка ещё не поставлена и не пропущена.
+        ratingPending: o.status === "completed" && !ratedOrderIds.has(o.id),
+        archived: customerOrderArchived(o.status, ratedOrderIds.has(o.id)),
         moderationStatus: o.moderationStatus,
-        normalizedTitle: o.normalizedTitle,
+        normalizedTitle: authorTitle(o.sourceText) ?? o.normalizedTitle,
         priceMinor: o.priceMinor,
         currency: o.currency,
         createdAt: o.createdAt,
@@ -53,11 +77,12 @@ export default async function myRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/my/responses", { preHandler: app.authenticate }, async (request, reply) => {
+  app.get("/my/responses", { preHandler: app.authenticate, schema: { querystring: { type: "object", properties: { orderId: { type: "string", format: "uuid" }, limit: { type: "integer", minimum: 1 }, offset: { type: "integer", minimum: 0 } } } } }, async (request, reply) => {
     const { limit, offset } = pagination(request.query);
+    const { orderId } = request.query as { orderId?: string };
     const rows = await db.query.responses.findMany({
-      where: eq(schema.responses.executorId, request.userId),
-      orderBy: (t, { desc: d }) => d(t.createdAt),
+      where: and(eq(schema.responses.executorId, request.userId), orderId ? eq(schema.responses.orderId, orderId) : undefined),
+      orderBy: (t, { desc: d }) => [d(t.createdAt), d(t.id)],
       limit,
       offset,
     });
@@ -87,6 +112,15 @@ export default async function myRoutes(app: FastifyInstance) {
         })
       : [];
     const assignmentStatusByOrderId = new Map(assignments.map((a) => [a.orderId, a.status]));
+    // Полный assignment — исполнителю нужен его id, чтобы отметить
+    // "работа выполнена"/"не получилось" (POST .../executor-report-*, см.
+    // routes/assignments.ts), а executorReport/executorReportAt — чтобы
+    // показать, что отметка уже отправлена и мы ждём подтверждения заказчика.
+    const assignmentByOrderId = new Map(assignments.map((a) => [a.orderId, a]));
+    // Упрощение рейтинга (2026-09-22): исполнитель заказчика больше не
+    // оценивает, поэтому здесь больше нет ни ratingPending, ни зависимости
+    // архивации от orderRatings — см. lib/reputation.ts executorResponseArchived.
+    const blocked = await blockedCounterparts(db, request.userId);
 
     return reply.send({
       items: rows.map((r) => {
@@ -94,7 +128,7 @@ export default async function myRoutes(app: FastifyInstance) {
         return {
           id: r.id,
           orderId: r.orderId,
-          orderTitle: order?.normalizedTitle ?? null,
+          orderTitle: authorTitle(order?.sourceText) ?? order?.normalizedTitle ?? null,
           orderStatus: order?.status ?? null,
           orderAuthorId: order?.authorId ?? null,
           status: r.status,
@@ -102,8 +136,25 @@ export default async function myRoutes(app: FastifyInstance) {
           comment: r.comment,
           availabilityText: r.availabilityText,
           createdAt: r.createdAt,
-          isContactUnlocked: unlockedOrderIds.has(r.orderId),
+          // Раскрытие — лишь история; кнопки связи показываем, только пока отношения живые.
+          isContactUnlocked:
+            unlockedOrderIds.has(r.orderId) &&
+            !!order &&
+            !blocked.has(order.authorId) &&
+            isContactAccessOpen({
+              orderStatus: order.status,
+              assignmentStatus: assignmentStatusByOrderId.get(r.orderId),
+              responseStatus: r.status,
+            }),
           assignmentStatus: assignmentStatusByOrderId.get(r.orderId) ?? null,
+          assignmentId: assignmentByOrderId.get(r.orderId)?.id ?? null,
+          executorReport: assignmentByOrderId.get(r.orderId)?.executorReport ?? null,
+          executorReportAt: assignmentByOrderId.get(r.orderId)?.executorReportAt ?? null,
+          archived: executorResponseArchived(
+            order?.status ?? null,
+            assignmentStatusByOrderId.get(r.orderId) ?? null,
+            r.status,
+          ),
         };
       }),
       limit,

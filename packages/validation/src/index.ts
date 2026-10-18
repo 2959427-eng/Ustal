@@ -4,3 +4,6 @@ export * from "./orders.js";
 export * from "./media.js";
 export * from "./devices.js";
 export * from "./moderation.js";
+export * from "./semantic.js";
+export * from "./otp.js";
+export * from "./profile-facts.js";

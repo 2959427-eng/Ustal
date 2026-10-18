@@ -7,7 +7,9 @@ import { Tabs } from "expo-router";
  * (`tabBarStyle: { display: "none" }`) — дублировать те же две кнопки снизу
  * не нужно. Создание заказа — композер внизу «Заказов», отклики — иконка в
  * шапке, профиль/AI-профиль и настройки — аватар в шапке. Экраны
- * create/responses/profile остаются реальными маршрутами (router.push).
+ * create/profile остаются реальными маршрутами (router.push). «Мои отклики»
+ * (2026-09-30) перенесены в корневой стек (app/responses.tsx): у экранов вкладок
+ * нет свайпа «назад» на iOS, а кнопку «← Назад» на этом экране убрали.
  */
 export default function TabsLayout() {
   return (
@@ -20,7 +22,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: "Возможности" }} />
       <Tabs.Screen name="orders" options={{ title: "Заказы" }} />
       <Tabs.Screen name="create" options={{ href: null }} />
-      <Tabs.Screen name="responses" options={{ href: null }} />
       <Tabs.Screen name="account" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>

@@ -1,127 +1,81 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
-import { reviewSchema, updateReviewSchema } from "@ustal/validation";
+import { rateOrderSchema } from "@ustal/validation";
 
 /**
- * Двусторонние отзывы (docs/api.md, docs/data-model.md `reviews`, plan.md
- * Фаза 7). Отзыв привязан не к заказу, а к ПАРЕ пользователей —
- * UNIQUE(from_user_id, to_user_id): повторная совместная работа обновляет
- * существующую запись (rating/text/last_order_id), а не плодит новую. Это
- * сознательное решение модели данных (см. data-model.md), а не сокращение —
- * профиль пользователя показывает один агрегированный отзыв от каждого
- * контрагента, отражающий последнее взаимодействие.
- *
- * Право оставить отзыв проверяется backend'ом, а не клиентом: должен
- * существовать `order_assignments.status = 'completed'` между этой парой по
- * указанному заказу, в любом направлении ролей (автор→исполнитель или
- * исполнитель→автор) — см. loadReviewEligibility ниже.
+ * Оценка после выполненного заказа: обе стороны оценивают друг друга 1–5
+ * (или пропуск, rating = null) — заказчик исполнителя и исполнитель
+ * заказчика, независимо друг от друга. Без текста. Запись одна на (заказ,
+ * автор оценки) — `order_ratings_order_from_unique` — и неизменна: один
+ * пользователь не может дважды оценить другого по одному заказу. `toRole`
+ * определяет, в какой из двух независимых рейтингов (см. lib/reputation.ts)
+ * попадёт оценка. Оценивать могут только реальные участники завершённого
+ * заказа (loadRatingContext). После оценки заказ/отклик уходит в архив
+ * своей стороны (lib/reputation.ts customerOrderArchived/
+ * executorResponseArchived).
  */
-export default async function reviewsRoutes(app: FastifyInstance) {
+export default async function ratingsRoutes(app: FastifyInstance) {
   const db = getDb();
 
-  app.post("/reviews", { preHandler: app.authenticate }, async (request, reply) => {
-    const body = reviewSchema.parse(request.body);
-    if (body.toUserId === request.userId) {
-      return reply.code(400).send({ error: { code: "invalid_target", message: "Нельзя оставить отзыв самому себе" } });
-    }
-
-    const eligible = await loadReviewEligibility(db, body.orderId, request.userId, body.toUserId);
-    if (!eligible) {
-      return reply.code(403).send({
-        error: {
-          code: "not_eligible",
-          message: "Отзыв можно оставить только по завершённой совместной работе над этим заказом",
-        },
-      });
-    }
-
-    const existing = await db.query.reviews.findFirst({
-      where: and(eq(schema.reviews.fromUserId, request.userId), eq(schema.reviews.toUserId, body.toUserId)),
+  /**
+   * Заказ + выполненное назначение + кого оценивает текущий пользователь.
+   * null, если пользователь не участник (не автор и не исполнитель).
+   */
+  async function loadRatingContext(orderId: string, userId: string) {
+    const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, orderId) });
+    if (!order) return null;
+    const assignment = await db.query.orderAssignments.findFirst({
+      where: and(eq(schema.orderAssignments.orderId, orderId), eq(schema.orderAssignments.status, "completed")),
     });
+    if (!assignment) return null;
+    const isAuthor = order.authorId === userId;
+    if (!isAuthor && assignment.executorId !== userId) return null;
+    return {
+      order,
+      targetUserId: isAuthor ? assignment.executorId : order.authorId,
+      targetRole: isAuthor ? ("executor" as const) : ("customer" as const),
+    };
+  }
 
-    if (existing) {
-      const [updated] = await db
-        .update(schema.reviews)
-        .set({ rating: body.rating, text: body.text ?? null, lastOrderId: body.orderId, updatedAt: new Date() })
-        .where(eq(schema.reviews.id, existing.id))
-        .returning();
-      return reply.code(200).send(toReviewResponse(updated));
+  // Состояние «Оценить» для текущего пользователя по заказу. RatingCard общий
+  // для обеих сторон и монтируется всегда; targetRole подсказывает карточке,
+  // кого именно сейчас оценивает пользователь (передаётся только при pending).
+  app.get("/orders/:id/rating", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const ctx = await loadRatingContext(id, request.userId);
+    if (!ctx) return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
+    const mine = await db.query.orderRatings.findFirst({
+      where: and(eq(schema.orderRatings.orderId, id), eq(schema.orderRatings.fromUserId, request.userId)),
+    });
+    const pending = ctx.order.status === "completed" && !mine;
+    return reply.send(pending ? { pending, targetRole: ctx.targetRole } : { pending });
+  });
+
+  app.post("/orders/:id/rating", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = rateOrderSchema.parse(request.body);
+
+    const ctx = await loadRatingContext(id, request.userId);
+    if (!ctx) return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
+    if (ctx.order.status !== "completed") {
+      return reply.code(409).send({ error: { code: "not_rateable", message: "Оценить можно только выполненный заказ" } });
     }
 
     const [created] = await db
-      .insert(schema.reviews)
+      .insert(schema.orderRatings)
       .values({
+        orderId: id,
         fromUserId: request.userId,
-        toUserId: body.toUserId,
-        lastOrderId: body.orderId,
+        toUserId: ctx.targetUserId,
+        toRole: ctx.targetRole,
         rating: body.rating,
-        text: body.text ?? null,
       })
+      .onConflictDoNothing()
       .returning();
-    if (!created) throw new Error("Failed to create review");
-    return reply.code(201).send(toReviewResponse(created));
-  });
-
-  app.patch("/reviews/:id", { preHandler: app.authenticate }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = updateReviewSchema.parse(request.body);
-
-    const existing = await db.query.reviews.findFirst({ where: eq(schema.reviews.id, id) });
-    if (!existing || existing.fromUserId !== request.userId) {
-      return reply.code(404).send({ error: { code: "not_found", message: "Отзыв не найден" } });
+    if (!created) {
+      return reply.code(409).send({ error: { code: "already_rated", message: "Вы уже оценили этот заказ" } });
     }
-
-    const [updated] = await db
-      .update(schema.reviews)
-      .set({ rating: body.rating, text: body.text === undefined ? existing.text : body.text, updatedAt: new Date() })
-      .where(eq(schema.reviews.id, id))
-      .returning();
-
-    return reply.send(toReviewResponse(updated));
+    return reply.code(201).send({ orderId: id, skipped: created.rating === null });
   });
-}
-
-function toReviewResponse(row: typeof schema.reviews.$inferSelect | undefined) {
-  if (!row) throw new Error("Failed to persist review");
-  return {
-    id: row.id,
-    fromUserId: row.fromUserId,
-    toUserId: row.toUserId,
-    lastOrderId: row.lastOrderId,
-    rating: row.rating,
-    text: row.text,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
-/**
- * Заказ существует, и по нему между `fromUserId` и `toUserId` есть
- * `order_assignments.status = 'completed'` в любом направлении ролей:
- * либо `fromUserId` — автор заказа, а `toUserId` — завершивший работу
- * исполнитель, либо наоборот.
- */
-async function loadReviewEligibility(
-  db: ReturnType<typeof getDb>,
-  orderId: string,
-  fromUserId: string,
-  toUserId: string,
-): Promise<boolean> {
-  const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, orderId) });
-  if (!order) return false;
-
-  const executorId = order.authorId === fromUserId ? toUserId : order.authorId === toUserId ? fromUserId : null;
-  const authorId = order.authorId;
-  if (executorId === null) return false; // ни один из пары не автор этого заказа
-  if (authorId !== fromUserId && authorId !== toUserId) return false;
-
-  const completedAssignment = await db.query.orderAssignments.findFirst({
-    where: and(
-      eq(schema.orderAssignments.orderId, orderId),
-      eq(schema.orderAssignments.executorId, executorId),
-      eq(schema.orderAssignments.status, "completed"),
-    ),
-  });
-  return !!completedAssignment;
 }

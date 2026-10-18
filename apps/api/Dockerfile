@@ -6,7 +6,7 @@ COPY package.json package-lock.json* ./
 COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/api ./apps/api
-RUN npm install --no-audit --no-fund --legacy-peer-deps
+RUN npm ci --include=dev --no-audit --no-fund --legacy-peer-deps
 
 # Пакеты (packages/*) — TS-исходники, запускаются напрямую через tsx (без
 # отдельного шага компиляции dist — см. docs/architecture.md, раздел про

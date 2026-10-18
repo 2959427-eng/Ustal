@@ -21,6 +21,7 @@ export interface OrderCandidate {
   id: string;
   executorId: string;
   executorName: string | null;
+  executorAvatarMediaId?: string | null;
   status: ResponseStatus;
   offeredPriceMinor: number | null;
   comment: string | null;
@@ -29,6 +30,11 @@ export interface OrderCandidate {
   isContactUnlocked: boolean;
   assignmentId: string | null;
   assignmentStatus: AssignmentStatus | null;
+  /** Отметка исполнителя ("работа выполнена"/"не получилось") — сигнал, не финальный статус. */
+  executorReport: "completed" | "issue" | null;
+  executorReportAt: string | null;
+  /** Как заказ попал к исполнителю (2026-10-15): exact — по навыкам, probable — по опыту, opportunity — простая задача. */
+  fitLevel?: "exact" | "probable" | "opportunity" | null;
 }
 
 export interface OrderCandidatesResponse {
@@ -54,4 +60,32 @@ export function getOrderCandidates(orderId: string): Promise<OrderCandidatesResp
 
 export function withdrawResponse(responseId: string): Promise<void> {
   return apiClient.request<void>(`/responses/${responseId}`, { method: "DELETE" });
+}
+
+export interface UpdateResponseInput {
+  offeredPriceMinor?: number | null;
+  comment?: string | null;
+  availabilityText?: string | null;
+}
+
+/** Ответ PATCH /responses/{id} — короче ResponseCreated (нет orderId/createdAt, они клиенту здесь не нужны). */
+export interface ResponseUpdated {
+  id: string;
+  status: ResponseStatus;
+  offeredPriceMinor: number | null;
+  comment: string | null;
+  availabilityText: string | null;
+}
+
+/**
+ * PATCH /responses/{id} (apps/api/src/routes/responses.ts) — правка своего
+ * ещё не выбранного отклика: цена/комментарий/доступность. Уже был на
+ * бэкенде, мобильный клиент раньше им не пользовался — правка отклика была
+ * возможна только через "отозвать и создать заново".
+ */
+export function updateResponse(responseId: string, input: UpdateResponseInput): Promise<ResponseUpdated> {
+  return apiClient.request<ResponseUpdated>(`/responses/${responseId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }

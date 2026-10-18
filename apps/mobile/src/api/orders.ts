@@ -7,6 +7,9 @@ export type OrderStatus =
   | "moderation_hold"
   | "published"
   | "negotiating"
+  | "in_progress"
+  | "completed"
+  | "not_completed"
   | "closed"
   | "expired"
   | "cancelled"
@@ -16,7 +19,7 @@ export type ModerationStatus = "pending" | "allow" | "allow_with_warning" | "man
 
 export type ResponseStatus = "active" | "withdrawn" | "not_selected";
 
-export type AssignmentStatus = "selected" | "completed" | "not_completed" | "cancelled";
+export type AssignmentStatus = "selected" | "in_progress" | "completed" | "not_completed" | "cancelled";
 
 /**
  * Пауза «Проверка транскрипции» (экран 9/11, claude/pipeline-split-design.md):
@@ -39,6 +42,7 @@ export interface OrderDetail {
   normalizedTitle: string | null;
   normalizedDescription: string | null;
   priceMinor: number | null;
+  acceptsPriceOffers: boolean;
   currency: string;
   riskLevel: number;
   moderationStatus: ModerationStatus;
@@ -50,12 +54,18 @@ export interface OrderDetail {
   /** Видно только автору (единственному, у кого есть доступ к GET /orders/{id}). */
   sourceStatus: SourceStatus;
   transcript: string | null;
+  /** Приём откликов (2026-10-15). Необязательно — старый API их не отдавал. */
+  activeResponsesCount?: number;
+  responseLimit?: number;
+  responsesClosed?: boolean;
+  acceptingResponses?: boolean;
 }
 
 export interface CreateOrderTextInput {
   inputType: "text";
   text: string;
   priceMinor?: number;
+  acceptsPriceOffers?: boolean;
   mediaIds?: string[];
 }
 
@@ -138,6 +148,18 @@ export function confirmOrderTranscript(orderId: string, idempotencyKey: string):
 /** Публикация — всегда явное действие автора, никогда не триггерится автоматически. */
 export function publishOrder(orderId: string): Promise<PublishOrderResult> {
   return apiClient.request<PublishOrderResult>(`/orders/${orderId}/publish`, { method: "POST", body: "{}" });
+}
+
+export interface ResponsesAcceptance {
+  id: string;
+  responsesClosed: boolean;
+  activeResponsesCount: number;
+  responseLimit: number;
+  acceptingResponses: boolean;
+}
+/** «Достаточно откликов» (close) / «Снова принимать отклики» (reopen): заказ остаётся, меняется только приём новых откликов. */
+export function setResponsesAcceptance(orderId: string, action: "close" | "reopen"): Promise<ResponsesAcceptance> {
+  return apiClient.request<ResponsesAcceptance>(`/orders/${orderId}/responses/${action}`, { method: "POST", body: "{}" });
 }
 
 export function cancelOrder(orderId: string): Promise<void> {

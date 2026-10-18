@@ -13,9 +13,16 @@ export function signAccessToken(userId: string): string {
   });
 }
 
+const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function verifyAccessToken(token: string): AccessTokenPayload {
   const env = loadEnv();
-  return jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenPayload;
+  const payload = jwt.verify(token, env.JWT_ACCESS_SECRET);
+  // Подпись верна, но субъект не userId (нет sub / не строка / не uuid) — это недействительный токен (401),
+  // а не ошибка сервера: иначе запрос пользователя по такому id падал в БД (500) или в 22P02 (404).
+  const sub = typeof payload === "object" && payload !== null ? (payload as { sub?: unknown }).sub : undefined;
+  if (typeof sub !== "string" || !USER_ID.test(sub)) throw new jwt.JsonWebTokenError("invalid subject");
+  return { sub };
 }
 
 /**

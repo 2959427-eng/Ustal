@@ -1,15 +1,18 @@
+import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useEffect, useRef, useState } from "react";
-import { View, Text, TextInput, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, StyleSheet, ActivityIndicator, ScrollView, Keyboard, Pressable, useWindowDimensions } from "react-native";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
+import { ProfileItemsManager } from "../../src/components/ProfileItemsManager";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
-import { getProfile, submitProfileInput, getProfileDraft, applyProfileDraft, discardProfileDraft } from "../../src/api/profile";
+import { getProfile, submitProfileInput, getProfileDraft, applyProfileDraft, discardProfileDraft, recognizedLabels } from "../../src/api/profile";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
+import { PROFILE_INPUT_PENDING_KEY, type ProfileInputPending } from "../../src/lib/profile-draft";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 45000;
-
-type Phase = "idle" | "processing" | "draft_review";
 
 /**
  * «Навыки и ресурсы» — конструктор AI-профиля возможностей (раздел 7 ТЗ).
@@ -67,55 +70,80 @@ type Phase = "idle" | "processing" | "draft_review";
  */
 export default function ProfileScreen() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [pollTimedOut, setPollTimedOut] = useState(false);
+  // waiting — ждём результат extraction после отправки текста.
+  const [waiting, setWaiting] = useState(false);
+  // notice — понятное сообщение после apply / пустого результата.
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const [phase, setPhase] = useState<Phase>("idle");
+  // Поле ввода внизу длинного экрана (под сводкой профиля): при редактировании клавиатура его закрывала
+  // (QA 2026-10-17, iPhone). Подводим поле к верху видимой области, когда оно в фокусе и клавиатура
+  // открылась/сменила высоту; длинный текст прокручивается внутри поля (высота ограничена долей экрана),
+  // поэтому строка с курсором остаётся видна на любых размерах экрана iOS и Android.
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  const inputY = useRef(0);
+  const inputFocused = useRef(false);
+  const revealInput = () => {
+    if (!inputFocused.current) return;
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, inputY.current - spacing.md), animated: true }));
+  };
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", revealInput);
+    const frame = Keyboard.addListener("keyboardDidChangeFrame", revealInput);
+    return () => { show.remove(); frame.remove(); };
+  }, []);
 
-  const pollDeadlineRef = useRef<number | null>(null);
-
-  const { data, isLoading } = useQuery({
+  // UI-blocker #2 fix: экран больше НЕ зависит от «фазы». Сохранённый профиль
+  // и форма ввода показываются всегда; ожидающий черновик — отдельный блок.
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["profile"],
     queryFn: getProfile,
   });
+  // Ошибка загрузки (сеть / 500) без данных — не «пустой профиль» (mobile QA 2026-10-14, M03).
+  const loadFailed = isError && !data;
 
   const draftQuery = useQuery({
     queryKey: ["profileDraft"],
     queryFn: getProfileDraft,
-    enabled: phase === "processing",
-    refetchInterval: phase === "processing" ? POLL_INTERVAL_MS : false,
+    refetchInterval: waiting ? POLL_INTERVAL_MS : false,
   });
+  const draft = draftQuery.data?.draft ? draftQuery.data : null;
 
-  // Черновик после extraction готов — показываем дифф на подтверждение.
+  // Черновик появился — перестаём ждать.
   useEffect(() => {
-    if (phase !== "processing" || !draftQuery.data) return;
-    if (draftQuery.data.draft) {
-      setPollTimedOut(false);
-      pollDeadlineRef.current = null;
-      setPhase("draft_review");
-    } else if (pollDeadlineRef.current && Date.now() > pollDeadlineRef.current) {
-      setPollTimedOut(true);
-    }
-  }, [draftQuery.data, phase]);
+    if (waiting && draft) setWaiting(false);
+  }, [waiting, draft]);
 
-  const startDraftPolling = () => {
-    pollDeadlineRef.current = Date.now() + POLL_TIMEOUT_MS;
-    setPollTimedOut(false);
-    setPhase("processing");
-  };
+  // Таймаут ожидания: extraction ничего не создал.
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setTimeout(() => {
+      setWaiting(false);
+      setNotice("AI не нашёл в тексте навыков или ресурсов. Опишите конкретнее, например: «умею красить стены, есть перфоратор».");
+    }, POLL_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [waiting]);
 
   const onSubmit = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setSubmitError(null);
+    setNotice(null);
+    Keyboard.dismiss();
     setSubmitting(true);
     try {
       const idempotencyKey = generateIdempotencyKey("profile-input");
       await submitProfileInput({ inputType: "text", text: trimmed }, idempotencyKey);
-      startDraftPolling();
       setText("");
+      // 2026-09-30: сразу в «Мой профиль» — статус AI и «Проверить и применить» показываются там.
+      queryClient.setQueryData<ProfileInputPending>(PROFILE_INPUT_PENDING_KEY, { at: Date.now(), prevDraftId: draft?.draft?.id ?? null });
+      void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
+      router.navigate("/(tabs)/account");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Не удалось отправить. Попробуйте ещё раз.");
     } finally {
@@ -123,24 +151,32 @@ export default function ProfileScreen() {
     }
   };
 
-  const cancelAll = () => {
-    setPhase("idle");
-    setSubmitError(null);
-    setPollTimedOut(false);
-    pollDeadlineRef.current = null;
+  const clearDraftCache = () => {
+    queryClient.setQueryData(["profileDraft"], (prev: unknown) =>
+      prev && typeof prev === "object" ? { ...(prev as object), draft: null } : prev,
+    );
+    void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
   };
-
-  const draft = phase === "draft_review" ? draftQuery.data : null;
 
   const onApplyDraft = async () => {
     if (!draft?.draft) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await applyProfileDraft(draft.draft.id);
-      void queryClient.invalidateQueries({ queryKey: ["profile"] });
-      void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
-      cancelAll();
+      const applied = await applyProfileDraft(draft.draft.id);
+      clearDraftCache();
+      // Берём свежий профиль напрямую (а не через invalidate, который молча
+      // оставляет старые данные при ошибке рефетча) и кладём в кэш.
+      const fresh = await getProfile();
+      queryClient.setQueryData(["profile"], fresh);
+      Keyboard.dismiss();
+      if (fresh.profile?.id !== applied.profileId) {
+        setSubmitError("Изменения применены, но сервер вернул другую версию профиля. Обновите экран.");
+      } else {
+        setNotice("Сохранено");
+        // Навыки применены — сразу возвращаем в личный кабинет (там свежий профиль уже в кэше).
+        router.navigate("/(tabs)/account");
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Не удалось применить изменения.");
     } finally {
@@ -154,8 +190,8 @@ export default function ProfileScreen() {
     setSubmitError(null);
     try {
       await discardProfileDraft(draft.draft.id);
-      void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
-      cancelAll();
+      clearDraftCache();
+      setNotice(null);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Не удалось отклонить изменения.");
     } finally {
@@ -163,63 +199,85 @@ export default function ProfileScreen() {
     }
   };
 
+  const saved = recognizedLabels(data);
+  const hasSaved = !!data?.profile && (saved.capabilities.length > 0 || saved.resources.length > 0 || !!data.profile.summary ||
+    (data.restrictions?.length ?? 0) > 0 || (data.removed?.length ?? 0) > 0);
+  const addedUnmapped = draft?.diff.addedUnmapped ?? [];
+  const draftEmpty =
+    !!draft &&
+    draft.diff.addedCapabilities.length === 0 &&
+    draft.diff.addedResources.length === 0 &&
+    addedUnmapped.length === 0 &&
+    draft.diff.removedCapabilities.length === 0 &&
+    draft.diff.removedResources.length === 0;
+
   return (
-    <View style={styles.container}>
+    <KeyboardAvoid>
+    <ScrollView
+      ref={scrollRef}
+      style={styles.scroll}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.sm }]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+    >
+      <Pressable style={styles.back} onPress={() => router.navigate("/(tabs)/account")} hitSlop={12}>
+        <Text style={styles.backText}>← Назад</Text>
+      </Pressable>
       <Text style={styles.title}>Навыки и ресурсы</Text>
+      {notice && <Text style={notice === "Сохранено" ? styles.success : styles.hint}>{notice}</Text>}
 
-      {isLoading && phase === "idle" && <ActivityIndicator color={colors.primary} />}
+      {isLoading && <ActivityIndicator color={colors.primary} />}
 
-      {phase === "idle" && !isLoading && data?.profile && (
+      {/* Сохранённые навыки и ресурсы — показываются всегда */}
+      {!isLoading && hasSaved && data?.profile && (
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryText}>{data.profile.summary}</Text>
-          {data.capabilities.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Что я умею</Text>
-              <View style={styles.chipRow}>
-                {data.capabilities.map((cap) => (
-                  <View key={cap.id} style={styles.chip}>
-                    <Text style={styles.chipText}>{cap.label}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-          {data.resources.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Ресурсы</Text>
-              <View style={styles.chipRow}>
-                {data.resources.map((res) => (
-                  <View key={res.id} style={styles.chip}>
-                    <Text style={styles.chipText}>{res.label}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
+          {!!data.profile.summary && <Text style={styles.summaryText}>{data.profile.summary}</Text>}
+          {/* Пункты с прямыми действиями без AI (2026-10-17): «Убрать», «Снять ограничение», «Восстановить». */}
+          <ProfileItemsManager profile={data} />
         </View>
       )}
+      {!isLoading && loadFailed && (
+        <View style={styles.processingBox}>
+          <Text style={styles.processingText}>Не удалось загрузить сохранённые навыки и ресурсы. Проверьте соединение.</Text>
+          <PrimaryButton label="Повторить" variant="secondary" loading={isFetching} onPress={() => { void refetch(); }} />
+        </View>
+      )}
+      {!isLoading && !loadFailed && !hasSaved && (
+        <Text style={styles.hint}>Пока нет сохранённых навыков и ресурсов. Добавьте их ниже.</Text>
+      )}
 
-      {phase === "processing" && (
+      {/* Ожидание результата AI */}
+      {waiting && !draft && (
         <View style={styles.processingBox}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.processingText}>AI обрабатывает вашу запись…</Text>
-          {pollTimedOut && (
-            <>
-              <Text style={styles.hint}>Обработка занимает больше времени, чем обычно.</Text>
-              <PrimaryButton label="Проверить снова" variant="secondary" onPress={() => void draftQuery.refetch()} />
-            </>
-          )}
+          <PrimaryButton
+            label="Отмена"
+            variant="secondary"
+            onPress={() => {
+              setWaiting(false);
+            }}
+          />
         </View>
       )}
 
-      {phase === "draft_review" && draft?.draft && (
+      {/* Ожидающий черновик — отдельный блок */}
+      {draft?.draft && draftEmpty && (
+        <View style={styles.summaryBox}>
+          <Text style={styles.reviewTitle}>AI не нашёл новых навыков или ресурсов</Text>
+          <Text style={styles.hint}>
+            Попробуйте описать конкретнее, что вы умеете делать или какие у вас есть инструменты, транспорт или оборудование.
+          </Text>
+        </View>
+      )}
+      {draft?.draft && !draftEmpty && (
         <View style={styles.reviewBox}>
           <Text style={styles.reviewTitle}>AI предлагает изменить профиль</Text>
           <Text style={styles.summaryText}>{draft.draft.summary}</Text>
-          {(draft.diff.addedCapabilities.length > 0 || draft.diff.addedResources.length > 0) && (
+          {(draft.diff.addedCapabilities.length > 0 || draft.diff.addedResources.length > 0 || addedUnmapped.length > 0) && (
             <View style={styles.diffSection}>
               <Text style={styles.diffLabel}>Добавится:</Text>
-              {[...draft.diff.addedCapabilities, ...draft.diff.addedResources].map((label) => (
+              {[...new Set([...draft.diff.addedCapabilities, ...draft.diff.addedResources, ...addedUnmapped])].map((label) => (
                 <Text key={label} style={styles.diffAdded}>+ {label}</Text>
               ))}
             </View>
@@ -238,36 +296,44 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {phase === "idle" && (
-        <>
-          <TextInput
-            style={styles.textArea}
-            multiline
-            value={text}
-            onChangeText={setText}
-            placeholder="Опишите себя текстом, какие у вас навыки, инструменты или транспорт"
-            placeholderTextColor={colors.textSecondary}
-          />
-          {submitError && <Text style={styles.error}>{submitError}</Text>}
-          <PrimaryButton label="Сохранить" onPress={onSubmit} loading={submitting} disabled={text.trim().length === 0} />
-        </>
-      )}
-    </View>
+      {/* Форма добавления — всегда */}
+      <TextInput
+        style={[styles.textArea, { maxHeight: Math.max(160, Math.round(windowHeight * 0.25)) }]}
+        multiline
+        scrollEnabled
+        value={text}
+        onChangeText={setText}
+        onLayout={(e) => { inputY.current = e.nativeEvent.layout.y; }}
+        onFocus={() => { inputFocused.current = true; revealInput(); setTimeout(revealInput, 300); }}
+        onBlur={() => { inputFocused.current = false; }}
+        placeholder="Опишите себя текстом, какие у вас навыки, инструменты или транспорт"
+        placeholderTextColor={colors.textSecondary}
+      />
+      {!draft && submitError && <Text style={styles.error}>{submitError}</Text>}
+      <PrimaryButton
+        label="Сохранить"
+        onPress={onSubmit}
+        loading={submitting && !draft}
+        disabled={text.trim().length === 0 || waiting}
+      />
+
+      <PrimaryButton label="В мой профиль" variant="secondary" onPress={() => router.navigate("/(tabs)/account")} />
+    </ScrollView>
+    </KeyboardAvoid>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  scroll: { flex: 1, backgroundColor: colors.background },
+  success: { ...typography.body, color: colors.success },
+  container: { flexGrow: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  back: { marginBottom: spacing.xs },
+  backText: { ...typography.body, color: colors.primary },
   title: { ...typography.title, color: colors.textPrimary },
   error: { ...typography.caption, color: colors.danger },
   hint: { ...typography.caption, color: colors.textSecondary },
   summaryBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.md },
   summaryText: { ...typography.body, color: colors.textPrimary },
-  section: { gap: spacing.xs },
-  sectionLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  chip: { backgroundColor: colors.surfaceAlt, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 4 },
-  chipText: { ...typography.caption, color: colors.textPrimary },
   processingBox: { alignItems: "center", gap: spacing.xs, padding: spacing.md },
   processingText: { ...typography.body, color: colors.textSecondary },
   reviewBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.sm },

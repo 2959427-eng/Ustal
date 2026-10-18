@@ -21,6 +21,7 @@
     "@ustal/config": "*",
     "@ustal/database": "*",
     "@ustal/domain": "*",
+    "@ustal/matching": "*",
     "@ustal/queue": "*",
     "@ustal/storage": "*",
     "@ustal/validation": "*",

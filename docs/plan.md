@@ -56,7 +56,13 @@ typecheck, тесты, сборка, короткий отчёт; переход
   публикация → повторная публикация (409) → отмена; рискованный заказ
   (жёсткое правило) → `moderation_hold` → публикация заблокирована (409), но
   отмена всё равно доступна; голосовой заказ → STT заполняет `source_text`.
-- **Фаза 4 — Matching. ✅ Готово и проверено локально.** Публикация заказа
+- **Фаза 4 — Matching. ✅ Готово и проверено локально.**
+  > **Обновление 2026-09-24:** описанный здесь pure-function пайплайн
+  > (`matchRequirements`/`computeScore`/`classifyMatchType`/`buildExplanation`,
+  > веса и `minimumRelevanceScore` в `@ustal/config`, тип `new_opportunity`)
+  > заменён semantic matching (`evaluateSemantic`, см. docs/matching.md) и удалён
+  > как мёртвый код вместе с `evaluation.test.ts`. Текст ниже — историческая запись.
+  Публикация заказа
   (`POST /orders/{id}/publish`) сразу ставит `matching_run` job. Worker
   (`apps/worker/src/handlers/matching-run.ts`, docs/matching.md §13):
   13.1 жёсткие фильтры (город — не входит в кандидатский SQL вообще; автор,
@@ -230,7 +236,8 @@ typecheck, тесты, сборка, короткий отчёт; переход
   ontology candidates (merge в существующий узел синонимом / reject),
   `/ai-costs` (агрегация `ai_runs` за 30 дней по типу операции и провайдеру),
   жалобы и блокировки (resolve/dismiss).
-  matching-evaluation (`packages/matching/src/evaluation.test.ts`, 27
+  matching-evaluation (удалён 2026-09-24 вместе с legacy-пайплайном; ранее
+  `packages/matching/src/evaluation.test.ts`, 27
   сценариев ≥ требуемых 25): полный pure-function пайплайн
   `matchRequirements → computeScore → classifyMatchType → buildExplanation`
   на реальных весах из `@ustal/config`, а не только изолированные юнит-тесты

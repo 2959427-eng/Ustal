@@ -1,67 +1,93 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, TextInput, Image } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMe } from "../../src/api/me";
-import { getProfile, updateProfile } from "../../src/api/profile";
-import { getMyOrders, getMyResponses } from "../../src/api/my";
 import { logout } from "../../src/api/auth";
-import { AvatarPicker } from "../../src/components/AvatarPicker";
+import { getProfile, recognizedLabels, restrictionGroups, updateProfile, type UpdateProfileInput } from "../../src/api/profile";
+import { ReputationBlock } from "../../src/components/ReputationBlock";
+import { getMyReputation } from "../../src/api/reviews";
+import { getCities } from "../../src/api/cities";
+import { getMediaUrl } from "../../src/api/media";
+import { ProfileBasicsModal } from "../../src/components/ProfileBasicsModal";
+import { PrimaryButton } from "../../src/components/PrimaryButton";
+import { ProfileSkillsStatus } from "../../src/components/ProfileSkillsStatus";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
+type EditableField = "about" | "whatsapp";
+
 /**
- * «Личный кабинет» — hub-экран (макет Account.dc.html): аватар/имя, плитки
- * со статистикой, «Навыки и ресурсы» (реальный AI-профиль, редактирование —
- * переход в существующий конструктор app/(tabs)/profile.tsx) и список
- * настроек. Открывается по аватарке в HomeHeader. Рейтинг/отзывы в макете
- * есть, но у API нет эндпоинта агрегированного рейтинга — не показываем
- * вымышленные цифры.
+ * «Мой профиль»: аватар, имя, город, о себе, WhatsApp, навыки и ресурсы (реальный AI-профиль),
+ * «Заблокированные пользователи» и «Выйти». Открывается по аватарке/имени/городу в HomeHeader.
+ * С 2026-10-06 отдельной кнопки «Изменить профиль» нет: «О себе» и WhatsApp редактируются нажатием прямо на поле
+ * (сохранение — «Готово» на клавиатуре или уход с поля). С 2026-10-17 аватар, имя и город — одним окном
+ * «Основные данные» по нажатию на верхний блок профиля (ProfileBasicsModal, одно «Сохранить»).
  */
 export default function AccountScreen() {
-  const queryClient = useQueryClient();
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
-  const [savingAvatar, setSavingAvatar] = useState(false);
-
+  const insets = useSafeAreaInsets();
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ["me"], queryFn: getMe });
   const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: getProfile });
-  const { data: myOrders } = useQuery({ queryKey: ["my-orders"], queryFn: () => getMyOrders() });
-  const { data: myResponses } = useQuery({ queryKey: ["my-responses"], queryFn: () => getMyResponses({ limit: 100 }) });
-
-  const initial = me?.name?.trim()?.[0]?.toUpperCase() ?? "";
-  const capabilities = profile?.capabilities ?? [];
+  const { data: reputation } = useQuery({ queryKey: ["my-reputation"], queryFn: getMyReputation });
+  const queryClient = useQueryClient();
+  const citiesQuery = useQuery({ queryKey: ["cities"], queryFn: getCities, staleTime: Infinity });
+  const cityName = citiesQuery.data?.find((c) => c.id === me?.cityId)?.name;
+  const [editing, setEditing] = useState<EditableField | null>(null);
+  const [value, setValue] = useState("");
+  const [savingField, setSavingField] = useState<EditableField | null>(null);
+  const [basicsOpen, setBasicsOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   const onLogout = async () => {
     setLoggingOut(true);
     try {
       await logout();
       router.replace("/onboarding");
+    } catch {
+      Alert.alert("Не удалось завершить выход", "Для безопасной отвязки уведомлений и очистки сессии повторите выход при доступной сети.");
     } finally {
       setLoggingOut(false);
     }
   };
 
-  // Тап по аватарке (AvatarPicker) уже загрузил файл (POST /media) и
-  // вернул mediaId — здесь только привязываем его к профилю
-  // (PATCH /profile, см. apps/api/src/routes/profile.ts) и обновляем ["me"],
-  // чтобы фото сразу отобразилось и в HomeHeader.
-  const onAvatarChange = async (mediaId: string) => {
-    setSavingAvatar(true);
+  const { capabilities, resources } = recognizedLabels(profile);
+  const restrictions = restrictionGroups(profile);
+
+  const save = async (field: EditableField, input: UpdateProfileInput) => {
+    setSavingField(field);
     try {
-      await updateProfile({ avatarMediaId: mediaId });
+      await updateProfile(input);
       await queryClient.invalidateQueries({ queryKey: ["me"] });
+      return true;
+    } catch (err) {
+      Alert.alert("Не удалось сохранить", err instanceof Error ? err.message : "Попробуйте ещё раз.");
+      return false;
     } finally {
-      setSavingAvatar(false);
+      setSavingField(null);
     }
   };
 
+  const startEdit = (field: EditableField) => {
+    setEditing(field);
+    setValue((field === "about" ? me?.about : me?.whatsappPhone) ?? "");
+  };
+
+  const finishEdit = async () => {
+    const field = editing;
+    if (!field) return;
+    const v = value.trim();
+    const current = ((field === "about" ? me?.about : me?.whatsappPhone) ?? "").trim();
+    setEditing(null);
+    if (v === current) return;
+    if (field === "about") await save("about", { about: v || null });
+    else await save("whatsapp", { whatsappPhone: v || null });
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Личный кабинет</Text>
-        <Pressable onPress={() => router.push("/settings")} hitSlop={12}>
-          <Text style={styles.settingsIcon}>⚙︎</Text>
-        </Pressable>
+        <Text style={styles.headerTitle}>Мой профиль</Text>
       </View>
 
       <View style={styles.navTabs}>
@@ -75,54 +101,164 @@ export default function AccountScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.profileCard}>
-        <AvatarPicker avatarMediaId={me?.avatarMediaId ?? null} initial={initial} onChange={onAvatarChange} saving={savingAvatar} size={56} />
-        <View style={{ flex: 1 }}>
-          {meLoading ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.name}>{me?.name ?? "—"}</Text>}
+      {/* Одна точка редактирования аватара, имени и города (2026-10-17): всё меняется в окне «Основные данные»
+          и сохраняется одним действием «Сохранить». */}
+      <Pressable
+        style={styles.profileCard}
+        onPress={() => setBasicsOpen(true)}
+        disabled={meLoading || !me}
+        accessibilityRole="button"
+        accessibilityLabel="Изменить фото, имя и город"
+      >
+        <View style={styles.avatar}>
+          {me?.avatarMediaId ? <Image source={{ uri: getMediaUrl(me.avatarMediaId) }} style={styles.avatarImage} />
+            : <Text style={styles.avatarInitial}>{me?.name?.trim()[0]?.toUpperCase() || "•"}</Text>}
         </View>
-      </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          {meLoading ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <>
+              <Text style={styles.name}>{me?.name || "Добавить имя"}</Text>
+              <Text style={styles.hint}>{cityName ?? "Выбрать город"}</Text>
+            </>
+          )}
+        </View>
+      </Pressable>
 
-      <View style={styles.statsRow}>
-        <Pressable style={styles.statTile} onPress={() => router.navigate("/(tabs)/orders")}>
-          <Text style={styles.statLabel}>Мои заказы</Text>
-          <Text style={styles.statValue}>{myOrders?.items.length ?? "—"}</Text>
-        </Pressable>
-        <Pressable style={styles.statTile} onPress={() => router.push("/(tabs)/responses")}>
-          <Text style={styles.statLabel}>Мои отклики</Text>
-          <Text style={styles.statValue}>{myResponses?.items.length ?? "—"}</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        style={styles.skillsCard}
+        onPress={() => { if (editing !== "about") startEdit("about"); }}
+        accessibilityRole="button"
+        accessibilityLabel="Изменить «О себе»"
+      >
+        <Text style={styles.sectionTitle}>О себе</Text>
+        {editing === "about" ? (
+          <>
+            <TextInput
+              style={[styles.aboutText, styles.inlineInput, styles.aboutInput]}
+              value={value}
+              onChangeText={setValue}
+              onBlur={() => { void finishEdit(); }}
+              placeholder="Коротко о себе: чем занимаетесь, опыт"
+              multiline
+              autoFocus
+              maxLength={500}
+              textAlignVertical="top"
+            />
+            <View style={styles.inlineFooter}>
+              <Text style={styles.hint}>{value.length}/500</Text>
+              <Pressable onPress={() => { void finishEdit(); }} hitSlop={8}><Text style={styles.doneText}>Готово</Text></Pressable>
+            </View>
+          </>
+        ) : savingField === "about" ? (
+          <Text style={styles.hint}>Сохраняем…</Text>
+        ) : me?.about ? (
+          <Text style={styles.aboutText}>{me.about}</Text>
+        ) : (
+          <Text style={styles.hint}>Нажмите, чтобы рассказать о себе</Text>
+        )}
+      </Pressable>
+
+      <Pressable
+        style={styles.skillsCard}
+        onPress={() => { if (editing !== "whatsapp") startEdit("whatsapp"); }}
+        accessibilityRole="button"
+        accessibilityLabel="Изменить WhatsApp"
+      >
+        <Text style={styles.hint}>WhatsApp</Text>
+        {editing === "whatsapp" ? (
+          <TextInput
+            style={[styles.aboutText, styles.inlineInput]}
+            value={value}
+            onChangeText={setValue}
+            onBlur={() => { void finishEdit(); }}
+            onSubmitEditing={() => { void finishEdit(); }}
+            returnKeyType="done"
+            keyboardType="phone-pad"
+            autoFocus
+            placeholder="+7 900 000-00-00"
+          />
+        ) : (
+          <Text style={me?.whatsappPhone ? styles.aboutText : styles.hint}>
+            {savingField === "whatsapp" ? "Сохраняем…" : me?.whatsappPhone || "Не указан — нажмите, чтобы добавить"}
+          </Text>
+        )}
+      </Pressable>
+
+      {me && (
+        <ProfileBasicsModal
+          visible={basicsOpen}
+          current={{ name: me.name ?? "", cityId: me.cityId ?? null, avatarMediaId: me.avatarMediaId ?? null }}
+          cities={citiesQuery.data ?? []}
+          citiesLoading={citiesQuery.isLoading}
+          citiesError={citiesQuery.isError}
+          onRetryCities={() => { void citiesQuery.refetch(); }}
+          onClose={() => setBasicsOpen(false)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ["me"] })}
+        />
+      )}
 
       <View style={styles.skillsCard}>
-        <View style={styles.skillsHeader}>
-          <Text style={styles.sectionTitle}>Навыки и ресурсы</Text>
-          <Pressable onPress={() => router.push("/(tabs)/profile")} hitSlop={8}>
-            <Text style={styles.editLink}>Изменить</Text>
-          </Pressable>
-        </View>
-        {capabilities.length === 0 ? (
+        <Text style={styles.sectionTitle}>Навыки и ресурсы</Text>
+        {/* Раньше здесь были только навыки: профиль с одним ресурсом («есть машина») выглядел пустым. */}
+        {capabilities.length === 0 && resources.length === 0 ? (
           <Text style={styles.hint}>Пока ничего не рассказали — AI соберёт профиль из голоса или текста.</Text>
         ) : (
-          <View style={styles.chipsRow}>
-            {capabilities.map((c) => (
-              <View key={c.id} style={styles.chip}>
-                <Text style={styles.chipText}>{c.label}</Text>
+          <View style={{ gap: spacing.sm }}>
+            {capabilities.length > 0 && (
+              <View style={{ gap: spacing.xs }}>
+                <Text style={styles.hint}>Что я умею</Text>
+                <View style={styles.chipsRow}>
+                  {capabilities.map((label) => (
+                    <View key={label} style={styles.chip}>
+                      <Text style={styles.chipText}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
-            ))}
+            )}
+            {resources.length > 0 && (
+              <View style={{ gap: spacing.xs }}>
+                <Text style={styles.hint}>Ресурсы</Text>
+                <View style={styles.chipsRow}>
+                  {resources.map((label) => (
+                    <View key={label} style={styles.chip}>
+                      <Text style={styles.chipText}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
         )}
+        <ProfileSkillsStatus />
       </View>
 
-      <View style={styles.rowsCard}>
-        <SettingsRow label="Личные данные" onPress={() => router.push("/settings")} />
-        <SettingsRow label="Уведомления" onPress={() => router.push("/notifications")} />
-        <SettingsRow label="Заблокированные пользователи" onPress={() => router.push("/blocked-users")} last />
-      </View>
+      {/* Явные ограничения пользователя его же словами (время, виды работ, «только …»). Нет — нет раздела. */}
+      {restrictions.length > 0 && (
+        <View style={styles.skillsCard}>
+          <Text style={styles.sectionTitle}>Ограничения</Text>
+          {restrictions.map((g) => (
+            <View key={g.type} style={{ gap: spacing.xs }}>
+              <Text style={styles.hint}>{g.label}</Text>
+              {g.items.map((text) => (
+                <View key={text} style={styles.restrictionRow}>
+                  <Text style={styles.restrictionMark}>⛔</Text>
+                  <Text style={styles.restrictionText}>{text}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
+
+      {reputation && <ReputationBlock reputation={reputation} />}
+
+      <PrimaryButton label="Заблокированные пользователи" variant="secondary" onPress={() => router.push("/blocked-users")} />
 
       {!confirmingLogout && (
-        <Pressable style={styles.logoutButton} onPress={() => setConfirmingLogout(true)}>
-          <Text style={styles.logoutText}>Выйти</Text>
-        </Pressable>
+        <PrimaryButton label="Выйти" variant="secondary" onPress={() => setConfirmingLogout(true)} />
       )}
 
       {confirmingLogout && (
@@ -142,21 +278,26 @@ export default function AccountScreen() {
   );
 }
 
-function SettingsRow({ label, onPress, last }: { label: string; onPress: () => void; last?: boolean }) {
-  return (
-    <Pressable style={[styles.settingsRow, !last && styles.settingsRowBorder]} onPress={onPress}>
-      <Text style={styles.settingsRowText}>{label}</Text>
-      <Text style={styles.chevron}>›</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
+  confirmBox: { backgroundColor: "#FBF3F2", borderWidth: 1, borderColor: "#F3DEDC", borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm },
+  confirmText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
+  confirmRow: { flexDirection: "row", gap: spacing.sm },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radii.button,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  cancelText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
+  confirmButton: { flex: 1, backgroundColor: colors.danger, borderRadius: radii.button, paddingVertical: 11, alignItems: "center" },
+  confirmButtonText: { ...typography.body, fontWeight: "600", color: colors.textInverse },
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
-  settingsIcon: { fontSize: 20, color: colors.textPrimary },
   navTabs: { flexDirection: "row", gap: spacing.sm },
   navTab: {
     flex: 1,
@@ -180,17 +321,14 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
   },
   name: { ...typography.title, color: colors.textPrimary },
-  statsRow: { flexDirection: "row", gap: spacing.sm },
-  statTile: {
-    flex: 1,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderRadius: radii.lg,
-    gap: 2,
-  },
-  statLabel: { ...typography.caption, color: colors.textTertiary },
-  statValue: { ...typography.title, fontSize: 20, color: colors.textPrimary },
+  aboutText: { ...typography.body, color: colors.textPrimary },
+  inlineInput: { borderBottomWidth: 1, borderColor: colors.primary, paddingVertical: 2 },
+  aboutInput: { minHeight: 72 },
+  inlineFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  doneText: { ...typography.body, fontWeight: "600", color: colors.primary },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primaryTintBg, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  avatarImage: { width: 64, height: 64 },
+  avatarInitial: { fontSize: 25, fontWeight: "700", color: colors.primary },
   skillsCard: {
     borderWidth: 1,
     borderColor: colors.borderLight,
@@ -198,33 +336,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
-  skillsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   sectionTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
-  editLink: { ...typography.body, fontWeight: "600", color: colors.primary },
   hint: { ...typography.caption, color: colors.textSecondary },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  restrictionRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs },
+  restrictionMark: { fontSize: 12, lineHeight: 20 },
+  restrictionText: { ...typography.body, color: colors.textPrimary, flex: 1 },
   chip: { backgroundColor: colors.primaryTintBg, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 8 },
   chipText: { ...typography.caption, fontWeight: "600", color: colors.primary },
-  rowsCard: { borderWidth: 1, borderColor: colors.borderLight, borderRadius: radii.lg, overflow: "hidden" },
-  settingsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.md },
-  settingsRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
-  settingsRowText: { ...typography.body, color: colors.textPrimary },
-  chevron: { fontSize: 18, color: colors.textTertiary },
-  logoutButton: { backgroundColor: colors.surface, borderRadius: radii.button, paddingVertical: 15, alignItems: "center" },
-  logoutText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
-  confirmBox: { backgroundColor: "#FBF3F2", borderWidth: 1, borderColor: "#F3DEDC", borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm },
-  confirmText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
-  confirmRow: { flexDirection: "row", gap: spacing.sm },
-  cancelButton: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderRadius: radii.button,
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-  cancelText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
-  confirmButton: { flex: 1, backgroundColor: colors.danger, borderRadius: radii.button, paddingVertical: 11, alignItems: "center" },
-  confirmButtonText: { ...typography.body, fontWeight: "600", color: colors.textInverse },
 });

@@ -1,24 +1,30 @@
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
+import type { ReactNode } from "react";
+import { View, Text, Image, StyleSheet, Pressable, ActivityIndicator } from "react-native";
+import { getMediaUrl } from "../api/media";
 import { colors, radii, spacing, shadows, typography } from "../theme/tokens";
+
+export type MatchType = "exact" | "probable" | "opportunity";
 
 interface Props {
   title: string;
   description: string;
   cityName: string;
   priceMinor: number | null;
-  /**
-   * Человекочитаемое объяснение с сервера (matching.md §13.4) — единственное,
-   * что показываем пользователю про то, почему заказ подобран. Внутренний
-   * match_type (exact/probable/new_opportunity) сознательно не выводится
-   * пользователю отдельным бейджем (UX-аудит, docs/evaluations/matching-ux-audit.md, MVP-правка 1) —
-   * это внутренняя техническая категория, а не продуктовая коммуникация.
-   */
+  /** Уровни совпадения и пояснение больше не показываются (оставлены в props для совместимости). */
+  matchType?: MatchType;
   explanation?: string;
+  /** Фото заказа (media id), показываются в карточке. */
+  photoMediaIds?: string[];
   /** Раздел 15/17 ТЗ, макет Main.dc.html: прямой отклик с карточки в ленте. */
   responded?: boolean;
   responding?: boolean;
   onRespond?: () => void;
   onHide?: () => void;
+  /** Ошибка последней попытки откликнуться — показываем понятным текстом, не проглатываем. */
+  respondError?: string | null;
+  /** С исполнителем начали переговоры или договорились: вместо «Откликнуться / Скрыть» — статус и кнопки связи. */
+  statusLabel?: string;
+  contactSlot?: ReactNode;
 }
 
 function formatPrice(priceMinor: number | null): string {
@@ -29,25 +35,33 @@ function formatPrice(priceMinor: number | null): string {
 /** Карточка заказа в ленте — без счётчика исполнителей (см. docs/screens.md). */
 export function OrderCard({
   title,
-  description,
   cityName,
   priceMinor,
-  explanation,
+  photoMediaIds,
   responded,
   responding,
   onRespond,
   onHide,
+  respondError,
+  statusLabel,
+  contactSlot,
 }: Props) {
-  const showActions = !!onRespond || !!onHide;
+  const showActions = !statusLabel && (!!onRespond || !!onHide);
   return (
     <View style={[styles.card, shadows.card]}>
-      <Text style={styles.title} numberOfLines={2}>{title}</Text>
-      <Text style={styles.description} numberOfLines={3}>{description}</Text>
+      <View style={styles.row}>
+        {photoMediaIds && photoMediaIds.length > 0 && (
+          <Image source={{ uri: getMediaUrl(photoMediaIds[0]!) }} style={styles.photo} resizeMode="cover" />
+        )}
+        <Text style={styles.title} numberOfLines={4}>{title}</Text>
+      </View>
       <View style={styles.footer}>
         <Text style={styles.city}>{cityName}</Text>
         <Text style={styles.price}>{formatPrice(priceMinor)}</Text>
       </View>
-      {explanation && <Text style={styles.explanation}>{explanation}</Text>}
+
+      {!!statusLabel && <Text style={styles.status}>{statusLabel}</Text>}
+      {!!statusLabel && contactSlot}
 
       {showActions && (
         <View style={styles.actions}>
@@ -77,6 +91,7 @@ export function OrderCard({
           )}
         </View>
       )}
+      {!!respondError && <Text style={styles.respondError}>{respondError}</Text>}
     </View>
   );
 }
@@ -90,12 +105,14 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-  title: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
+  row: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start" },
+  photo: { width: 88, height: 88, aspectRatio: 1, borderRadius: radii.md, backgroundColor: colors.surface },
+  title: { flex: 1, ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   description: { ...typography.body, color: colors.textSecondary },
   footer: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },
   city: { ...typography.caption, color: colors.textTertiary },
   price: { ...typography.subtitle, fontWeight: "700", color: colors.primary },
-  explanation: { ...typography.caption, color: colors.primary, marginTop: spacing.xs },
+  status: { ...typography.body, fontWeight: "700", color: colors.success, marginTop: spacing.xs },
   actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs },
   actionButton: {
     flex: 1,
@@ -111,4 +128,5 @@ const styles = StyleSheet.create({
   respondButtonText: { ...typography.body, fontWeight: "700", color: colors.textInverse },
   respondedButton: { backgroundColor: colors.successTintBg },
   respondedButtonText: { ...typography.body, fontWeight: "700", color: colors.success },
+  respondError: { ...typography.caption, color: colors.danger, marginTop: spacing.xs },
 });

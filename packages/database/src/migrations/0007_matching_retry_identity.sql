@@ -1,0 +1,2 @@
+ALTER TABLE "matching_runs" ADD COLUMN "input_hash" varchar(64);--> statement-breakpoint
+CREATE UNIQUE INDEX "matching_candidates_run_user_unique" ON "matching_candidates" USING btree ("matching_run_id","user_id");

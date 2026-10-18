@@ -1,7 +1,8 @@
 import { ApiRequestError } from "@ustal/api-client";
 import { apiClient, setCachedAccessToken } from "./client";
-import { clearTokens, getRefreshToken, saveTokens } from "./session";
-import { resetPushRegistrationState } from "../notifications/push";
+import { clearTokens, getRefreshToken, saveTokens, invalidateTokenWrites } from "./session";
+import { clearUserQueries } from "../state/query-client";
+import { resetPushRegistrationState, unregisterPush } from "../notifications/push";
 
 /**
  * Реальные вызовы POST /auth/login и /auth/register (Фаза 2, docs/api.md).
@@ -13,6 +14,10 @@ interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   userId: string;
+  // true — сервер предлагает подтвердить номер (PHONE_VERIFICATION_MODE != disabled и
+  // телефон ещё не подтверждён). Необязательное поле: отсутствует, пока фича выключена
+  // на бэкенде (значение по умолчанию). Ничего не блокирует — просто сигнал для UI.
+  phoneVerificationSuggested?: boolean;
 }
 
 /**
@@ -25,13 +30,44 @@ interface RefreshResponse {
   refreshToken: string;
 }
 
-export async function login(phone: string, password: string): Promise<void> {
+export interface LoginResult {
+  // Пробрасываем наружу, чтобы будущий экран «подтвердите телефон» подключался без
+  // изменения сигнатуры login() — сейчас всегда false, пока фича выключена на бэкенде.
+  phoneVerificationSuggested: boolean;
+}
+
+let sessionGeneration = 0;
+let refreshInFlight: Promise<RefreshSessionResult> | null = null;
+
+async function isolateSession() {
+  sessionGeneration += 1;
+  invalidateTokenWrites();
+  refreshInFlight = null;
+  apiClient.cancelAll();
+  await clearUserQueries();
+}
+
+/** Server has already rejected/blocked the session; never recursively call logout endpoints. */
+export async function expireLocalSession(): Promise<void> {
+  await isolateSession();
+  setCachedAccessToken(null);
+  resetPushRegistrationState();
+  await clearTokens().catch(() => {});
+  setCachedAccessToken(null);
+}
+
+export async function login(phone: string, password: string): Promise<LoginResult> {
+  await isolateSession();
+  const generation = sessionGeneration;
   const res = await apiClient.request<AuthResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ phone, password }),
   });
+  if (generation !== sessionGeneration) throw new Error("Session changed");
   await saveTokens(res.accessToken, res.refreshToken);
+  if (generation !== sessionGeneration) throw new Error("Session changed");
   setCachedAccessToken(res.accessToken);
+  return { phoneVerificationSuggested: res.phoneVerificationSuggested ?? false };
 }
 
 export interface RegisterPayload {
@@ -39,9 +75,15 @@ export interface RegisterPayload {
   phone: string;
   password: string;
   cityId: string;
+  // Заполняется только когда бэкенд включит обязательное подтверждение для новых
+  // регистраций (POST /auth/otp/verify → phoneVerificationToken). Пока фича выключена,
+  // поле не передаётся, и сервер его игнорирует.
+  phoneVerificationToken?: string;
 }
 
 export async function register(payload: RegisterPayload): Promise<void> {
+  await isolateSession();
+  const generation = sessionGeneration;
   // acceptedRules/acceptedPdn — в MVP нет отдельного экрана согласий
   // (раздел 5 ТЗ такого не требует отдельно от факта регистрации), поэтому
   // сам факт отправки формы регистрации и есть согласие; бэкенд требует
@@ -50,7 +92,9 @@ export async function register(payload: RegisterPayload): Promise<void> {
     method: "POST",
     body: JSON.stringify({ ...payload, acceptedRules: true, acceptedPdn: true }),
   });
+  if (generation !== sessionGeneration) throw new Error("Session changed");
   await saveTokens(res.accessToken, res.refreshToken);
+  if (generation !== sessionGeneration) throw new Error("Session changed");
   setCachedAccessToken(res.accessToken);
 }
 
@@ -85,7 +129,9 @@ export type RefreshSessionState =
   | "no_local_session"
   | "session_invalid"
   | "network_unavailable"
-  | "server_unavailable";
+  | "server_unavailable"
+  | "storage_unavailable"
+  | "session_changed";
 
 export interface RefreshSessionResult {
   state: RefreshSessionState;
@@ -103,8 +149,20 @@ export interface RefreshSessionResult {
  * любая другая ошибка считается временной, токены сохраняются, вызывающий
  * код может повторить попытку позже.
  */
-export async function refreshSession(): Promise<RefreshSessionResult> {
-  const refreshToken = await getRefreshToken();
+export function refreshSession(): Promise<RefreshSessionResult> {
+  if (!refreshInFlight) {
+    const task = refreshCurrentSession().finally(() => { if (refreshInFlight === task) refreshInFlight = null; });
+    refreshInFlight = task;
+  }
+  return refreshInFlight;
+}
+
+async function refreshCurrentSession(): Promise<RefreshSessionResult> {
+  const generation = sessionGeneration;
+  let refreshToken: string | null;
+  try { refreshToken = await getRefreshToken(); }
+  catch { return { state: "storage_unavailable" }; }
+  if (generation !== sessionGeneration) return { state: "session_changed" };
   if (!refreshToken) return { state: "no_local_session" };
 
   try {
@@ -115,16 +173,18 @@ export async function refreshSession(): Promise<RefreshSessionResult> {
     // Rotating refresh: сервер уже отозвал старый refreshToken и выдал
     // новый вместе с access token — сохраняем оба, старый больше ни на
     // что не годен.
-    await saveTokens(res.accessToken, res.refreshToken);
+    if (generation !== sessionGeneration) throw new Error("Session changed");
+    try { await saveTokens(res.accessToken, res.refreshToken); } catch { return { state: "storage_unavailable" }; }
+    if (generation !== sessionGeneration) return { state: "session_changed" };
     setCachedAccessToken(res.accessToken);
     return { state: "refreshed" };
   } catch (err) {
+    if (generation !== sessionGeneration) return { state: "session_changed" };
     if (err instanceof ApiRequestError) {
       if (err.status === 401 || err.status === 403) {
         // Backend явно отклонил refreshToken — единственный случай,
         // когда сессию действительно нужно уничтожить локально.
-        await clearTokens();
-        setCachedAccessToken(null);
+        await expireLocalSession();
         return { state: "session_invalid" };
       }
       // Любой другой HTTP-статус (в первую очередь 5xx) — сервер ответил,
@@ -161,27 +221,20 @@ export function isSessionUsable(result: RefreshSessionResult): boolean {
   );
 }
 
+/** A successful logout includes server acknowledgement of push detachment.
+ * Offline detachment is retriable; do not silently allow a switch to B while A owns the device.
+ */
 export async function logout(): Promise<void> {
-  // Best-effort отзыв сессии на сервере (POST /auth/logout, requires
-  // Authorization — вызываем ДО очистки локальных токенов). Раньше logout()
-  // был чисто локальным: SecureStore чистился, но refreshToken на сервере
-  // оставался живым до истечения REFRESH_TOKEN_TTL_DAYS — не дыра (токен
-  // никому больше не известен), но и не настоящий logout серверной сессии.
+  await isolateSession();
+  await unregisterPush();
   const refreshToken = await getRefreshToken();
   if (refreshToken) {
     try {
-      await apiClient.request("/auth/logout", {
-        method: "POST",
-        body: JSON.stringify({ refreshToken }),
-      });
-    } catch {
-      // Сеть недоступна / токен уже недействителен — не блокирует локальный
-      // логаут, который ниже выполняется в любом случае. Logout — явное
-      // действие пользователя, здесь как раз правильно всегда чистить
-      // локально независимо от результата сетевого вызова (в отличие от
-      // refreshSession() выше, где сессия не должна теряться сама по себе).
-    }
+      await apiClient.request("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) });
+    } catch { /* Push is already detached. Always complete local token removal. */ }
   }
+  await isolateSession();
+  setCachedAccessToken(null);
   await clearTokens();
   setCachedAccessToken(null);
   resetPushRegistrationState();

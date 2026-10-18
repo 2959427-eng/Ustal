@@ -1,55 +1,41 @@
 import { loadEnv } from "@ustal/config";
-import type { PushProvider } from "../types.js";
+import type { PushProvider, PushSendResult } from "../types.js";
 
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-
-interface ExpoTicket {
-  status: "ok" | "error";
-  id?: string;
-  message?: string;
-  details?: { error?: string };
+interface ExpoResult { status: "ok" | "error"; id?: string; details?: { error?: string } }
+function result(value: ExpoResult): PushSendResult {
+  const code = value.details?.error;
+  return { ok: value.status === "ok", providerMessageId: value.id ?? null,
+    invalidToken: code === "DeviceNotRegistered",
+    error: value.status === "ok" ? null : code ?? "PushRejected" };
 }
-
-/**
- * Настоящий Expo Push API — https://exp.host/--/api/v2/push/send. Не требует
- * Apple/Google developer-аккаунтов на этом шаге (см. architecture.md §5 п.9 —
- * это ограничение относится к подписанной сборке приложения и к APNs
- * credentials, которые сам Expo прячет за собой для managed workflow); нужен
- * только реальный `expoPushToken` с настоящего устройства, которого у нас в
- * этой сессии нет. Заготовка на боевое использование, как openAiProviders/
- * s3Storage в других пакетах.
- */
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const env = loadEnv();
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    return await Promise.race([(async () => {
+      const response = await fetch(`https://exp.host/--/api/v2/push/${path}`, {
+        method: "POST", signal: controller.signal,
+        headers: { "content-type": "application/json", accept: "application/json", ...(env.EXPO_ACCESS_TOKEN ? { authorization: `Bearer ${env.EXPO_ACCESS_TOKEN}` } : {}) },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`PushHTTP${response.status}`);
+      return await response.json() as T;
+    })(), new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new Error("PushTimeout")); controller.abort(); }, 15_000); })]);
+  } finally { clearTimeout(timer!); }
+}
 export const expoPushProvider: PushProvider = {
   name: "expo",
   async send(input) {
-    const env = loadEnv();
     try {
-      const response = await fetch(EXPO_PUSH_URL, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          ...(env.EXPO_ACCESS_TOKEN ? { authorization: `Bearer ${env.EXPO_ACCESS_TOKEN}` } : {}),
-        },
-        body: JSON.stringify({
-          to: input.expoPushToken,
-          title: input.title,
-          body: input.body,
-          data: input.data ?? {},
-        }),
-      });
-      const json = (await response.json()) as { data?: ExpoTicket | ExpoTicket[] };
+      const json = await post<{ data?: ExpoResult | ExpoResult[] }>("send", { to: input.expoPushToken, title: input.title, body: input.body, data: input.data ?? {} });
       const ticket = Array.isArray(json.data) ? json.data[0] : json.data;
-      if (!ticket || ticket.status !== "ok") {
-        return {
-          ok: false,
-          providerMessageId: null,
-          error: ticket?.message ?? ticket?.details?.error ?? `HTTP ${response.status}`,
-        };
-      }
-      return { ok: true, providerMessageId: ticket.id ?? null, error: null };
-    } catch (err) {
-      return { ok: false, providerMessageId: null, error: err instanceof Error ? err.message : String(err) };
-    }
+      return ticket ? result(ticket) : { ok: false, providerMessageId: null, error: "InvalidPushResponse" };
+    } catch { return { ok: false, providerMessageId: null, error: "PushTransportError" }; }
+  },
+  async receipts(ids) {
+    const json = await post<{ data?: Record<string, ExpoResult> }>("getReceipts", { ids });
+    if (!json.data) throw new Error("InvalidPushReceipts");
+    return Object.fromEntries(Object.entries(json.data).map(([id, receipt]) => [id, result(receipt)]));
   },
 };

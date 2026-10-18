@@ -11,6 +11,9 @@ export type OrderStatus =
   | "moderation_hold"
   | "published"
   | "negotiating"
+  | "in_progress"
+  | "completed"
+  | "not_completed"
   | "closed"
   | "expired"
   | "cancelled"
@@ -26,7 +29,13 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   processing_failed: ["processing", "cancelled"],
   moderation_hold: ["published", "rejected", "cancelled"],
   published: ["negotiating", "closed", "expired", "cancelled"],
-  negotiating: ["closed", "expired", "cancelled"],
+  // MVP под одного исполнителя: выбор кандидата = negotiating (можно отменить выбор → published),
+  // «Договорились» = in_progress (единственный статус, закрывающий заказ для остальных),
+  // затем completed / not_completed.
+  negotiating: ["published", "in_progress", "closed", "expired", "cancelled"],
+  in_progress: ["completed", "not_completed"],
+  completed: [],
+  not_completed: [],
   closed: [],
   expired: [],
   cancelled: [],
@@ -45,8 +54,10 @@ export function assertOrderTransition(from: OrderStatus, to: OrderStatus): void 
 
 export type ResponseStatus = "active" | "withdrawn" | "not_selected";
 
-export type AssignmentStatus = "selected" | "completed" | "not_completed" | "cancelled";
+/** selected = выбран, идут переговоры; in_progress = договорились, «В работе»; затем completed / not_completed. */
+export type AssignmentStatus = "selected" | "in_progress" | "completed" | "not_completed" | "cancelled";
 
 export type ModerationDecision = "allow" | "allow_with_warning" | "manual_review" | "reject";
 
-export type MatchType = "exact" | "probable" | "new_opportunity";
+/** Боевой pipeline (evaluateSemantic) выдаёт только exact | probable. */
+export type MatchType = "exact" | "probable";

@@ -1,6 +1,7 @@
+import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image, Pressable } from "react-native";
+import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image, Pressable, Switch, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { PhotoPicker, type PickedPhoto } from "../../src/components/PhotoPicker";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
@@ -39,6 +40,7 @@ export default function CreateOrderScreen() {
   const [text, setText] = useState(prefillText ?? "");
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const [priceText, setPriceText] = useState("");
+  const [acceptsPriceOffers, setAcceptsPriceOffers] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderDetail | null>(null);
@@ -118,7 +120,7 @@ export default function CreateOrderScreen() {
       const priceMinor = priceText.trim() ? Math.round(Number(priceText.trim()) * 100) : undefined;
       const mediaIds = photos.map((p) => p.mediaId);
       const idempotencyKey = generateIdempotencyKey("order-create");
-      const accepted = await createOrder({ inputType: "text", text: trimmed, priceMinor, mediaIds }, idempotencyKey);
+      const accepted = await createOrder({ inputType: "text", text: trimmed, priceMinor, acceptsPriceOffers, mediaIds }, idempotencyKey);
       orderIdRef.current = accepted.orderId;
       startExtractionPolling();
     } catch (err) {
@@ -152,6 +154,7 @@ export default function CreateOrderScreen() {
     setText("");
     setPhotos([]);
     setPriceText("");
+    setAcceptsPriceOffers(false);
     setSubmitError(null);
     setPublishError(null);
     setPollTimedOut(false);
@@ -179,7 +182,8 @@ export default function CreateOrderScreen() {
 
   if (step === "compose") {
     return (
-      <View style={styles.container}>
+      <KeyboardAvoid>
+      <ScrollView contentContainerStyle={[styles.container, { flex: 0, flexGrow: 1 }]} keyboardShouldPersistTaps="handled">
         {CloseButton}
         <Text style={styles.title}>Что вам нужно?</Text>
         <TextInput
@@ -200,9 +204,14 @@ export default function CreateOrderScreen() {
           keyboardType="numeric"
           placeholder="Например, 2000"
         />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Готов рассмотреть предложения с другой ценой</Text>
+          <Switch value={acceptsPriceOffers} onValueChange={setAcceptsPriceOffers} disabled={submitting} />
+        </View>
         {submitError && <Text style={styles.error}>{submitError}</Text>}
         <PrimaryButton label="Продолжить" onPress={handleSubmit} loading={submitting} disabled={text.trim().length === 0} />
-      </View>
+      </ScrollView>
+      </KeyboardAvoid>
     );
   }
 
@@ -338,6 +347,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlignVertical: "top",
   },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  switchLabel: { ...typography.body, color: colors.textPrimary, flex: 1 },
   priceInput: {
     ...typography.body,
     borderWidth: 1,

@@ -1,7 +1,8 @@
 import { createReadStream } from "node:fs";
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
+import { getRuntimeConfig } from "@ustal/config";
 import { getMediaStorage } from "@ustal/storage";
 import { MEDIA_LIMITS, mediaKindSchema } from "@ustal/validation";
 
@@ -44,6 +45,22 @@ export default async function mediaRoutes(app: FastifyInstance) {
   const storage = getMediaStorage();
 
   app.post("/media", { preHandler: app.authenticate }, async (request, reply) => {
+    // Анти-abuse: без лимита /media можно гонять в цикле сколько угодно раз в минуту
+    // (под общим 100/мин на IP, который делится на все эндпоинты сразу) — каждый
+    // запрос буферизует файл в памяти и пишет на диск/в object storage. Проверяем
+    // ДО чтения тела запроса, чтобы не тратить память/диск на заведомо отклонённую загрузку.
+    const config = getRuntimeConfig();
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [recentUploadsRow] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.media)
+      .where(and(eq(schema.media.ownerId, request.userId), gt(schema.media.createdAt, hourAgo)));
+    if ((recentUploadsRow?.n ?? 0) >= config.rateLimits.mediaUploadsPerHour) {
+      return reply.code(429).send({
+        error: { code: "rate_limited", message: `Не более ${config.rateLimits.mediaUploadsPerHour} загрузок в час` },
+      });
+    }
+
     let kindValue: string | undefined;
     let fileBuffer: Buffer | undefined;
     let mimeType: string | undefined;
@@ -88,18 +105,69 @@ export default async function mediaRoutes(app: FastifyInstance) {
       });
     }
 
+    // Загрузка в storage — сетевой I/O (особенно у s3-провайдера), поэтому не
+    // держим её внутри БД-транзакции/advisory lock ниже (заняла бы соединение
+    // из пула на всё время внешнего запроса). Ранняя проверка выше — только
+    // fast-path оптимизация; авторитетная проверка обоих лимитов — атомарно,
+    // непосредственно перед insert, см. ниже.
     const stored = await storage.upload({ buffer: fileBuffer, ownerId: request.userId, kind, mimeType });
-    const [row] = await db
-      .insert(schema.media)
-      .values({
-        ownerId: request.userId,
-        kind,
-        storageProvider: storage.name,
-        storageKey: stored.storageKey,
-        mimeType,
-        sizeBytes: fileBuffer.byteLength,
-      })
-      .returning();
+
+    // Security-фикс (2026-09-22): count/sum (MEDIA_UPLOADS_PER_HOUR и
+    // storage-квота) и insert раньше шли отдельными запросами вне транзакции —
+    // тот же класс гонки, что и в POST /orders (routes/orders.ts). Финальная
+    // проверка обоих лимитов и insert — атомарно под pg_advisory_xact_lock по
+    // userId; ранняя проверка выше (до чтения тела запроса) остаётся как
+    // fast-path оптимизация и не единственная защита.
+    let rateLimited = false;
+    let quotaExceeded = false;
+    const row = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${request.userId}))`);
+
+      const [recentUploadsRow2] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(schema.media)
+        .where(and(eq(schema.media.ownerId, request.userId), gt(schema.media.createdAt, hourAgo)));
+      if ((recentUploadsRow2?.n ?? 0) >= config.rateLimits.mediaUploadsPerHour) {
+        rateLimited = true;
+        return undefined;
+      }
+
+      const [usedBytesRow] = await tx
+        .select({ total: sql<string>`coalesce(sum(${schema.media.sizeBytes}), 0)` })
+        .from(schema.media)
+        .where(eq(schema.media.ownerId, request.userId));
+      const usedBytes = Number(usedBytesRow?.total ?? 0);
+      if (usedBytes + fileBuffer.byteLength > config.rateLimits.mediaStorageMaxBytesPerUser) {
+        quotaExceeded = true;
+        return undefined;
+      }
+
+      const [inserted] = await tx
+        .insert(schema.media)
+        .values({
+          ownerId: request.userId,
+          kind,
+          storageProvider: storage.name,
+          storageKey: stored.storageKey,
+          mimeType,
+          sizeBytes: fileBuffer.byteLength,
+        })
+        .returning();
+      return inserted;
+    });
+    if (rateLimited) {
+      return reply.code(429).send({
+        error: { code: "rate_limited", message: `Не более ${config.rateLimits.mediaUploadsPerHour} загрузок в час` },
+      });
+    }
+    if (quotaExceeded) {
+      return reply.code(400).send({
+        error: {
+          code: "storage_quota_exceeded",
+          message: `Превышен лимит хранения файлов (${config.rateLimits.mediaStorageMaxBytesPerUser} байт на пользователя)`,
+        },
+      });
+    }
     if (!row) throw new Error("Failed to persist media");
 
     return reply.code(201).send({ mediaId: row.id });

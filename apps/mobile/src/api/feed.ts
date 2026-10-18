@@ -1,6 +1,6 @@
 import { apiClient } from "./client";
 import { toQuery } from "../lib/query-string";
-import type { ModerationStatus, OrderStatus } from "./orders";
+import type { AssignmentStatus, ModerationStatus, OrderStatus } from "./orders";
 
 export interface FeedItem {
   orderId: string;
@@ -8,12 +8,18 @@ export interface FeedItem {
   description: string | null;
   cityId: string;
   priceMinor: number | null;
+  acceptsPriceOffers: boolean;
   currency: string;
   createdAt: string;
-  // score больше не приходит с сервера (UX-аудит, docs/evaluations/matching-ux-audit.md,
-  // MVP-правка 5) — внутренний рейтинг matching, пользователю не показывается.
-  matchType: "exact" | "probable" | "new_opportunity";
+  // Internal matching score is not part of the public feed contract.
+  /** opportunity — «простая задача, опыт не нужен» (2026-10-15). */
+  matchType: "exact" | "probable" | "opportunity";
   explanation: string;
+  photoMediaIds: string[];
+  /** Заполнено, если с исполнителем начали переговоры: selected (идут переговоры) / in_progress (в работе, договорились). */
+  assignmentStatus?: AssignmentStatus | null;
+  /** Автор заказа, контакт которого раскрыт для этого исполнителя. */
+  contactAuthorId?: string | null;
 }
 
 export interface FeedResponse {

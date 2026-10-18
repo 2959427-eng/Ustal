@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { blockSchema } from "@ustal/validation";
+import { severRelations } from "../lib/blocks.js";
 
 /**
  * Блокировки (docs/api.md «Медиа и жалобы», docs/matching.md §13.1 — matching
@@ -29,10 +30,15 @@ export default async function blocksRoutes(app: FastifyInstance) {
 
     let created: typeof schema.blocks.$inferSelect | undefined;
     try {
-      [created] = await db
-        .insert(schema.blocks)
-        .values({ blockerId: request.userId, blockedId: body.blockedId })
-        .returning();
+      // Блокировка и разрыв живых отношений (выбор, отклики) — атомарно.
+      created = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(schema.blocks)
+          .values({ blockerId: request.userId, blockedId: body.blockedId })
+          .returning();
+        await severRelations(tx, request.userId, body.blockedId);
+        return row;
+      });
     } catch (err) {
       const pgCode = (err as { cause?: { code?: string }; code?: string }).cause?.code ?? (err as { code?: string }).code;
       if (pgCode === "23505") {

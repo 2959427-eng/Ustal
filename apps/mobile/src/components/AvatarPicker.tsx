@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { View, Text, Image, Pressable, StyleSheet, ActivityIndicator, Alert, Platform } from "react-native";
-import { ApiRequestError } from "@ustal/api-client";
-import * as ImagePicker from "expo-image-picker";
+import { avatarErrorMessage, pickAvatarImage } from "../lib/avatar-image";
 import { uploadMedia, getMediaUrl } from "../api/media";
 import { colors, spacing, typography } from "../theme/tokens";
 
@@ -32,58 +31,20 @@ export function AvatarPicker({ avatarMediaId, initial, onChange, saving, size = 
     let stage = "доступ к фото";
     setError(null);
     try {
-      const permission = Platform.OS === "web" ? { granted: true } :
-        source === "library"
-          ? await ImagePicker.requestMediaLibraryPermissionsAsync()
-          : await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        setError(source === "library" ? "Нужен доступ к галерее." : "Нужен доступ к камере.");
-        return;
-      }
-
+      // Выбор/обрезка и тексты ошибок — общие с окном «Основные данные» (src/lib/avatar-image.ts).
       stage = "выбор и обрезка фото";
-      const result =
-        source === "library"
-          ? await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ["images"],
-              quality: 0.8,
-              allowsEditing: true,
-              aspect: [1, 1],
-            })
-          : await ImagePicker.launchCameraAsync({
-              mediaTypes: ["images"],
-              quality: 0.8,
-              allowsEditing: true,
-              aspect: [1, 1],
-            });
-
-      if (result.canceled || result.assets.length === 0) return;
+      const picked = await pickAvatarImage(source);
+      if (picked.status === "denied") { setError(picked.error); return; }
+      if (picked.status === "canceled") return;
 
       stage = "подготовка файла";
-      const asset = result.assets[0]!;
       setUploading(true);
-      const mimeType = asset.mimeType ?? "image/jpeg";
-      const name = asset.fileName ?? `avatar-${Date.now()}.jpg`;
       stage = "загрузка на сервер";
-      const { mediaId } = await uploadMedia("photo", { uri: asset.uri, name, type: mimeType, file: asset.file });
+      const { mediaId } = await uploadMedia("photo", picked.asset);
       stage = "сохранение в профиле";
       await onChange(mediaId);
     } catch (cause) {
-      if (cause instanceof ApiRequestError) {
-        setError(cause.status === 401
-          ? "Сессия истекла. Войдите снова и повторите загрузку."
-          : cause.code === "invalid_mime_type"
-            ? "Этот формат фото не поддерживается. Выберите JPEG, PNG или WebP."
-            : cause.status === 413 || cause.code === "file_too_large"
-              ? "Фото слишком большое. Выберите файл до 10 МБ."
-              : `Не удалось сохранить фото (HTTP ${cause.status}). Попробуйте ещё раз.`);
-      } else {
-        const detail = (cause instanceof Error ? cause.message : String(cause))
-          .replace(/(?:https?|file|content):\/\/\S+/gi, "[адрес скрыт]")
-          .replace(/Bearer\s+\S+/gi, "[токен скрыт]")
-          .slice(0, 240);
-        setError(`Этап: ${stage}. ${detail || "Неизвестная ошибка"}`);
-      }
+      setError(avatarErrorMessage(cause, stage));
     } finally {
       setUploading(false);
     }

@@ -2,6 +2,7 @@ import { View, Text, Image, StyleSheet, Pressable } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { getMe } from "../api/me";
+import { getCities } from "../api/cities";
 import { getMediaUrl } from "../api/media";
 import { colors, spacing, typography, radii } from "../theme/tokens";
 
@@ -21,22 +22,27 @@ export function HomeHeader({
 }) {
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
   const initial = me?.name?.trim()?.[0]?.toUpperCase() ?? "";
+  // Под логотипом — имя и город пользователя (вместо прежнего слогана).
+  const { data: cities } = useQuery({ queryKey: ["cities"], queryFn: getCities, staleTime: Infinity });
+  const cityName = cities?.find((c) => c.id === me?.cityId)?.name;
+  const subtitle = [me?.name?.trim(), cityName].filter(Boolean).join(" · ");
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.topRow}>
-        <Pressable style={styles.avatar} onPress={() => router.push("/(tabs)/account")} hitSlop={8}>
+      {/* Аватар, имя и город — одна нажимаемая область, ведёт в «Мой профиль». */}
+      <Pressable style={styles.topRow} onPress={() => router.push("/(tabs)/account")} hitSlop={8}>
+        <View style={styles.avatar}>
           {me?.avatarMediaId ? (
             <Image source={{ uri: getMediaUrl(me.avatarMediaId) }} style={styles.avatarImage} />
           ) : (
             <Text style={styles.avatarText}>{initial || "•"}</Text>
           )}
-        </Pressable>
+        </View>
         <View>
           <Text style={styles.logo}>USTAL</Text>
-          <Text style={styles.tagline}>Люди. Услуги. Возможности.</Text>
+          <Text style={styles.tagline}>{subtitle}</Text>
         </View>
-      </View>
+      </Pressable>
 
       <View style={styles.tabs}>
         <Pressable
