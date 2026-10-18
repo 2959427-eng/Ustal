@@ -336,40 +336,40 @@ export default async function ordersRoutes(app: FastifyInstance) {
 
   app.post("/orders/:id/cancel", { preHandler: app.authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, id) });
-    if (!order || order.authorId !== request.userId) {
-      return reply.code(404).send({ error: { code: "not_found", message: "Заказ не найден" } });
-    }
-    if (!canTransitionOrderPublic(order.status, "cancelled")) {
-      return reply
-        .code(409)
-        .send({ error: { code: "invalid_status", message: `Нельзя отменить заказ из статуса "${order.status}"` } });
-    }
-
-    // «Удалить заказ» = отмена: пока по заказу есть выбранный исполнитель, удалять нельзя
-    // (это уже договорённость — её закрывают/завершают штатным путём).
-    const assignment = await db.query.orderAssignments.findFirst({
-      where: eq(schema.orderAssignments.orderId, order.id),
-    });
-    if (assignment) {
-      return reply.code(409).send({
-        error: { code: "has_assignment", message: "По заказу уже выбран исполнитель — удалить его нельзя" },
+    const result = await db.transaction(async (tx) => {
+      // Assignment/start already lock this row first. Recheck cancel eligibility
+      // under the same lock so neither transition can overwrite the other's state.
+      const [order] = await tx.select().from(schema.orders).where(eq(schema.orders.id, id)).for("update");
+      const fail = (status: 404 | 409, code: string, message: string) => ({
+        error: { status, code, message }, activeResponses: [],
       });
-    }
-
-    assertOrderTransition(order.status as never, "cancelled");
-    const activeResponses = await db.transaction(async (tx) => {
+      if (!order || order.authorId !== request.userId) {
+        return fail(404, "not_found", "Заказ не найден");
+      }
+      if (!canTransitionOrderPublic(order.status, "cancelled")) {
+        return fail(409, "invalid_status", 'Нельзя отменить заказ из статуса "' + order.status + '"');
+      }
+      // Keep the accepted delete policy: an existing agreement must be resolved
+      // through its own lifecycle, not deleted together with the order.
+      const assignment = await tx.query.orderAssignments.findFirst({
+        where: eq(schema.orderAssignments.orderId, order.id),
+      });
+      if (assignment) {
+        return fail(409, "has_assignment", "По заказу уже выбран исполнитель — удалить его нельзя");
+      }
+      assertOrderTransition(order.status as never, "cancelled");
       const active = await tx.query.responses.findMany({
         where: and(eq(schema.responses.orderId, id), eq(schema.responses.status, "active")),
       });
       await tx.update(schema.orders).set({ status: "cancelled" }).where(eq(schema.orders.id, order.id));
-      // Активные отклики закрываем, чтобы исполнители не ждали решения по удалённому заказу.
-      await tx
-        .update(schema.responses)
-        .set({ status: "not_selected", updatedAt: new Date() })
-        .where(and(eq(schema.responses.orderId, order.id), eq(schema.responses.status, "active")));
-      return active;
+      await tx.update(schema.responses).set({ status: "not_selected", updatedAt: new Date() })
+        .where(and(eq(schema.responses.orderId, id), eq(schema.responses.status, "active")));
+      return { error: null, activeResponses: active };
     });
+    if (result.error) {
+      return reply.code(result.error.status).send({ error: { code: result.error.code, message: result.error.message } });
+    }
+    const activeResponses = result.activeResponses;
 
     // Retain main's cancellation notice without undoing the RC assignment guard.
     // A push/queue failure must not turn an already saved cancellation into HTTP 500.

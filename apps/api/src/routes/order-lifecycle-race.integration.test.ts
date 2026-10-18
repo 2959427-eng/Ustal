@@ -498,3 +498,88 @@ it("responses: новый отклик после перехода заказа 
   const late = await app.inject({ method: "POST", url: `/orders/${orderId}/responses`, headers: as(exec2), payload: {} });
   expect(late.statusCode).toBe(409);
 });
+
+/** Force both real handlers into the order-lock queue, rather than rely on timing. */
+async function withQueuedOrderTransitions(orderId: string, first: () => Promise<unknown>, second: () => Promise<unknown>) {
+  let release!: () => void;
+  let acquired!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const locked = new Promise<void>((resolve) => { acquired = resolve; });
+  const holder = getSql().begin(async (tx) => {
+    await tx`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
+    acquired();
+    await gate;
+  });
+  await locked;
+  const pending: Promise<unknown>[] = [];
+  async function waitForQueued(count: number) {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const [row] = await getSql()`SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND pid <> pg_backend_pid()
+          AND wait_event_type = 'Lock' AND query ILIKE '%orders%'`;
+      if (Number(row!.n) >= count) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('Expected real handlers waiting on the order row: ' + count);
+  }
+  try {
+    pending.push(first());
+    await waitForQueued(1);
+    pending.push(second());
+    await waitForQueued(2);
+  } finally {
+    release();
+    await holder;
+    await Promise.allSettled(pending);
+  }
+}
+
+for (const assignmentFirst of [true, false]) {
+  it('order cancel vs assignment: queued ' + (assignmentFirst ? 'assignment' : 'cancel') + ' wins; no cancelled order with active assignment', async () => {
+    const author = await makeUser('cancel-race-author');
+    const executor = await makeUser('cancel-race-executor');
+    const { orderId, responseId } = await makeUnlockedOrder(author, executor);
+    let pick: {statusCode: number; json: () => {error: {code: string}}} | undefined;
+    let cancel: {statusCode: number; json: () => {error: {code: string}}} | undefined;
+    const assign = async () => { pick = await app.inject({method:'POST',url:'/orders/' + orderId + '/assignments',headers:as(author),payload:{responseId}}); };
+    const remove = async () => { cancel = await app.inject({method:'POST',url:'/orders/' + orderId + '/cancel',headers:as(author)}); };
+    await withQueuedOrderTransitions(orderId, assignmentFirst ? assign : remove, assignmentFirst ? remove : assign);
+    const current = await orderRow(orderId);
+    const active = await liveAssignments(orderId);
+    console.log("CANCEL_ASSIGNMENT_RACE", JSON.stringify({assignmentFirst,pick:pick!.statusCode,cancel:cancel!.statusCode,status:current!.status,activeAssignments:active.length}));
+    expect([pick!.statusCode,cancel!.statusCode]).not.toContain(500);
+    expect(Number(pick!.statusCode === 201) + Number(cancel!.statusCode === 204)).toBe(1);
+    if (assignmentFirst) {
+      expect(pick!.statusCode).toBe(201);
+      expect(cancel!.statusCode).toBe(409);
+      expect(cancel!.json().error.code).toBe('has_assignment');
+      expect(current!.status).toBe('negotiating');
+      expect(active).toHaveLength(1);
+    } else {
+      expect(cancel!.statusCode).toBe(204);
+      expect(pick!.statusCode).toBe(409);
+      expect(current!.status).toBe('cancelled');
+      expect(active).toHaveLength(0);
+    }
+    expect(current!.status === 'cancelled' && active.length > 0).toBe(false);
+  }, 20000);
+}
+
+
+it('order cancel vs assignment start: agreement wins, cancellation is controlled, never a cancelled active job', async () => {
+  const author = await makeUser('cancel-start-author');
+  const executor = await makeUser('cancel-start-executor');
+  const { orderId, responseId } = await makeUnlockedOrder(author, executor);
+  const assignmentId = await select(author, orderId, responseId);
+  let start: {statusCode: number} | undefined;
+  let cancel: {statusCode: number; json: () => {error: {code: string}}} | undefined;
+  await withQueuedOrderTransitions(orderId,
+    async () => { start = await app.inject({method:'POST',url:'/orders/' + orderId + '/assignments/' + assignmentId + '/start',headers:as(author),payload:{}}); },
+    async () => { cancel = await app.inject({method:'POST',url:'/orders/' + orderId + '/cancel',headers:as(author)}); });
+  expect(start!.statusCode).toBe(200);
+  expect(cancel!.statusCode).toBe(409);
+  expect(['has_assignment','invalid_status']).toContain(cancel!.json().error.code);
+  expect((await orderRow(orderId))!.status).toBe('in_progress');
+  expect(await liveAssignments(orderId)).toHaveLength(1);
+}, 20000);
