@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { getMe } from "../api/me";
 import { getMediaUrl } from "../api/media";
+import { getCities } from "../api/cities";
 import { colors, spacing, typography, radii } from "../theme/tokens";
 
 /**
@@ -20,7 +21,9 @@ export function HomeHeader({
   ordersCount?: number;
 }) {
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
+  const { data: cities } = useQuery({ queryKey: ["cities"], queryFn: getCities });
   const initial = me?.name?.trim()?.[0]?.toUpperCase() ?? "";
+  const registrationCityName = cities?.find((c) => c.id === me?.cityId)?.name ?? "";
 
   return (
     <View style={styles.wrap}>
@@ -34,7 +37,7 @@ export function HomeHeader({
         </Pressable>
         <View>
           <Text style={styles.logo}>USTAL</Text>
-          <Text style={styles.tagline}>Люди. Услуги. Возможности.</Text>
+          <Text style={styles.tagline}>{registrationCityName}</Text>
         </View>
       </View>
 

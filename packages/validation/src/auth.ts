@@ -25,3 +25,14 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 export type RefreshInput = z.infer<typeof refreshSchema>;
+
+/**
+ * DELETE /me (apps/api/src/routes/me.ts) — Apple App Review Guidelines
+ * 5.1.1(v) / Google Play account deletion policy требуют возможность
+ * удалить аккаунт внутри приложения. Требуем пароль ещё раз, т.к. действие
+ * необратимо (см. claude/store-compliance-audit.md в Cowork Project).
+ */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1),
+});
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;

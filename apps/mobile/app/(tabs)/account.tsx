@@ -116,8 +116,15 @@ export default function AccountScreen() {
       <View style={styles.rowsCard}>
         <SettingsRow label="Личные данные" onPress={() => router.push("/settings")} />
         <SettingsRow label="Уведомления" onPress={() => router.push("/notifications")} />
-        <SettingsRow label="Заблокированные пользователи" onPress={() => router.push("/blocked-users")} last />
+        <SettingsRow label="Заблокированные пользователи" onPress={() => router.push("/blocked-users")} />
+        <SettingsRow label="Чему научился AI" onPress={() => router.push("/ai-preferences")} />
+        <SettingsRow label="Политика конфиденциальности" onPress={() => router.push("/legal/privacy")} />
+        <SettingsRow label="Правила использования" onPress={() => router.push("/legal/terms")} last />
       </View>
+
+      <Pressable style={styles.deleteAccountLink} onPress={() => router.push("/delete-account")}>
+        <Text style={styles.deleteAccountText}>Удалить аккаунт</Text>
+      </Pressable>
 
       {!confirmingLogout && (
         <Pressable style={styles.logoutButton} onPress={() => setConfirmingLogout(true)}>
@@ -212,6 +219,8 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 18, color: colors.textTertiary },
   logoutButton: { backgroundColor: colors.surface, borderRadius: radii.button, paddingVertical: 15, alignItems: "center" },
   logoutText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
+  deleteAccountLink: { alignItems: "center", paddingVertical: spacing.sm },
+  deleteAccountText: { ...typography.caption, color: colors.danger },
   confirmBox: { backgroundColor: "#FBF3F2", borderWidth: 1, borderColor: "#F3DEDC", borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm },
   confirmText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
   confirmRow: { flexDirection: "row", gap: spacing.sm },

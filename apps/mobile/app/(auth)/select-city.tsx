@@ -1,60 +1,28 @@
-import { useEffect, useState } from "react";
-import { Text, StyleSheet, View } from "react-native";
+import { useEffect } from "react";
 import { router } from "expo-router";
-import { colors, spacing, typography } from "../../src/theme/tokens";
-import { getCities, type City } from "../../src/api/cities";
-import { register } from "../../src/api/auth";
-import { clearRegistrationDraft, getRegistrationDraft } from "../../src/state/registrationDraft";
-import { ensurePushRegistered } from "../../src/notifications/push";
 
-import { CityPicker } from "../../src/components/CityPicker";
-
+/**
+ * 2026-09-14 fix (typecheck error после добавления acceptedRules/acceptedPdn
+ * в RegisterPayload — см. AI_HANDOFF.md): этот экран уже был помечен как
+ * неиспользуемый в register.tsx (2026-09-13 fix — выбор города и отправка
+ * формы теперь происходят одним экраном в register.tsx, черновик из
+ * src/state/registrationDraft.ts больше нигде не заполняется). Раньше здесь
+ * оставался реальный вызов register({ ...draft, cityId }) без согласий —
+ * он либо не типизировался (после этого фикса), либо, если бы всё же
+ * выполнился, ушёл бы на бэкенд без настоящего согласия пользователя на
+ * обработку персональных данных, что и есть тот самый баг, который мы
+ * закрываем во всём остальном diff'е. Чтобы не тащить это исключение и не
+ * подделывать acceptedRules/acceptedPdn, экран сведён к редиректу на
+ * актуальную форму регистрации.
+ *
+ * Файл по-прежнему не удалён физически — нет доступа к git rm (см.
+ * AI_HANDOFF.md, раздел про select-city.tsx). Автор исходной пометки уже
+ * просил Codex/пользователя удалить его через git.
+ */
 export default function SelectCityScreen() {
-  const [cities, setCities] = useState<City[]>([]);
-  const [loadingCities, setLoadingCities] = useState(true);
-  const [submittingCityId, setSubmittingCityId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    getCities()
-      .then(setCities)
-      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить список городов"))
-      .finally(() => setLoadingCities(false));
+    router.replace("/(auth)/register");
   }, []);
 
-  const onSelectCity = async (cityId: string) => {
-    const draft = getRegistrationDraft();
-    if (!draft) {
-      // Экран открыт напрямую, без прохождения формы регистрации — данных
-      // для завершения регистрации нет, возвращаем на её начало.
-      router.replace("/(auth)/register");
-      return;
-    }
-    setError(null);
-    setSubmittingCityId(cityId);
-    try {
-      await register({ ...draft, cityId });
-      clearRegistrationDraft();
-      router.replace("/(tabs)");
-      void ensurePushRegistered();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось завершить регистрацию");
-    } finally {
-      setSubmittingCityId(null);
-    }
-  };
-
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Выберите город</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <CityPicker cities={cities} loading={loadingCities} error={!loadingCities && cities.length === 0 && !!error} busyId={submittingCityId} onSelect={onSelectCity} onRetry={() => { setLoadingCities(true); setError(null); void getCities().then(setCities).catch(() => setError("Не удалось загрузить города")).finally(() => setLoadingCities(false)); }} />
-    </View>
-  );
+  return null;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.lg, backgroundColor: colors.background },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
-  error: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
-});

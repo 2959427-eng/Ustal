@@ -22,6 +22,7 @@ import blocksRoutes from "./routes/blocks.js";
 import myRoutes from "./routes/my.js";
 import notificationsRoutes from "./routes/notifications.js";
 import devicesRoutes from "./routes/devices.js";
+import legalRoutes from "./routes/legal.js";
 
 export async function buildApp() {
   const env = loadEnv();
@@ -84,6 +85,7 @@ export async function buildApp() {
   await app.register(myRoutes);
   await app.register(notificationsRoutes);
   await app.register(devicesRoutes);
+  await app.register(legalRoutes);
   // Админка НЕ проходит через этот Fastify-инстанс: apps/admin (Next.js)
   // обращается к БД напрямую через @ustal/database (server components/
   // actions), со своей сессионной авторизацией admin_users — так было

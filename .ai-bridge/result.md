@@ -1,4 +1,24 @@
-﻿## refresh-session-review-2026-09-08-v2 - completed (2026-09-08T13:50:58Z)
+﻿## expo-sdk-upgrade-51-to-57-2026-09-10-v2 - completed (2026-09-10T15:53:05Z)
+
+- prompt: Продолжение задачи expo-sdk-upgrade-51-to-57-2026-09-10 (ты сам её поставил на паузу на шаге 1, спросив разрешения — вот оно).
+
+РАЗЪЯСНЕНИЕ ...
+- started_at: 2026-09-10T15:51:00Z
+- finished_at: 2026-09-10T15:53:05Z
+- exit_code: 0
+- log: C:\Users\User\Desktop\ustal-foundation\.ai-bridge\logs\expo-sdk-upgrade-51-to-57-2026-09-10-v2.log
+
+---
+## expo-sdk-upgrade-51-to-57-2026-09-10 - completed (2026-09-10T15:48:25Z)
+
+- prompt: Задача: обновить мобильное приложение (apps/mobile) с Expo SDK 51 до Expo SDK 57. Причина: пользователь тестирует приложение вживую через Ex...
+- started_at: 2026-09-10T15:47:54Z
+- finished_at: 2026-09-10T15:48:25Z
+- exit_code: 0
+- log: C:\Users\User\Desktop\ustal-foundation\.ai-bridge\logs\expo-sdk-upgrade-51-to-57-2026-09-10.log
+
+---
+## refresh-session-review-2026-09-08-v2 - completed (2026-09-08T13:50:58Z)
 
 - prompt: Задача: ТОЛЬКО проверка и (если всё зелёное) один коммит для уже готовой правки refresh-session flow в мобильном приложении. Это НЕ большой ...
 - started_at: 2026-09-08T13:37:24Z
@@ -86,6 +106,8 @@
 управляется watcher'ом.
 
 ---
+
+
 
 
 

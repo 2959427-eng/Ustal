@@ -39,16 +39,25 @@ export interface RegisterPayload {
   phone: string;
   password: string;
   cityId: string;
+  /**
+   * 2026-09-14 fix (см. claude/store-compliance-audit.md в Cowork Project):
+   * раньше эти поля не приходили от экрана регистрации и подставлялись
+   * здесь константой `true` — согласие было фиктивным, пользователь никогда
+   * не видел текст правил. Теперь оба поля — реальное состояние чекбоксов
+   * на app/(auth)/register.tsx, и register() отправляет то, что пользователь
+   * фактически отметил. Бэкенд всё равно требует буквально `true`
+   * (packages/validation/src/auth.ts) — экран не даёт нажать
+   * «Зарегистрироваться», пока оба не отмечены, так что за пределами этого
+   * файла ничего не меняется, но теперь это уже не хардкод, а факт.
+   */
+  acceptedRules: boolean;
+  acceptedPdn: boolean;
 }
 
 export async function register(payload: RegisterPayload): Promise<void> {
-  // acceptedRules/acceptedPdn — в MVP нет отдельного экрана согласий
-  // (раздел 5 ТЗ такого не требует отдельно от факта регистрации), поэтому
-  // сам факт отправки формы регистрации и есть согласие; бэкенд требует
-  // оба поля буквально true (packages/validation/src/auth.ts).
   const res = await apiClient.request<AuthResponse>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ ...payload, acceptedRules: true, acceptedPdn: true }),
+    body: JSON.stringify(payload),
   });
   await saveTokens(res.accessToken, res.refreshToken);
   setCachedAccessToken(res.accessToken);
@@ -182,6 +191,26 @@ export async function logout(): Promise<void> {
       // refreshSession() выше, где сессия не должна теряться сама по себе).
     }
   }
+  await clearTokens();
+  setCachedAccessToken(null);
+  resetPushRegistrationState();
+}
+
+/**
+ * Удаление аккаунта (Apple App Review Guidelines 5.1.1(v), Google Play
+ * account deletion policy — см. claude/store-compliance-audit.md в Cowork
+ * Project). DELETE /me (apps/api/src/routes/me.ts) требует пароль ещё раз —
+ * необратимое действие, подтверждение паролем защищает от случайного или
+ * чужого нажатия на разлогиненном экране. Backend переводит аккаунт в
+ * status='deleted' и обезличивает профиль, а не удаляет строки физически —
+ * иначе сломались бы FK из orders/responses/reviews на чужие завершённые
+ * заказы (см. комментарий в packages/database/src/schema.ts).
+ */
+export async function deleteAccount(password: string): Promise<void> {
+  await apiClient.request("/me", {
+    method: "DELETE",
+    body: JSON.stringify({ password }),
+  });
   await clearTokens();
   setCachedAccessToken(null);
   resetPushRegistrationState();

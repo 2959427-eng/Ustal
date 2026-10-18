@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, TextInput, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
-import { getProfile, submitProfileInput, getProfileDraft, applyProfileDraft, discardProfileDraft } from "../../src/api/profile";
+import { getProfile, submitProfileInput, getProfileDraft, applyProfileDraft } from "../../src/api/profile";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 45000;
 
-type Phase = "idle" | "processing" | "draft_review";
+type Phase = "idle" | "processing";
 
 /**
  * «Навыки и ресурсы» — конструктор AI-профиля возможностей (раздел 7 ТЗ).
@@ -33,15 +34,6 @@ type Phase = "idle" | "processing" | "draft_review";
  * не трогала — оставлен нетронутым на случай, если голос вернут на другой
  * экран.
  *
- * Пауза применения (экран 10, «...подтверждения удаления значимых
- * пунктов») остаётся — она про результат AI-extraction, а не про
- * транскрипцию, и относится к любому вводу: extraction создаёт ЧЕРНОВИК
- * (`phase="processing"` → поллинг GET /profile/draft), который показывается
- * пользователю С ДИФФОМ (что добавится/уберётся) ДО применения
- * (`phase="draft_review"`) — пользователь явно применяет
- * (POST /profile/draft/{id}/apply) или отклоняет (POST .../discard).
- * `GET /profile` (ниже) отдаёт только уже применённую версию.
- *
  * 2026-09-14 fix: пустое состояние (профиля ещё нет) переделано под
  * согласованный с пользователем макет — карточка с иконкой и одной ясной
  * причиной заполнить профиль («Так заказы находят вас точнее») вместо
@@ -64,8 +56,49 @@ type Phase = "idle" | "processing" | "draft_review";
  * ещё нет), её текст-объяснение перенесла в плейсхолдер самого поля ввода.
  * Сводка уже заполненного профиля (`summaryBox` с «Что я умею»/«Ресурсы»)
  * не тронута — просьба касалась только верхнего блока в пустом состоянии.
+ *
+ * 2026-09-14 fix (safe area + скролл): экран открывается через `router.push`
+ * без собственного header'а поверх `(tabs)`, поэтому верх контента рисовался
+ * под статус-баром/чёлкой — верхние строки (заголовок) обрезались на многих
+ * устройствах. Тот же паттерн, что уже используется на
+ * `(tabs)/index.tsx`/`(tabs)/orders.tsx`: `useSafeAreaInsets()`,
+ * `paddingTop: insets.top + spacing.lg` сверху и
+ * `paddingBottom: Math.max(insets.bottom, spacing.lg)` снизу (чтобы кнопка
+ * «Сохранить» не упиралась в домашний индикатор/жестовую панель). Заодно
+ * корневой `View` заменён на `ScrollView` (как в `account.tsx`/
+ * `(auth)/register.tsx`) — на небольших экранах заполненный профиль (сводка
+ * + чипы «Что я умею»/«Ресурсы» + поле ввода) мог не поместиться и обрезаться
+ * снизу без возможности прокрутить.
+ *
+ * 2026-09-14 fix (порядок блоков): раньше сводка «Что я умею»/«Ресурсы»
+ * рисовалась ДО поля ввода — по просьбе пользователя поменяла местами: поле
+ * «Опишите себя текстом» + кнопка «Сохранить» остаются как были (первыми),
+ * а сводка уже сохранённого профиля теперь показывается ПОСЛЕ кнопки
+ * «Сохранить».
+ *
+ * 2026-09-14 fix (убран лишний экран подтверждения): после «Сохранить» AI
+ * готовил черновик и показывал отдельный экран «AI предлагает изменить
+ * профиль» с диффом и кнопками «Применить»/«Отклонить» — пользователь счёл
+ * этот дополнительный шаг подтверждения лишним (он уже нажал «Сохранить»).
+ * Убрала фазу `draft_review` целиком: как только черновик готов
+ * (GET /profile/draft вернул `draft`), он применяется автоматически
+ * (POST /profile/draft/{id}/apply) без дополнительного подтверждения, и
+ * экран сразу возвращается к обычному виду с уже обновлённой сводкой.
+ * `discardProfileDraft` (POST .../discard) больше здесь не вызывается —
+ * ручного отклонения черновика в этом сценарии больше нет.
+ *
+ * 2026-09-14 fix (второе поле ввода убрано, было лишним): пробовала разделить
+ * ввод на два текстовых поля («Навыки» / «Ресурсы») — пользователь уточнил,
+ * что это было не то: нужно ОДНО поле ввода (как раньше), а разделение на
+ * «что я умею» / «ресурсы» должно происходить в РЕЗУЛЬТАТЕ — AI сам достаёт
+ * из одного свободного текста (например «есть яхта, умею копать») и
+ * способности, и ресурсы, и раскладывает их по двум подписанным разделам
+ * сводки ниже (`summaryBox`, см. фикс выше) — это уже так и работает,
+ * второе поле дублировало то, что AI и так делает. Вернула единое поле
+ * ввода, второе (`resourcesText`) убрала полностью.
  */
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -88,13 +121,27 @@ export default function ProfileScreen() {
     refetchInterval: phase === "processing" ? POLL_INTERVAL_MS : false,
   });
 
-  // Черновик после extraction готов — показываем дифф на подтверждение.
+  const applyReadyDraft = async (draftId: string) => {
+    setPollTimedOut(false);
+    pollDeadlineRef.current = null;
+    setSubmitError(null);
+    try {
+      await applyProfileDraft(draftId);
+      void queryClient.invalidateQueries({ queryKey: ["profile"] });
+      void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Не удалось сохранить изменения.");
+    } finally {
+      setPhase("idle");
+    }
+  };
+
+  // Черновик после extraction готов — применяем сразу, без отдельного
+  // подтверждения (см. JSDoc фикс от 2026-09-14 выше).
   useEffect(() => {
     if (phase !== "processing" || !draftQuery.data) return;
     if (draftQuery.data.draft) {
-      setPollTimedOut(false);
-      pollDeadlineRef.current = null;
-      setPhase("draft_review");
+      void applyReadyDraft(draftQuery.data.draft.id);
     } else if (pollDeadlineRef.current && Date.now() > pollDeadlineRef.current) {
       setPollTimedOut(true);
     }
@@ -123,51 +170,32 @@ export default function ProfileScreen() {
     }
   };
 
-  const cancelAll = () => {
-    setPhase("idle");
-    setSubmitError(null);
-    setPollTimedOut(false);
-    pollDeadlineRef.current = null;
-  };
-
-  const draft = phase === "draft_review" ? draftQuery.data : null;
-
-  const onApplyDraft = async () => {
-    if (!draft?.draft) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      await applyProfileDraft(draft.draft.id);
-      void queryClient.invalidateQueries({ queryKey: ["profile"] });
-      void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
-      cancelAll();
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Не удалось применить изменения.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const onDiscardDraft = async () => {
-    if (!draft?.draft) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      await discardProfileDraft(draft.draft.id);
-      void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
-      cancelAll();
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Не удалось отклонить изменения.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + spacing.lg, paddingBottom: Math.max(insets.bottom, spacing.lg) },
+      ]}
+    >
       <Text style={styles.title}>Навыки и ресурсы</Text>
 
       {isLoading && phase === "idle" && <ActivityIndicator color={colors.primary} />}
+
+      {phase === "idle" && (
+        <>
+          <TextInput
+            style={styles.textArea}
+            multiline
+            value={text}
+            onChangeText={setText}
+            placeholder="Опишите себя текстом, какие у вас навыки, инструменты или транспорт"
+            placeholderTextColor={colors.textSecondary}
+          />
+          {submitError && <Text style={styles.error}>{submitError}</Text>}
+          <PrimaryButton label="Сохранить" onPress={onSubmit} loading={submitting} disabled={text.trim().length === 0} />
+        </>
+      )}
 
       {phase === "idle" && !isLoading && data?.profile && (
         <View style={styles.summaryBox}>
@@ -211,53 +239,13 @@ export default function ProfileScreen() {
           )}
         </View>
       )}
-
-      {phase === "draft_review" && draft?.draft && (
-        <View style={styles.reviewBox}>
-          <Text style={styles.reviewTitle}>AI предлагает изменить профиль</Text>
-          <Text style={styles.summaryText}>{draft.draft.summary}</Text>
-          {(draft.diff.addedCapabilities.length > 0 || draft.diff.addedResources.length > 0) && (
-            <View style={styles.diffSection}>
-              <Text style={styles.diffLabel}>Добавится:</Text>
-              {[...draft.diff.addedCapabilities, ...draft.diff.addedResources].map((label) => (
-                <Text key={label} style={styles.diffAdded}>+ {label}</Text>
-              ))}
-            </View>
-          )}
-          {(draft.diff.removedCapabilities.length > 0 || draft.diff.removedResources.length > 0) && (
-            <View style={styles.diffSection}>
-              <Text style={styles.diffLabel}>Уберётся:</Text>
-              {[...draft.diff.removedCapabilities, ...draft.diff.removedResources].map((label) => (
-                <Text key={label} style={styles.diffRemoved}>− {label}</Text>
-              ))}
-            </View>
-          )}
-          {submitError && <Text style={styles.error}>{submitError}</Text>}
-          <PrimaryButton label="Применить" onPress={onApplyDraft} loading={submitting} />
-          <PrimaryButton label="Отклонить" variant="secondary" onPress={onDiscardDraft} disabled={submitting} />
-        </View>
-      )}
-
-      {phase === "idle" && (
-        <>
-          <TextInput
-            style={styles.textArea}
-            multiline
-            value={text}
-            onChangeText={setText}
-            placeholder="Опишите себя текстом, какие у вас навыки, инструменты или транспорт"
-            placeholderTextColor={colors.textSecondary}
-          />
-          {submitError && <Text style={styles.error}>{submitError}</Text>}
-          <PrimaryButton label="Сохранить" onPress={onSubmit} loading={submitting} disabled={text.trim().length === 0} />
-        </>
-      )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.md },
   title: { ...typography.title, color: colors.textPrimary },
   error: { ...typography.caption, color: colors.danger },
   hint: { ...typography.caption, color: colors.textSecondary },
@@ -270,8 +258,6 @@ const styles = StyleSheet.create({
   chipText: { ...typography.caption, color: colors.textPrimary },
   processingBox: { alignItems: "center", gap: spacing.xs, padding: spacing.md },
   processingText: { ...typography.body, color: colors.textSecondary },
-  reviewBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.sm },
-  reviewTitle: { ...typography.subtitle, color: colors.textPrimary },
   textArea: {
     ...typography.body,
     backgroundColor: colors.surface,
@@ -281,8 +267,4 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlignVertical: "top",
   },
-  diffSection: { gap: 2 },
-  diffLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-  diffAdded: { ...typography.body, color: colors.success },
-  diffRemoved: { ...typography.body, color: colors.danger },
 });

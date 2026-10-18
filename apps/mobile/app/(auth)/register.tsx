@@ -3,6 +3,7 @@ import { Text, TextInput, StyleSheet, ScrollView, View, Pressable } from "react-
 import { router } from "expo-router";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { CityPicker } from "../../src/components/CityPicker";
+import { ConsentCheckbox } from "../../src/components/ConsentCheckbox";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 import { getCities, type City } from "../../src/api/cities";
 import { register } from "../../src/api/auth";
@@ -30,6 +31,8 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [cityId, setCityId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [agreedRules, setAgreedRules] = useState(false);
+  const [agreedPdn, setAgreedPdn] = useState(false);
   const [cities, setCities] = useState<City[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(true);
   const [citiesError, setCitiesError] = useState(false);
@@ -69,10 +72,21 @@ export default function RegisterScreen() {
       setError("Выберите город");
       return;
     }
+    if (!agreedRules || !agreedPdn) {
+      setError("Нужно принять правила использования и согласие на обработку персональных данных");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
-      await register({ name: name.trim(), phone, password, cityId });
+      await register({
+        name: name.trim(),
+        phone,
+        password,
+        cityId,
+        acceptedRules: agreedRules,
+        acceptedPdn: agreedPdn,
+      });
       router.replace("/(tabs)");
       void ensurePushRegistered();
     } catch (err) {
@@ -130,9 +144,31 @@ export default function RegisterScreen() {
         <Text style={cityId ? styles.value : styles.placeholder}>{cityName}</Text>
       </Pressable>
 
+      <View style={styles.consents}>
+        <ConsentCheckbox
+          checked={agreedRules}
+          onToggle={() => setAgreedRules((v) => !v)}
+          label="Я принимаю"
+          linkLabel="Правила использования"
+          onLinkPress={() => router.push("/legal/terms")}
+        />
+        <ConsentCheckbox
+          checked={agreedPdn}
+          onToggle={() => setAgreedPdn((v) => !v)}
+          label="Даю согласие на обработку персональных данных в соответствии с"
+          linkLabel="Политикой конфиденциальности"
+          onLinkPress={() => router.push("/legal/privacy")}
+        />
+      </View>
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <PrimaryButton label="Зарегистрироваться" onPress={onRegister} loading={submitting} />
+      <PrimaryButton
+        label="Зарегистрироваться"
+        onPress={onRegister}
+        loading={submitting}
+        disabled={!agreedRules || !agreedPdn}
+      />
     </ScrollView>
   );
 }
@@ -152,6 +188,7 @@ const styles = StyleSheet.create({
   value: { ...typography.body, color: colors.textPrimary },
   placeholder: { ...typography.body, color: colors.textSecondary },
   hint: { ...typography.caption, color: colors.warning, marginBottom: spacing.sm },
+  consents: { gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.xs },
   error: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
   back: { marginBottom: spacing.xs },
   backText: { ...typography.body, color: colors.primary },
