@@ -197,6 +197,13 @@
       "when": 1792404284251,
       "tag": "0027_media_cleanup_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792417929837,
+      "tag": "0028_consent_infrastructure",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,11 @@
+# AI_HANDOFF — 2026-10-19 — Codex: dormant consent infrastructure
+
+Scope: `codex/consent-infrastructure-20261019`, base cleanup commit `ffbda3f5dabd2db499f04c2a3bcec049e86c82f2`. Added migration0028, immutable versioned disclosure registry, append-only self-service grant/revoke evidence, current revision and authenticated route module. No disclosures are seeded or approved, no legacy grants/backfill. Route is NOT registered in app.ts; this infrastructure does NOT gate outbound AI. Registration, age/territory, matching/profile semantics and provider calls are unchanged.
+
+Tests-first RED confirmed; targeted tests8/8, API/database typechecks, Drizzle check and schema/snapshot consistency PASS. Independent root read/retest: no correctness/security blocker for dormant infrastructure; fresh8/8 PASS. Raw logs are outside this repository in release-candidates; see `docs/consent-infrastructure.md` for scope, retention caveat and integration limits.
+
+No production changes, migration execution on production, paid AI calls, push or deploy. Provider dispatch enforcement remains a separate design/review/implementation scope. Never interpret a stored grant as approval of a real vendor before final disclosure publication. Previous handoff records preserved below.
+
 # AI_HANDOFF — 2026-10-19 — Codex: account deletion cleanup hardening
 
 Scope: `codex/account-deletion-cleanup-20261019`, based on main8347332. Reproduced missing durable media retry, late notification insertion, orphan upload cleanup loss and wrong-namespace acknowledgement. Added additive migration0027, leased/fenced cleanup outbox, storage namespace binding and notification guard. Storage I/O is outside SQL transactions; API/worker retry through the same durable requests. Independent audit: PASS WITH FOLLOW-UPS; raw verification evidence is outside the repository in the release-candidates directory.

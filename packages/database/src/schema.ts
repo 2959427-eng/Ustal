@@ -30,6 +30,32 @@ const EMBEDDING_DIM = 1536;
 const id = () => uuid("id").primaryKey().defaultRandom();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
+// Consent infrastructure; no approved production disclosures are seeded. No AI enforcement yet.
+export const consentDisclosures = pgTable("consent_disclosures", {
+  id: id(), purpose: text("purpose").notNull(), version: text("version").notNull(),
+  content: jsonb("content").notNull(), contentHash: text("content_hash").notNull(),
+  status: text("status").notNull().default("draft"), isCurrent: boolean("is_current").notNull().default(false),
+  createdAt: createdAt(),
+}, t => ({
+  purposeVersion: uniqueIndex("consent_disclosure_purpose_version").on(t.purpose, t.version),
+  currentPurpose: uniqueIndex("consent_disclosure_current_purpose").on(t.purpose).where(sql`${t.isCurrent}`),
+  statusCheck: check("consent_disclosure_status", sql`${t.status} IN ('draft', 'approved', 'retired')`),
+  hashCheck: check("consent_disclosure_hash", sql`${t.contentHash} ~ '^[a-f0-9]{64}$'`),
+}));
+
+export const consentDecisions = pgTable("consent_decisions", {
+  id: id(), userId: uuid("user_id").notNull().references(() => users.id),
+  actorUserId: uuid("actor_user_id").notNull().references(() => users.id),
+  seq: integer("seq").notNull(), policyId: uuid("policy_id").notNull().references(() => consentDisclosures.id),
+  policyHash: text("policy_hash").notNull(), decision: text("decision").notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => ({
+  userSequence: uniqueIndex("consent_decision_user_seq").on(t.userId, t.seq),
+  decisionCheck: check("consent_decision_kind", sql`${t.decision} IN ('grant', 'revoke')`),
+  actorCheck: check("consent_decision_actor", sql`${t.actorUserId} = ${t.userId}`),
+  sequenceCheck: check("consent_decision_seq_positive", sql`${t.seq} > 0`),
+}));
+
 // ---------------------------------------------------------------------------
 // Справочники и пользователи
 // ---------------------------------------------------------------------------
