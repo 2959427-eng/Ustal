@@ -26,7 +26,8 @@ export async function handleProfileTranscribe(job: PgBoss.Job<ProfileTranscribeJ
   const input = await db.query.profileSourceInputs.findFirst({
     where: eq(schema.profileSourceInputs.id, job.data.sourceInputId),
   });
-  if (!input) throw new Error(`profile_source_inputs ${job.data.sourceInputId} not found`);
+  // Удалено вместе с аккаунтом (DELETE /me): STT не вызываем, задачу не повторяем.
+  if (!input) return { transcript: null, skipped: "source_deleted" as const };
   // Повторная доставка (повтор pg-boss или восстановление, QA 2026-10-14 №2): расшифровка уже сохранена,
   // сообщение подтверждено или отозвано — STT не повторяем и подтверждённый текст не перезаписываем.
   if (input.status !== "transcribing" || input.revokedAt) return { transcript: input.transcript, skipped: true as const };

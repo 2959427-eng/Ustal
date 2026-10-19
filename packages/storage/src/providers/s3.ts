@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { MediaStorageProvider } from "../types.js";
 
@@ -60,6 +60,10 @@ export function createS3Storage(config: S3StorageConfig): MediaStorageProvider {
     async resolvePath(storageKey: string) {
       const command = new GetObjectCommand({ Bucket: config.bucket, Key: storageKey });
       return getSignedUrl(client, command, { expiresIn: urlExpirySeconds });
+    },
+    async remove(storageKey: string) {
+      // S3 DeleteObject идемпотентен: отсутствующий ключ — успешный ответ.
+      await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: storageKey }));
     },
   };
 }

@@ -239,3 +239,13 @@ export async function logout(): Promise<void> {
   setCachedAccessToken(null);
   resetPushRegistrationState();
 }
+
+/**
+ * Удаление аккаунта (DELETE /me, 2026-10-19). Пароль ещё раз. После успеха сервер уже удалил сессии и
+ * устройства, поэтому локально только изолируем сессию и стираем токены (expireLocalSession), без /auth/logout.
+ * Повтор после потерянного ответа получит 401 — это тоже «аккаунта больше нет»: сессия очищается так же.
+ */
+export async function deleteAccount(password: string): Promise<void> {
+  await apiClient.request("/me", { method: "DELETE", body: JSON.stringify({ password }) });
+  await expireLocalSession();
+}

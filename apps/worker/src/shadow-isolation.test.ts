@@ -26,6 +26,7 @@ const allowed = [
   "apps/api/src/routes/profile-facts.ts", // Phase 2A owner-only API
   "apps/api/src/app.ts", // registers the owner-only routes
   "apps/api/src/lib/source-revoke.ts", // owner revoke: marks the message's facts revoked (never reads them for matching)
+  "apps/api/src/lib/account-deletion.ts", // DELETE /me: deletes the owner's facts (never reads them)
   "packages/validation/src/profile-facts.ts",
   "packages/validation/src/index.ts",
   "packages/ai/src/index.ts",

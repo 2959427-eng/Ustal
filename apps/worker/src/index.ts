@@ -15,18 +15,19 @@ import { dispatchProfileRebuilds, handleProfileRebuild } from "./profile-rebuild
 import { dispatchStalledProfileInputs } from "./profile-input-recovery.js";
 import { dispatchDeliveryWaves } from "./order-delivery-waves.js";
 import { dispatchEmbeddingRefreshes, handleProfileEmbeddingRefresh } from "./handlers/profile-embedding-refresh.js";
+import { skipDeletedAccount } from "./account-guard.js";
 
 async function main() {
   loadEnv();
   const boss = await getBoss();
 
   await boss.work(JOB_TYPES.PROFILE_TRANSCRIBE, handleProfileTranscribe);
-  await boss.work(JOB_TYPES.PROFILE_EXTRACTION, runProfileExtractionJob);
+  await boss.work(JOB_TYPES.PROFILE_EXTRACTION, skipDeletedAccount(runProfileExtractionJob));
   // Phase 1 profile_facts (SHADOW): separate job; never read by matching.
-  await boss.work(JOB_TYPES.PROFILE_FACTS_EXTRACTION, handleProfileFactsExtraction);
+  await boss.work(JOB_TYPES.PROFILE_FACTS_EXTRACTION, skipDeletedAccount(handleProfileFactsExtraction));
   // Source revoke (2026-09-28): rebuild the AI profile from the remaining non-revoked messages.
-  await boss.work(JOB_TYPES.PROFILE_REBUILD, (job: Parameters<typeof handleProfileRebuild>[0]) => handleProfileRebuild(job));
-  await boss.work(JOB_TYPES.PROFILE_EMBEDDING_REFRESH, handleProfileEmbeddingRefresh);
+  await boss.work(JOB_TYPES.PROFILE_REBUILD, skipDeletedAccount((job: Parameters<typeof handleProfileRebuild>[0]) => handleProfileRebuild(job)));
+  await boss.work(JOB_TYPES.PROFILE_EMBEDDING_REFRESH, skipDeletedAccount(handleProfileEmbeddingRefresh));
   await boss.work(JOB_TYPES.ORDER_TRANSCRIBE, handleOrderTranscribe);
   await boss.work(JOB_TYPES.ORDER_EXTRACTION, handleOrderExtraction);
   await boss.work(JOB_TYPES.MATCHING_RUN, handleMatchingRun);

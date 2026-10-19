@@ -120,6 +120,9 @@ export default async function mediaRoutes(app: FastifyInstance) {
     // fast-path оптимизация и не единственная защита.
     let rateLimited = false;
     let quotaExceeded = false;
+    // Файл уже в хранилище: если строка не сохранится (лимит, квота, удалённый аккаунт — триггер 0026, любая
+    // ошибка), файл удаляется, чтобы не оставалось личных данных без владельца.
+    const discard = () => storage.remove(stored.storageKey).catch(() => request.log.warn("media: orphan file removal failed"));
     const row = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${request.userId}))`);
 
@@ -154,7 +157,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
         })
         .returning();
       return inserted;
-    });
+    }).catch(async (error) => { await discard(); throw error; });
+    if (!row) await discard();
     if (rateLimited) {
       return reply.code(429).send({
         error: { code: "rate_limited", message: `Не более ${config.rateLimits.mediaUploadsPerHour} загрузок в час` },

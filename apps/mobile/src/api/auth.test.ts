@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@ustal/api-client";
 import { apiClient, setCachedAccessToken } from "./client";
 import { saveTokens, clearTokens, getRefreshToken } from "./session";
-import { refreshSession, isSessionUsable, login, logout } from "./auth";
+import { refreshSession, isSessionUsable, login, logout, deleteAccount } from "./auth";
 import { queryClient } from "../state/query-client";
 
 /**
@@ -188,4 +188,21 @@ it("a refresh started by A cannot persist after logout and B login", async () =>
   expect(await oldRefresh).toEqual({ state: "session_changed" });
   expect(saveTokens).not.toHaveBeenCalledWith("A-late", "A-late-refresh");
   expect(setCachedAccessToken).toHaveBeenLastCalledWith("B-access");
+});
+
+describe("deleteAccount (DELETE /me, 2026-10-19)", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("sends the password to DELETE /me and clears the local session only after success, without /auth/logout", async () => {
+    vi.mocked(apiClient.request).mockResolvedValue(undefined as never);
+    await deleteAccount("secret");
+    expect(apiClient.request).toHaveBeenCalledTimes(1);
+    expect(apiClient.request).toHaveBeenCalledWith("/me", { method: "DELETE", body: JSON.stringify({ password: "secret" }) });
+    expect(clearTokens).toHaveBeenCalled();
+    expect(setCachedAccessToken).toHaveBeenLastCalledWith(null);
+  });
+  it("a server error keeps the session (nothing cleared)", async () => {
+    vi.mocked(apiClient.request).mockRejectedValue(new ApiRequestError("Неверный пароль", 403, "invalid_password"));
+    await expect(deleteAccount("bad")).rejects.toBeInstanceOf(ApiRequestError);
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
 });

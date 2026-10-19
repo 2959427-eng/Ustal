@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MediaStorageProvider } from "../types.js";
 
@@ -22,6 +22,13 @@ export function createLocalDiskStorage(baseDir: string): MediaStorageProvider {
     },
     async resolvePath(storageKey: string) {
       return path.join(baseDir, storageKey);
+    },
+    async remove(storageKey: string) {
+      const base = path.resolve(baseDir);
+      const fullPath = path.resolve(base, storageKey);
+      // Ключи всегда относительные (kind/owner/uuid.ext); путь вне каталога медиа не удаляем никогда.
+      if (!fullPath.startsWith(base + path.sep)) throw new Error("Invalid storage key");
+      await rm(fullPath, { force: true });
     },
   };
 }

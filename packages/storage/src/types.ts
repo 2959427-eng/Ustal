@@ -21,4 +21,6 @@ export interface MediaStorageProvider {
    * (криптографически синхронно, но сам SDK-клиент асинхронный по контракту).
    */
   resolvePath(storageKey: string): Promise<string>;
+  /** Удалить файл (удаление аккаунта). Отсутствующий файл — не ошибка (повтор безопасен). */
+  remove(storageKey: string): Promise<void>;
 }

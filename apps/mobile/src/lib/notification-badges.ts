@@ -9,6 +9,7 @@ export const ORDER_NOTIFICATION_TYPES: readonly string[] = [
   "new_response",
   "executor_reported_completed",
   "executor_reported_issue",
+  "executor_account_deleted",
 ];
 export const OPPORTUNITY_NOTIFICATION_TYPES: readonly string[] = [
   "selected",

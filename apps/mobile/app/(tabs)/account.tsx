@@ -256,6 +256,7 @@ export default function AccountScreen() {
       {reputation && <ReputationBlock reputation={reputation} />}
 
       <PrimaryButton label="Заблокированные пользователи" variant="secondary" onPress={() => router.push("/blocked-users")} />
+      <PrimaryButton label="Удалить аккаунт" variant="secondary" onPress={() => router.push("/delete-account")} />
 
       {!confirmingLogout && (
         <PrimaryButton label="Выйти" variant="secondary" onPress={() => setConfirmingLogout(true)} />

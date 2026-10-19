@@ -12,6 +12,9 @@ import { reprocessProfile } from "./reprocess.js";
 import { dispatchProfileRebuilds, handleProfileRebuild, rebuildProfileIfNeeded } from "./profile-rebuild.js";
 import { requestRematch } from "./semantic.js";
 import { dispatchEmbeddingRefreshes, handleProfileEmbeddingRefresh } from "./handlers/profile-embedding-refresh.js";
+import { handleProfileTranscribe } from "./handlers/profile-transcribe.js";
+import { runProfileExtractionJob } from "./handlers/profile-extraction.js";
+import { skipDeletedAccount } from "./account-guard.js";
 
 /**
  * Direct revoke/restore кнопкой (2026-10-17) end-to-end на настоящей PostgreSQL с fixture AI: действие API
@@ -26,6 +29,10 @@ type ApiLib = {
   loadRemovedItems: (db: unknown, userId: string, facts: unknown[]) => Promise<{ id: string; kind: string; label: string }[]>;
 };
 const { applyProfileItemAction, loadRemovedItems } = (await import(/* @vite-ignore */ API_LIB)) as ApiLib;
+const ACCOUNT_LIB = "../../api/src/lib/account-deletion.js";
+const { deleteAccount } = (await import(/* @vite-ignore */ ACCOUNT_LIB)) as {
+  deleteAccount: (db: unknown, userId: string) => Promise<{ status: string }>;
+};
 assertLocalTestDatabase();
 const db = getDb();
 const users: string[] = [], cities: string[] = [], orders: string[] = [];
@@ -340,6 +347,49 @@ describe("direct revoke/restore end-to-end", () => {
       expect(await matched(vid, u)).toBe(false); // no van ever stated, the only skill removed
     } finally { review.mockImplementation(original); }
     expect(seen.filter((t) => !t.trim())).toEqual([]);
+  });
+
+  it("E10. deleted account (DELETE /me): never matched again, its queued voice message is skipped without STT (2026-10-19)", async () => {
+    const u = await user();
+    await message(u, says(`${RUN}EMB10 Собираю мебель`, [assembly(`${RUN}EMB10`)]));
+    const oid = await assemblyOrder(`${RUN}EMB10`);
+    const review = vi.mocked(mockProviders.extraction.reviewSemantic);
+    const original = review.getMockImplementation()!;
+    review.mockImplementation(async () => wrap({ compatible: true, confidence: 0.95, reason: "fixture: compatible" }) as never);
+    try {
+      expect(await matched(oid, u)).toBe(true);
+      const [voice] = await db.insert(schema.profileSourceInputs).values({ userId: u, inputType: "voice", status: "transcribing" }).returning();
+      expect(await deleteAccount(db, u)).toMatchObject({ status: "deleted" });
+      expect(await matched(oid, u)).toBe(false);
+      const stt = vi.spyOn(mockProviders.stt, "transcribe");
+      expect(await handleProfileTranscribe({ id: randomUUID(), data: { sourceInputId: voice!.id } } as never)).toMatchObject({ skipped: "source_deleted" });
+      expect(stt).not.toHaveBeenCalled();
+      expect(await applied(u)).toBeUndefined();
+    } finally { review.mockImplementation(original); }
+  });
+
+  it("E11. extraction in flight while the account is deleted: no draft/profile/facts resurrect, the job is skipped (Codex 2026-10-19)", async () => {
+    const u = await user();
+    const text = says(`${RUN}EMB11 Собираю мебель`, [assembly(`${RUN}EMB11`)]);
+    const s = await send(u, text);
+    const normalize = vi.mocked(mockProviders.extraction.normalizeMatching);
+    const original = normalize.getMockImplementation()!;
+    let entered!: () => void, release!: () => void;
+    const inAi = new Promise<void>((r) => { entered = r; }), gate = new Promise<void>((r) => { release = r; });
+    normalize.mockImplementation(async (input, meta) => { if (input.text.includes(`${RUN}EMB11`)) { entered(); await gate; } return original(input, meta); });
+    try {
+      const job = skipDeletedAccount(runProfileExtractionJob)({ id: randomUUID(), data: { userId: u, sourceInputId: s.id } } as never);
+      await inAi;
+      expect(await deleteAccount(db, u)).toMatchObject({ status: "deleted" });
+      release();
+      expect(await job).toMatchObject({ skipped: "account_deleted" });
+    } finally { normalize.mockImplementation(original); }
+    expect(await db.query.capabilityProfiles.findMany({ where: eq(schema.capabilityProfiles.userId, u) })).toEqual([]);
+    expect(await db.query.profileFacts.findMany({ where: eq(schema.profileFacts.userId, u) })).toEqual([]);
+    // a queued job delivered later is skipped up front, without AI
+    const calls = normalize.mock.calls.length;
+    expect(await skipDeletedAccount(runProfileExtractionJob)({ id: randomUUID(), data: { userId: u, sourceInputId: s.id } } as never)).toMatchObject({ skipped: "account_deleted" });
+    expect(normalize.mock.calls.length).toBe(calls);
   });
 
   it("E4. resource-only action on a clean profile stays clean, no embedding call", async () => {

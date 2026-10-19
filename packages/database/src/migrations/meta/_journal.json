@@ -183,6 +183,13 @@
       "when": 1792197320611,
       "tag": "0025_embedding_stale_and_decision_order",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792337646295,
+      "tag": "0026_deleted_account_write_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
+import { mapPgError } from "./lib/pg-errors.js";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { loadEnv } from "@ustal/config";
@@ -42,16 +43,9 @@ export async function buildApp() {
     if (error.name === "ZodError") {
       return reply.code(400).send({ error: { code: "validation_error", message: error.message } });
     }
-    // Ошибки Postgres из-за ввода клиента — не сбой сервера:
-    // 22P02 — значение не того формата (как правило, id в адресе не uuid) → такого объекта нет;
-    // 22021 / 22P05 — недопустимый символ (например, NUL) в тексте → некорректный запрос.
-    const pgCode = (error as { cause?: { code?: string }; code?: string }).cause?.code ?? (error as { code?: string }).code;
-    if (pgCode === "22P02") {
-      return reply.code(404).send({ error: { code: "not_found", message: "Не найдено" } });
-    }
-    if (pgCode === "22021" || pgCode === "22P05") {
-      return reply.code(400).send({ error: { code: "validation_error", message: "Текст содержит недопустимые символы" } });
-    }
+    // Ошибки Postgres из-за ввода клиента или конкурентности — не сбой сервера (lib/pg-errors.ts).
+    const mapped = mapPgError(error);
+    if (mapped) return reply.code(mapped.status).send(mapped.body);
     app.log.error(error);
     const statusCode = error.statusCode ?? 500;
     // На 5xx (в том числе непойманные исключения вроде "Failed to create ...")

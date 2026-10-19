@@ -28,3 +28,9 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 export type RefreshInput = z.infer<typeof refreshSchema>;
+
+/** DELETE /me — удаление аккаунта: пароль ещё раз, действие необратимо. */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1).max(200),
+});
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
