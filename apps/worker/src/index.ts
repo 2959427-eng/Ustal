@@ -16,6 +16,8 @@ import { dispatchStalledProfileInputs } from "./profile-input-recovery.js";
 import { dispatchDeliveryWaves } from "./order-delivery-waves.js";
 import { dispatchEmbeddingRefreshes, handleProfileEmbeddingRefresh } from "./handlers/profile-embedding-refresh.js";
 import { skipDeletedAccount } from "./account-guard.js";
+import { drainMediaCleanup, getDb } from "@ustal/database";
+import { getMediaStorage } from "@ustal/storage";
 
 async function main() {
   loadEnv();
@@ -57,6 +59,8 @@ async function main() {
       if (tick % 6 === 3)
         await dispatchEmbeddingRefreshes().catch(() =>
           console.error("Embedding refresh dispatch failed; retried on the next tick"));
+      const cleanup = await drainMediaCleanup(getDb(), getMediaStorage()).catch(() => ({ removed: 0, failed: 1 }));
+      if (cleanup.failed) console.error("Media cleanup failed; durable requests retained for retry");
       await dispatchRematches();
       await heartbeat();
     } catch {

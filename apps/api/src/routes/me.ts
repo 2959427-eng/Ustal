@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
-import { getDb, schema } from "@ustal/database";
+import { drainMediaCleanup, getDb, schema } from "@ustal/database";
 import { getMediaStorage } from "@ustal/storage";
 import { deleteAccountSchema } from "@ustal/validation";
 import { verifyPassword } from "../lib/password.js";
@@ -52,8 +52,9 @@ export default async function meRoutes(app: FastifyInstance) {
 
     // Взаимная блокировка с параллельной записью (PG прерывает одну из транзакций) — удаление повторяется.
     let result: Awaited<ReturnType<typeof deleteAccount>>;
+    const storage = getMediaStorage();
     for (let attempt = 0; ; attempt++) {
-      try { result = await deleteAccount(db, user.id); break; }
+      try { result = await deleteAccount(db, user.id, storage); break; }
       catch (error) {
         const code = (error as { cause?: { code?: string }; code?: string }).cause?.code ?? (error as { code?: string }).code;
         if (code !== "40P01" || attempt >= 2) throw error;
@@ -67,11 +68,10 @@ export default async function meRoutes(app: FastifyInstance) {
     // После commit: уведомления второй стороне и удаление файлов. Сбой здесь не отменяет удаление и не даёт 500.
     for (const n of result.notices)
       await notifyUser(n.userId, n.type, n.payload).catch(() => request.log.warn({ type: n.type }, "account deletion notice failed"));
-    const storage = getMediaStorage();
-    for (const m of result.mediaKeys) {
-      if (m.provider !== storage.name) continue;
-      await storage.remove(m.key).catch(() => request.log.warn("account deletion: media file removal failed"));
-    }
+    try {
+      const cleanup = await drainMediaCleanup(db, storage, { ids: result.cleanupIds });
+      if (cleanup.failed) request.log.warn({ failed: cleanup.failed }, "account deletion: media cleanup retained for retry");
+    } catch { request.log.warn("account deletion: media cleanup retained for retry"); }
     return reply.code(204).send();
   });
 }

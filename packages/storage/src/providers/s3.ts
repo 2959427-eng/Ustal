@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { MediaStorageProvider } from "../types.js";
@@ -44,6 +44,7 @@ export function createS3Storage(config: S3StorageConfig): MediaStorageProvider {
 
   return {
     name: "s3",
+    cleanupIdentity: `s3:${createHash("sha256").update(JSON.stringify([new URL(config.endpoint).href, config.bucket, config.region ?? "us-east-1"])).digest("hex")}`,
     async upload({ buffer, ownerId, kind, mimeType }) {
       const ext = mimeType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin";
       const key = `${kind}/${ownerId}/${randomUUID()}.${ext}`;
@@ -63,7 +64,7 @@ export function createS3Storage(config: S3StorageConfig): MediaStorageProvider {
     },
     async remove(storageKey: string) {
       // S3 DeleteObject идемпотентен: отсутствующий ключ — успешный ответ.
-      await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: storageKey }));
+      await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: storageKey }), { abortSignal: AbortSignal.timeout(10_000) });
     },
   };
 }

@@ -26,11 +26,11 @@ type Db = ReturnType<typeof getDb>;
 export const DELETABLE_ORDER_STATUSES = ["draft", "processing", "processing_failed", "moderation_hold", "published", "negotiating"] as const;
 
 export type AccountDeletionResult =
-  | { status: "deleted"; mediaKeys: { provider: string; key: string }[]; notices: { userId: string; type: string; payload: Record<string, unknown> }[] }
+  | { status: "deleted"; mediaKeys: { provider: string; key: string }[]; cleanupIds: string[]; notices: { userId: string; type: string; payload: Record<string, unknown> }[] }
   | { status: "active_work"; orderIds: string[] }
   | { status: "gone" };
 
-export async function deleteAccount(db: Db, userId: string): Promise<AccountDeletionResult> {
+export async function deleteAccount(db: Db, userId: string, storage?: { name: string; cleanupIdentity: string }): Promise<AccountDeletionResult> {
   return db.transaction(async (tx) => {
     // Запись этого пользователя, начатая раньше (вставка с FK/триггером держит FOR KEY SHARE на users), удаление
     // дожидается и затем закрывает/удаляет. Долгий прогон matching не держит запрос бесконечно: через 10 с —
@@ -98,6 +98,10 @@ export async function deleteAccount(db: Db, userId: string): Promise<AccountDele
     // 3. Личные данные — физически. Порядок учитывает FK без каскада (capability_profiles → profile_source_inputs,
     //    push_deliveries → device_installations).
     const mediaRows = await tx.select().from(schema.media).where(eq(schema.media.ownerId, userId));
+    // Persist the exact provider/key BEFORE erasing media rows, in this same transaction.
+    const cleanup = mediaRows.length ? await tx.insert(schema.mediaCleanupRequests).values(mediaRows.map((m) => ({
+      storageProvider: storage?.name === m.storageProvider ? storage.cleanupIdentity : `unbound:${m.storageProvider}`, storageKey: m.storageKey,
+    }))).onConflictDoNothing().returning({ id: schema.mediaCleanupRequests.id }) : [];
     // Ожидающие задачи профиля этого пользователя снимаются в той же транзакции: ни AI, ни STT, ни пересборки
     // для удалённого аккаунта (у расшифровки в данных только sourceInputId). Уже идущая задача увидит, что
     // сообщения нет, и завершится без вызова AI.
@@ -136,6 +140,6 @@ export async function deleteAccount(db: Db, userId: string): Promise<AccountDele
       .where(eq(schema.users.id, userId));
     await tx.insert(schema.auditLogs).values({ actorType: "user", actorId: userId, action: "account_deleted", targetType: "user", targetId: userId,
       metadata: { notices: notices.length, mediaFiles: mediaRows.length } });
-    return { status: "deleted" as const, mediaKeys: mediaRows.map((m) => ({ provider: m.storageProvider, key: m.storageKey })), notices };
+    return { status: "deleted" as const, mediaKeys: mediaRows.map((m) => ({ provider: m.storageProvider, key: m.storageKey })), cleanupIds: cleanup.map((r) => r.id), notices };
   });
 }

@@ -918,3 +918,18 @@ export const adminUsers = pgTable("admin_users", {
   role: varchar("role", { length: 30 }).notNull().default("moderator"),
   createdAt: createdAt(),
 });
+
+/** Retained only until physical erasure succeeds; never exposed through user APIs. */
+export const mediaCleanupRequests = pgTable("media_cleanup_requests", {
+  id: id(),
+  storageProvider: text("storage_provider").notNull(),
+  storageKey: text("storage_key").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+  leaseToken: uuid("lease_token"),
+  lastErrorCode: text("last_error_code"),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex("media_cleanup_storage_unique").on(t.storageProvider, t.storageKey),
+  index("media_cleanup_due_idx").on(t.storageProvider, t.nextAttemptAt),
+]);

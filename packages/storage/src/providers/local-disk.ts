@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MediaStorageProvider } from "../types.js";
@@ -12,6 +12,7 @@ import type { MediaStorageProvider } from "../types.js";
 export function createLocalDiskStorage(baseDir: string): MediaStorageProvider {
   return {
     name: "local",
+    cleanupIdentity: `local:${createHash("sha256").update(path.resolve(baseDir)).digest("hex")}`,
     async upload({ buffer, ownerId, kind, mimeType }) {
       const ext = mimeType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin";
       const key = `${kind}/${ownerId}/${randomUUID()}.${ext}`;

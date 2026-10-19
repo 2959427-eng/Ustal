@@ -12,6 +12,8 @@ export interface StoredMedia {
 
 export interface MediaStorageProvider {
   readonly name: "local" | "s3";
+  /** Opaque namespace identity; credentials may rotate without changing it. Never returned to clients. */
+  readonly cleanupIdentity: string;
   upload(input: { buffer: Buffer; ownerId: string; kind: MediaKind; mimeType: string }): Promise<StoredMedia>;
   /**
    * Абсолютный путь/URL, по которому worker/api могут прочитать файл обратно

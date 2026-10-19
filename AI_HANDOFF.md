@@ -1,3 +1,13 @@
+# AI_HANDOFF — 2026-10-19 — Codex: account deletion cleanup hardening
+
+Scope: `codex/account-deletion-cleanup-20261019`, based on main8347332. Reproduced missing durable media retry, late notification insertion, orphan upload cleanup loss and wrong-namespace acknowledgement. Added additive migration0027, leased/fenced cleanup outbox, storage namespace binding and notification guard. Storage I/O is outside SQL transactions; API/worker retry through the same durable requests. Independent audit: PASS WITH FOLLOW-UPS; raw verification evidence is outside the repository in the release-candidates directory.
+
+Do not deploy this branch directly. Preserve migration0026 and pending cleanup work on rollback. Remaining limitations and diagnostic SQL: `docs/account-deletion-operations.md`. No production data, secrets, migrations or config changed during this scope.
+
+Owner decision: public launch WITHOUT SMS verification; SMS is POST-LAUNCH, not a blocker. Do not add OTP/provider or change auth flow. Legal operator identity/public contact/documents are still required before truthful legal publication. Previous handoff entries below are preserved.
+
+---
+
 # AI_HANDOFF — 2026-09-14 — Claude Cowork: найден и исправлен реальный баг аватара — `Unsupported FormData part implementation`
 
 Codex закончился лимит использования во время исправления (см. запись ниже) сразу после того, как пользователь на реальном телефоне репродуцировал точную ошибку с новой диагностикой «Этап: …»: **«Этап: загрузка на сервер. Unsupported FormData part implementation»**. Продолжаю за неё.

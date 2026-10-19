@@ -14,13 +14,14 @@ export async function notifyUser(
   userId: string,
   type: string,
   payload: Record<string, unknown>,
-): Promise<string> {
+): Promise<string | null> {
   const db = getDb();
   const [notification] = await db
     .insert(schema.notifications)
     .values({ userId, type, payload })
     .returning({ id: schema.notifications.id });
-  if (!notification) throw new Error("Failed to create notification");
+  // The DB guard skips a late delivery to an account deleted during the sender's action.
+  if (!notification) return null;
 
   const boss = await getBoss();
   await boss.send(JOB_TYPES.NOTIFICATION_DISPATCH, { notificationId: notification.id });

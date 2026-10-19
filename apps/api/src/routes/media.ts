@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { and, eq, gt, sql } from "drizzle-orm";
-import { getDb, schema } from "@ustal/database";
+import { drainMediaCleanup, getDb, schema } from "@ustal/database";
 import { getRuntimeConfig } from "@ustal/config";
 import { getMediaStorage } from "@ustal/storage";
 import { MEDIA_LIMITS, mediaKindSchema } from "@ustal/validation";
@@ -122,7 +122,17 @@ export default async function mediaRoutes(app: FastifyInstance) {
     let quotaExceeded = false;
     // Файл уже в хранилище: если строка не сохранится (лимит, квота, удалённый аккаунт — триггер 0026, любая
     // ошибка), файл удаляется, чтобы не оставалось личных данных без владельца.
-    const discard = () => storage.remove(stored.storageKey).catch(() => request.log.warn("media: orphan file removal failed"));
+    const discard = async () => {
+      try {
+        const pending = await db.insert(schema.mediaCleanupRequests).values({ storageProvider: storage.cleanupIdentity,
+          storageKey: stored.storageKey }).onConflictDoNothing().returning({ id: schema.mediaCleanupRequests.id });
+        const cleanup = await drainMediaCleanup(db, storage, { ids: pending.map((r) => r.id) });
+        if (cleanup.failed) request.log.warn("media: orphan file cleanup retained for retry");
+      } catch {
+        // If the DB itself is unavailable, still try erasure; never replace the original API error.
+        await storage.remove(stored.storageKey).catch(() => request.log.warn("media: orphan file removal failed"));
+      }
+    };
     const row = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${request.userId}))`);
 

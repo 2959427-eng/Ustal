@@ -218,6 +218,39 @@ const isDeletedAccountError = (e: unknown) => {
 };
 
 describe("no writes for a deleted account (race-safe)", () => {
+  it("account deletion and its cleanup outbox roll back together before commit", async () => {
+    const a = await newUser("TEST cleanup atomic");
+    const key = `photo/${a.id}/${randomUUID()}.jpg`;
+    await db.insert(schema.media).values({ ownerId: a.id, kind: "photo", storageProvider: "local", storageKey: key, mimeType: "image/jpeg" });
+    await expect(db.transaction(async (tx) => {
+      expect((await deleteAccount(tx as unknown as typeof db, a.id)).status).toBe("deleted");
+      throw Error("stop before commit");
+    })).rejects.toThrow("stop before commit");
+    expect((await userRow(a.id))!.status).toBe("active");
+    expect(await db.select().from(schema.media).where(eq(schema.media.ownerId, a.id))).toHaveLength(1);
+    expect(await getSql()`select id from media_cleanup_requests where storage_key=${key}`).toHaveLength(0);
+  });
+
+  it("failed physical media deletion retains a durable retry after the account and media rows are gone", async () => {
+    const a = await newUser("TEST cleanup retry");
+    const key = `photo/${a.id}/${randomUUID()}.jpg`;
+    await db.insert(schema.media).values({ ownerId: a.id, kind: "photo", storageProvider: "local", storageKey: key, mimeType: "image/jpeg" });
+    const { getMediaStorage } = await import("@ustal/storage");
+    const remove = vi.spyOn(getMediaStorage(), "remove").mockRejectedValue(new Error("private provider response must not be persisted"));
+    try {
+      expect((await del(a)).statusCode).toBe(204);
+      expect((await userRow(a.id))!.status).toBe("deleted");
+      expect(await db.select().from(schema.media).where(eq(schema.media.ownerId, a.id))).toEqual([]);
+      const [present] = await getSql()`select to_regclass('public.media_cleanup_requests') is not null as present`;
+      expect(present!.present, "failed removal must survive process restart in a durable outbox").toBe(true);
+      const rows = await getSql()`select * from media_cleanup_requests where storage_key=${key}`;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.attempts).toBe(1);
+      expect(JSON.stringify(rows)).not.toContain("private provider response");
+      await getSql()`delete from media_cleanup_requests where storage_key=${key}`;
+    } finally { remove.mockRestore(); }
+  });
+
   it("response committed while deletion runs: deletion waits and withdraws it (never an active response of a deleted user)", async () => {
     const a = await newUser("TEST race A"), b = await newUser("TEST race B");
     const o = await order(b.id, "published");
