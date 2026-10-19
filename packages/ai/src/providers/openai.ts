@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import OpenAI, { toFile } from "openai";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { loadEnv } from "@ustal/config";
+import { consentGuardedOpenAiFetch, guardAiProvider } from "../consent-dispatch.js";
 import { applyRefusalVerification, applyReviewConstraints } from "../review-constraints.js";
 import { assertGroundedEvidence, EvidenceValidationError } from "../evidence-validation.js";
 import { sourceEvidenceSpans } from "../source-evidence.js";
@@ -59,6 +60,7 @@ function getClient(): OpenAI {
     baseURL: env.OPENAI_BASE_URL,
     timeout: env.AI_REQUEST_TIMEOUT_MS,
     maxRetries: env.AI_MAX_RETRIES,
+    fetch: consentGuardedOpenAiFetch,
   });
   return client;
 }
@@ -81,7 +83,7 @@ async function readAudioBuffer(input: { filePath: string; mimeType: string }): P
   return readFile(input.filePath);
 }
 
-export const openAiStt: SpeechToTextProvider = {
+const rawOpenAiStt: SpeechToTextProvider = {
   async transcribe(audio, _meta: AiCallMeta): Promise<AiCallResult<{ transcript: string }>> {
     const started = Date.now();
     const buffer = await readAudioBuffer(audio);
@@ -590,7 +592,7 @@ Return a short Russian reason.`,
   }
 }
 
-export const openAiExtraction: StructuredExtractionProvider = {
+const rawOpenAiExtraction: StructuredExtractionProvider = {
   async reviewSemantic(input, _meta) {
     const started = Date.now();
     const jsonSchema = zodToJsonSchema(semanticReviewSchema) as Record<string, unknown>;
@@ -1202,7 +1204,7 @@ confidence reflects semantic certainty, not professional proficiency. Return all
   },
 };
 
-export const openAiEmbedding: EmbeddingProvider = {
+const rawOpenAiEmbedding: EmbeddingProvider = {
   async embed(texts, _meta: AiCallMeta) {
     const started = Date.now();
     const model = "text-embedding-3-small";
@@ -1248,7 +1250,7 @@ const SYSTEM_PROMPT_MODERATION = `Ты модерируешь текст зак�
 - "reject" — явное нарушение (незаконная деятельность, мошенничество, эксплуатация и т.п.).
 reason — короткое объяснение решения на русском. Верни JSON строго по схеме.`;
 
-export const openAiModeration: ModerationProvider = {
+const rawOpenAiModeration: ModerationProvider = {
   async moderate(input, _meta: AiCallMeta) {
     const started = Date.now();
     const ruleResult = moderateWithRules(input.text);
@@ -1285,6 +1287,11 @@ export const openAiModeration: ModerationProvider = {
   },
 };
 
+const dispatchIdentity = () => ({ provider: "openai", endpoint: loadEnv().OPENAI_BASE_URL ?? "https://api.openai.com/v1" });
+export const openAiStt = guardAiProvider(rawOpenAiStt, dispatchIdentity);
+export const openAiExtraction = guardAiProvider(rawOpenAiExtraction, dispatchIdentity);
+export const openAiEmbedding = guardAiProvider(rawOpenAiEmbedding, dispatchIdentity);
+export const openAiModeration = guardAiProvider(rawOpenAiModeration, dispatchIdentity);
 export const openAiProviders: AiProviderBundle = {
   stt: openAiStt,
   extraction: openAiExtraction,

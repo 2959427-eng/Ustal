@@ -1,3 +1,11 @@
+# AI_HANDOFF — 2026-10-20 — Codex: separate dormant SDK consent dispatch slice
+
+Scope: `codex/consent-dispatch-context-20261020`, base consent infrastructure `b45c960f`. Added explicit off-default/bootstrap-only dispatch/context infrastructure, sticky sanitized policy denial at public provider boundaries and guarded actual SDK attempts. No DB authorizer, approved real publication, worker/matching/profile context integration or production activation. Worker denial handling/cache validity/blocked-work resume remain future reviewed scopes.
+
+Root found two pre-acceptance issues; both reproduced RED then corrected: enforced transport now rejects redirects (307/308 cannot forward POST body to unapproved path), and authorizer is one immutable all-subject batch requiring one fresh DB snapshot (no sequential read skew). Synthetic actual-SDK/fake-fetch plus loopback HTTP tests only; no external AI or production calls. Full AI233/233 and AI typecheck PASS; root independent targeted35/35 and typecheck PASS. Details: `docs/consent-dispatch-context.md`; raw logs are outside repo in release-candidates.
+
+Keep this local feature branch SEPARATE from launch preparation until complete consent feature integration: genuine provider-source fingerprint changes invalidate review cache even with mode off, introducing cold-cache cost without enforcement. Do not merge/push/deploy or enable merely because this bounded slice passed. Previous handoff records preserved.
+
 # AI_HANDOFF — 2026-10-19 — Codex: dormant consent infrastructure
 
 Scope: `codex/consent-infrastructure-20261019`, base cleanup commit `ffbda3f5dabd2db499f04c2a3bcec049e86c82f2`. Added migration0028, immutable versioned disclosure registry, append-only self-service grant/revoke evidence, current revision and authenticated route module. No disclosures are seeded or approved, no legacy grants/backfill. Route is NOT registered in app.ts; this infrastructure does NOT gate outbound AI. Registration, age/territory, matching/profile semantics and provider calls are unchanged.
