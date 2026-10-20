@@ -11,6 +11,7 @@ import authenticatePlugin from "./plugins/authenticate.js";
 import authRoutes from "./routes/auth.js";
 import otpRoutes from "./routes/otp.js";
 import phoneVerificationRoutes from "./routes/phone-verification.js";
+import consentRoutes from "./routes/consents.js";
 import meRoutes from "./routes/me.js";
 import citiesRoutes from "./routes/cities.js";
 import profileRoutes from "./routes/profile.js";
@@ -114,6 +115,7 @@ export async function buildApp() {
   await app.register(otpRoutes);
   await app.register(phoneVerificationRoutes);
   await app.register(meRoutes);
+  if (env.USTAL_AI_CONSENT_MODE === "enforced") await app.register(consentRoutes);
   await app.register(citiesRoutes);
   await app.register(profileRoutes);
   await app.register(profileFactsRoutes);

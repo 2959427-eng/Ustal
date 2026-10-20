@@ -1,3 +1,5 @@
+import { consentPair, consentRunReusable, assertConsentResultCommit, workerConsentFingerprint } from "../worker-consent.js";
+import { AiConsentDenied } from "@ustal/ai";
 import { reviewProfileText } from "../profile-restrictions.js";
 import type PgBoss from "pg-boss";
 import { createHash } from "node:crypto";
@@ -53,6 +55,7 @@ export async function runSourceReview(
   try {
     return { status: "ok", result: await call() };
   } catch (thrown) {
+    if (thrown instanceof AiConsentDenied) throw thrown;
     const cause = thrown instanceof Error ? thrown : new Error(String(thrown));
     const raw = (cause as { code?: unknown; status?: unknown }).code ?? (cause as { status?: unknown }).status;
     const error = {
@@ -387,7 +390,9 @@ export async function handleMatchingRun(
       refusalPipeline: reviewPipelineFingerprint("general_access_refusal_check"),
     } : null;
     const pipelineProvable = Boolean(reviewPipeline) && (!generalAccessInputs || Boolean(generalAccessInputs.refusalPipeline));
+    const consentFingerprint = await workerConsentFingerprint();
     const inputHash = createHash("sha256").update(JSON.stringify({
+      ...(consentFingerprint ? { consent: consentFingerprint } : {}),
       reviewPipeline, generalAccess: generalAccessInputs,
       policy: SEMANTIC_POLICY, reviewPromptVersion: SEMANTIC_REVIEW_PROMPT_VERSION, reviewModel: loadEnv().AI_MODEL_SEMANTIC_REVIEW, order: hashedOrder, localHour, localWeekday, model, vector, requirements: sorted(requirements),
       extraction: extracted?.rawResult, nodes: sorted(nodes), relations: sorted(validRelations),
@@ -527,6 +532,7 @@ export async function handleMatchingRun(
         // Variant B: the same AI input (profile text, order text, flag) + prompt/schema/model -> the same memoized verdict.
         const cacheIdentity: ReviewCacheIdentity = { reviewType: "semantic_pair_review", promptVersion: SEMANTIC_REVIEW_PROMPT_VERSION, schemaVersion: "v1", input: reviewInput };
         const cacheKey = reviewCacheKey(cacheIdentity);
+        const consentReview = await consentPair(candidate.user_id, async () => {
         const cached = await readCachedReview<SemanticReview>(cacheKey);
         if (cached) {
           reviewCacheHit = true;
@@ -549,6 +555,8 @@ export async function handleMatchingRun(
         } else {
           deferredReviewBudget = true;
         }
+        });
+        if (!consentReview.allowed) continue;
       }
       await db
         .insert(schema.matchingTraces)
@@ -605,6 +613,8 @@ export async function handleMatchingRun(
       generalStats = { refusalChecks: general.reviews, refusalCacheHits: general.cacheHits };
       unstableResults += general.failures;
     }
+    // Same user-before-order order as account deletion; all AI work is already finished.
+    await assertConsentResultCommit(db);
     // Recheck status under row lock: cancellation during scoring must not publish fresh matches.
     const [current] = await db
       .select()
@@ -627,7 +637,7 @@ export async function handleMatchingRun(
       .update(schema.matchingRuns)
       // A run with a failed review is published (fail-open) but never reused as a cache hit: the next
       // matching job for this order recomputes and retries the review instead of freezing the degraded result.
-      .set({ completedAt: new Date(), candidatesCount, ...(reviewFailures > 0 || unstableResults > 0 || !pipelineProvable ? { inputHash: null } : {}) })
+      .set({ completedAt: new Date(), candidatesCount, ...(reviewFailures > 0 || unstableResults > 0 || !pipelineProvable || !consentRunReusable() ? { inputHash: null } : {}) })
       .where(eq(schema.matchingRuns.id, run.id));
     console.log(JSON.stringify({ event: "matching_run_ai", orderId: order.id, matchingRunId: run.id, wave, reviewBudget: reviewLimit,
       aiReviews: reviews, reviewCacheHits, reviewFailures, ...generalStats }));

@@ -1,3 +1,4 @@
+import { bootstrapWorkerConsent, consentJob, dispatchConsentWork } from "./worker-consent.js";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -20,19 +21,20 @@ import { drainMediaCleanup, getDb } from "@ustal/database";
 import { getMediaStorage } from "@ustal/storage";
 
 async function main() {
-  loadEnv();
+  const env = loadEnv();
+  await bootstrapWorkerConsent({ mode: env.USTAL_AI_CONSENT_MODE, purpose: env.USTAL_AI_CONSENT_PURPOSE });
   const boss = await getBoss();
 
-  await boss.work(JOB_TYPES.PROFILE_TRANSCRIBE, handleProfileTranscribe);
-  await boss.work(JOB_TYPES.PROFILE_EXTRACTION, skipDeletedAccount(runProfileExtractionJob));
+  await boss.work(JOB_TYPES.PROFILE_TRANSCRIBE, consentJob("profile_transcribe", handleProfileTranscribe));
+  await boss.work(JOB_TYPES.PROFILE_EXTRACTION, consentJob("profile_extract", skipDeletedAccount(runProfileExtractionJob)));
   // Phase 1 profile_facts (SHADOW): separate job; never read by matching.
-  await boss.work(JOB_TYPES.PROFILE_FACTS_EXTRACTION, skipDeletedAccount(handleProfileFactsExtraction));
+  await boss.work(JOB_TYPES.PROFILE_FACTS_EXTRACTION, consentJob("profile_facts", skipDeletedAccount(handleProfileFactsExtraction)));
   // Source revoke (2026-09-28): rebuild the AI profile from the remaining non-revoked messages.
-  await boss.work(JOB_TYPES.PROFILE_REBUILD, skipDeletedAccount((job: Parameters<typeof handleProfileRebuild>[0]) => handleProfileRebuild(job)));
-  await boss.work(JOB_TYPES.PROFILE_EMBEDDING_REFRESH, skipDeletedAccount(handleProfileEmbeddingRefresh));
-  await boss.work(JOB_TYPES.ORDER_TRANSCRIBE, handleOrderTranscribe);
-  await boss.work(JOB_TYPES.ORDER_EXTRACTION, handleOrderExtraction);
-  await boss.work(JOB_TYPES.MATCHING_RUN, handleMatchingRun);
+  await boss.work(JOB_TYPES.PROFILE_REBUILD, consentJob("profile_rebuild", skipDeletedAccount((job: Parameters<typeof handleProfileRebuild>[0]) => handleProfileRebuild(job))));
+  await boss.work(JOB_TYPES.PROFILE_EMBEDDING_REFRESH, consentJob("embedding_refresh", skipDeletedAccount(handleProfileEmbeddingRefresh)));
+  await boss.work(JOB_TYPES.ORDER_TRANSCRIBE, consentJob("order_transcribe", handleOrderTranscribe));
+  await boss.work(JOB_TYPES.ORDER_EXTRACTION, consentJob("order_extract", handleOrderExtraction));
+  await boss.work(JOB_TYPES.MATCHING_RUN, consentJob("matching_run", handleMatchingRun));
   await boss.work(JOB_TYPES.NOTIFICATION_DISPATCH, handleNotificationDispatch);
   const heartbeat = () => writeFile(join(tmpdir(), "ustal-worker-heartbeat"), "ok");
   await heartbeat();
@@ -59,6 +61,13 @@ async function main() {
       if (tick % 6 === 3)
         await dispatchEmbeddingRefreshes().catch(() =>
           console.error("Embedding refresh dispatch failed; retried on the next tick"));
+      await dispatchConsentWork(async (kind, data, singletonKey) => {
+        const names = { profile_transcribe: JOB_TYPES.PROFILE_TRANSCRIBE, profile_extract: JOB_TYPES.PROFILE_EXTRACTION,
+          profile_facts: JOB_TYPES.PROFILE_FACTS_EXTRACTION, profile_rebuild: JOB_TYPES.PROFILE_REBUILD,
+          embedding_refresh: JOB_TYPES.PROFILE_EMBEDDING_REFRESH, order_transcribe: JOB_TYPES.ORDER_TRANSCRIBE,
+          order_extract: JOB_TYPES.ORDER_EXTRACTION, matching_run: JOB_TYPES.MATCHING_RUN };
+        return boss.send(names[kind], data, { singletonKey, retryLimit: 4, retryDelay: 5, retryBackoff: true, expireInMinutes: 30 });
+      });
       const cleanup = await drainMediaCleanup(getDb(), getMediaStorage()).catch(() => ({ removed: 0, failed: 1 }));
       if (cleanup.failed) console.error("Media cleanup failed; durable requests retained for retry");
       await dispatchRematches();

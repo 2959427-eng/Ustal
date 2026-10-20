@@ -51,7 +51,7 @@ BEGIN
   NEW.subject_user_ids := canonical;
   -- Consistent sorted user-before-sidecar order. No user locks over HTTP or ordinary state updates.
   FOREACH subject IN ARRAY canonical LOOP
-    SELECT status INTO st FROM users WHERE id=subject FOR UPDATE;
+    SELECT status INTO st FROM users WHERE id=subject FOR SHARE;
     IF st IS DISTINCT FROM 'active' THEN RAISE EXCEPTION 'account is not active' USING ERRCODE='UX001'; END IF;
   END LOOP;
   RETURN NEW;

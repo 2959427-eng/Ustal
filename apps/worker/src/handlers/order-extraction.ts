@@ -1,3 +1,5 @@
+import { assertConsentResultCommit } from "../worker-consent.js";
+import { AiConsentDenied } from "@ustal/ai";
 import { prepareDocument, persistDocument, recordUnknownConcepts } from "../semantic.js";
 import type PgBoss from "pg-boss";
 import { and, eq } from "drizzle-orm";
@@ -96,6 +98,7 @@ async function extract(
     await db.insert(schema.aiRuns).values(buildAiRunRecord(accessMeta, accessStarted, { result: accessResult }));
     access = { ...orderAccessSchema.parse(accessResult.data), version: ORDER_ACCESS_VERSION };
   } catch (error) {
+      if (error instanceof AiConsentDenied) throw error;
     await db.insert(schema.aiRuns).values(buildAiRunRecord(accessMeta, accessStarted, { error: error instanceof Error ? error : new Error(String(error)) }));
     console.error(JSON.stringify({ event: "order_access_classification_failed", orderId: order.id, error: error instanceof Error ? error.name : "unknown" }));
   }
@@ -182,6 +185,7 @@ async function extract(
   stage("db-update:start");
   let persistedNew = false;
   await db.transaction(async (tx) => {
+    await assertConsentResultCommit(tx);
     // Lock the order before committing results; cancellation must win over a late worker.
     const [current] = await tx
       .select()
@@ -259,6 +263,7 @@ export async function handleOrderExtraction(
   try {
     return await extract(job, stage);
   } catch (error) {
+      if (error instanceof AiConsentDenied) throw error;
     const message = (error instanceof Error ? error.message : "Unknown error")
       .replace(/https?:\/\/\S+/g, "[URL]")
       .replace(/Bearer \S+|sk-[\w-]+/gi, "[REDACTED]")

@@ -1,10 +1,11 @@
+import { wakeConsentWork } from "./consent-blocked-work.js";
 import { createHash } from "node:crypto";
 import { getSql } from "./client.js";
 import { canonicalRecipientEndpoint } from "@ustal/config";
 import postgres from "postgres";
 import { loadDatabaseUrl } from "./env.js";
 
-// Infrastructure only: this module does NOT authorize or guard actual outbound AI calls yet.
+// Registry evidence never implies approval by itself; explicit dispatch enforcement uses the shared batch authorizer.
 export function disclosureHash(content: unknown): string {
   const canonical = (value: unknown): string => {
     if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
@@ -43,6 +44,7 @@ export async function decideConsent(userId: string, input: ConsentDecision) {
     // Same lock deletion uses; no grant can commit after deleted-user transition.
     const [user] = await tx`SELECT status FROM users WHERE id=${userId} FOR UPDATE`;
     if (user?.status !== "active") throw new ConsentError(401, "unauthorized");
+    await tx`SELECT pg_advisory_xact_lock(hashtextextended(${userId},17))`;
     const [revision] = await tx`SELECT coalesce(max(seq), 0)::integer AS revision FROM consent_decisions WHERE user_id=${userId}`;
     const currentRevision = revision!.revision as number;
     if (input.expectedRevision !== currentRevision) throw new ConsentError(409, "consent_revision_conflict");
@@ -58,6 +60,10 @@ export async function decideConsent(userId: string, input: ConsentDecision) {
     const next = currentRevision + 1;
     await tx`INSERT INTO consent_decisions (user_id, actor_user_id, seq, policy_id, policy_hash, decision)
       VALUES (${userId}, ${userId}, ${next}, ${input.policyId}, ${input.policyHash}, ${input.decision})`;
+    if (input.decision === "grant") {
+      const [table] = await tx`SELECT to_regclass('ai_consent_blocked_work') IS NOT NULL AS present`;
+      if (table?.present) await wakeConsentWork(userId, policy.purpose as string, tx);
+    }
     return { changed: true, revision: next };
   });
 }
@@ -114,7 +120,7 @@ async function readAuthorizationSnapshot(ids: string[], p: PublishedAiDisclosure
         revision.current_revision
       -- Bind one JSON scalar: sql.array() on a brand-new postgres.js client can infer scalar text
       -- before its array OID map is ready, producing 22P02 on the first permission check.
-      FROM (SELECT value::uuid AS user_id FROM jsonb_array_elements_text(${sql.json(ids)}::jsonb)) subjects
+      FROM (SELECT value::uuid AS user_id FROM jsonb_array_elements_text(${JSON.stringify(ids)}::text::jsonb)) subjects
       LEFT JOIN users u ON u.id=subjects.user_id
       LEFT JOIN publication pub ON true
       LEFT JOIN LATERAL (
@@ -135,7 +141,7 @@ async function readAuthorizationSnapshot(ids: string[], p: PublishedAiDisclosure
 /** Publication and permission are read together in ONE fresh dedicated-pool statement, never an ambient run transaction.
  * `actual` MUST come from server-owned SDK configuration, not request or publication values.
  * No positive permission cache, no real approved content, no runtime activation in this scope. */
-export function createConsentBatchAuthorizer(actual: Readonly<ActualRecipientConfiguration>) {
+export function createConsentBatchAuthorizer(actual: Readonly<ActualRecipientConfiguration>, observe?: (snapshot: { publication: Readonly<PublishedAiDisclosure>; revisions: ReadonlyArray<{ userId: string; revision: number }> }) => void) {
   const fixedActual = Object.freeze({ ...actual });
   return async (input: BatchAuthorizationInput): Promise<boolean> => {
     const p = input.publication;
@@ -158,6 +164,25 @@ export function createConsentBatchAuthorizer(actual: Readonly<ActualRecipientCon
           typeof r.recipientBinding !== "string" || !digest.test(r.recipientBinding)) return false;
       try { canonicalRecipientEndpoint(r.endpoint); return true; } catch { return false; }
     })) return false;
-    return dispatch.recipients.filter(r => bindingMatches(fixedActual, r)).length === 1;
+    if (dispatch.recipients.filter(r => bindingMatches(fixedActual, r)).length !== 1) return false;
+    observe?.({ publication: p, revisions: rows.map(row => ({ userId: row.user_id as string, revision: row.current_revision as number })) });
+    return true;
   };
+}
+
+/** Same bounded admission pool as authorization; never queue behind long matching transactions. */
+export async function readCurrentConsentPublication(purpose: string) {
+  if (!/^[a-z0-9][a-z0-9_.-]{0,99}$/.test(purpose)) throw new ConsentAuthorizationUnavailable();
+  if (authorizationInFlight >= 2) throw new ConsentAuthorizationUnavailable();
+  authorizationInFlight++;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const sql = getAuthorizationSql();
+    const pending = sql`SELECT id,content_hash,purpose FROM consent_disclosures WHERE purpose=${purpose} AND status='approved' AND is_current`;
+    const rows = await Promise.race([pending, new Promise<never>((_resolve,reject) => {
+      timer=setTimeout(()=>{pending.cancel();reject(new ConsentAuthorizationUnavailable());},3000);
+    })]);
+    return rows[0] as { id: string; content_hash: string; purpose: string } | undefined;
+  } catch { throw new ConsentAuthorizationUnavailable(); }
+  finally { if (timer) clearTimeout(timer); authorizationInFlight--; }
 }

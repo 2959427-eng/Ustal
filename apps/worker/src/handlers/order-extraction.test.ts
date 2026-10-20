@@ -27,6 +27,7 @@ vi.mock("@ustal/database", () => {
 vi.mock("drizzle-orm", () => ({ eq: vi.fn(), and: vi.fn() }));
 vi.mock("@ustal/config", () => ({ getRuntimeConfig: () => ({ ai: { models: { embedding: "test" } } }) }));
 vi.mock("@ustal/ai", () => ({
+  AiConsentDenied: class AiConsentDenied extends Error {},
   getAiProviders: () => ({
     extraction: { extractOrder: mocks.extract },
     moderation: { moderate: mocks.moderate },

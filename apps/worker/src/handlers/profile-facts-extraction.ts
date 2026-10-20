@@ -1,3 +1,5 @@
+import { assertConsentResultCommit } from "../worker-consent.js";
+import { AiConsentDenied } from "@ustal/ai";
 import type PgBoss from "pg-boss";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import {
@@ -95,6 +97,7 @@ export async function handleProfileFactsExtraction(
     await db.insert(schema.aiRuns).values(buildAiRunRecord(meta, started, { result }));
     facts = profileFactsExtractionSchema.parse(result.data).facts;
   } catch (error) {
+      if (error instanceof AiConsentDenied) throw error;
     await db.insert(schema.aiRuns).values(buildAiRunRecord(meta, started, { error: new Error(technical(error)) }));
     console.error(JSON.stringify({ event: "profile_facts_extraction_failed", sourceInputId: input.id, extractionId: extraction.id, error: technical(error) }));
     return finish("failed", technical(error));
@@ -106,6 +109,7 @@ export async function handleProfileFactsExtraction(
     console.info(JSON.stringify({ event: "profile_facts_rejected", sourceInputId: input.id, extractionId: extraction.id, rejected }));
 
   return db.transaction(async (tx) => {
+    await assertConsentResultCommit(tx);
     // Serialises fact writes per user (key 2: independent of the profile-extraction lock, key 0).
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.userId}, 2))`);
     const [current] = await tx.select().from(schema.profileFactExtractions)

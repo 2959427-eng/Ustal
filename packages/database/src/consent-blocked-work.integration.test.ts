@@ -110,7 +110,7 @@ describe.sequential("isolated dormant sidecar primitives", () => {
     const [cap] = await sql`SELECT extract(epoch FROM next_probe_at-clock_timestamp()) AS delay FROM ai_consent_blocked_work WHERE id=${f.id}`;
     expect(Number(cap!.delay)).toBeGreaterThan(898); expect(Number(cap!.delay)).toBeLessThanOrEqual(900);
     await obsoleteConsentWork(f.input.kind,f.input.sourceId,null);
-    const [evidence] = await sql`SELECT count(*)::int AS n FROM consent_decisions`; expect(evidence!.n).toBe(0);
+    const [evidence] = await sql`SELECT count(*)::int AS n FROM consent_decisions WHERE user_id IN (${f.input.subjectUserIds[0]!},${f.input.subjectUserIds[1]!})`; expect(evidence!.n).toBe(0);
   });
   it("source replacement makes only old intent obsolete and fences its in-flight ack", async () => {
     const f = await ready(), old = await claimId(f.id);

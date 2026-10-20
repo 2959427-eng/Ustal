@@ -1,3 +1,7 @@
+# AI_HANDOFF - 2026-10-20 - Codex: consent worker integration (local only)
+
+Explicit enforced-mode trusted job owners, fresh pair/SDK checks, typed durable pause, short result permission fences, grant wake and bounded restart dispatcher. No matching/ontology/resource semantics changes. Real two-process local restart PASS (0 requests without grant; 1 after grant; 2 jobs; 0 failed). SQL source snapshot, epoch/regrant, publication/recipient replacement, cache and author-deletion concurrency regressions included. Independent read-only audit: no confirmed blockers. Full combined-candidate suites still required; no production/legal activation, main merge, push or deploy. Details docs/consent-worker-lifecycle.md.
+
 # AI_HANDOFF - 2026-10-20 - Codex: dormant blocked-work independent review
 
 Separate review branch based on f7924aa. Two isolated-DB RED reproductions fixed: grant-before-insert lost wake and repeated denial after resumed execution. Stable execution UUID is now part of immutable intent; new pauses receive one fresh probe before waiting. No worker/queue/API activation. Tests 17/17, targeted API16/16, database typecheck, Drizzle check and actual forward0028->0029 with preserved evidence PASS. Details docs/consent-blocked-work.md. No push/deploy/production actions.

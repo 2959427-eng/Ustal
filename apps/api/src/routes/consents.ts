@@ -1,3 +1,4 @@
+import { loadEnv } from "@ustal/config";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { ConsentError, decideConsent, readConsents } from "../lib/consents.js";
@@ -7,11 +8,11 @@ const decisionSchema = z.object({
   decision: z.enum(["grant", "revoke"]), expectedRevision: z.number().int().min(0).max(2147483646),
 }).strict();
 
-// Not registered in app.ts in this scope. No registration changes or actual provider enforcement.
+// Registered only with explicit enforced consent configuration; login/lifecycle remain available.
 export default async function consentRoutes(app: FastifyInstance) {
   app.get("/me/consents", { preHandler: app.authenticate }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
-    try { return await readConsents(request.userId); }
+    try { return { ...await readConsents(request.userId), outboundEnforcement: loadEnv().USTAL_AI_CONSENT_MODE === "enforced" }; }
     catch (error) {
       if (error instanceof ConsentError) return reply.code(error.status).send({ error: { code: error.code } });
       throw error;

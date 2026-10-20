@@ -1,3 +1,4 @@
+import { assertConsentResultCommit } from "../worker-consent.js";
 import type PgBoss from "pg-boss";
 import { eq } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
@@ -62,10 +63,13 @@ async function transcribe(input: { id: string; audioMediaId: string }, traceId: 
   const sttResult = await ai.stt.transcribe({ filePath, mimeType: media.mimeType }, sttMeta);
   await db.insert(schema.aiRuns).values(buildAiRunRecord(sttMeta, sttStarted, { result: sttResult }));
 
-  await db
+  await db.transaction(async (tx) => {
+    await assertConsentResultCommit(tx);
+  await tx
     .update(schema.profileSourceInputs)
     .set({ transcript: sttResult.data.transcript, status: "awaiting_review" })
     .where(eq(schema.profileSourceInputs.id, input.id));
+  });
 
   return { transcript: sttResult.data.transcript };
 }

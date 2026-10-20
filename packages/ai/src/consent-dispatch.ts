@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-/** Dormant transport infrastructure: no DB authorizer, activation or worker context integration. */
+/** Bootstrap-controlled transport enforcement. Registry approvals and trusted job contexts are supplied by the worker. */
 export interface AiConsentContext {
   subjectUserIds: readonly string[]; purpose: string; operation: string; traceId: string;
 }
@@ -15,6 +15,7 @@ export type ConsentAuthorizer = (input: {
 }) => Promise<boolean>;
 interface DispatchConfiguration {
   mode: "off" | "enforced"; publication?: ConsentPublication; authorize?: ConsentAuthorizer;
+  resolvePublication?: (purpose: string) => Promise<ConsentPublication | undefined>;
 }
 type DenialReason = "context_missing" | "context_invalid" | "publication_missing" | "publication_mismatch" |
   "authorizer_missing" | "not_granted" | "check_unavailable" | "invalid_authorizer_result";
@@ -65,11 +66,18 @@ function endpoint(value: string): URL | null {
 }
 /** This does NOT read DB or infer a real vendor approval. A future trusted authorizer must verify it. */
 async function authorizeDispatch(identity: { provider: string; endpoint: string }, actualRequest = false): Promise<void> {
-  if (configuration.mode === "off") return;
+  if (configuration.mode === "off") {
+    if (process.env.USTAL_AI_CONSENT_MODE === "enforced") deny("authorizer_missing", true);
+    return;
+  }
   const state = storage.getStore();
   if (!state) deny("context_missing");
   if (state.denial) throw state.denial;
-  const publication = configuration.publication;
+  let publication = configuration.publication;
+  if (configuration.resolvePublication) {
+    try { publication = await configuration.resolvePublication(state.context.purpose); }
+    catch { deny("check_unavailable", true); }
+  }
   if (!publication || publication.approved !== true || !uuid.test(publication.policyId) || !digest.test(publication.policyHash) ||
       !digest.test(publication.recipientBinding) || !label.test(publication.purpose)) deny("publication_missing");
   const declared = endpoint(publication.endpoint), target = endpoint(identity.endpoint);
@@ -83,10 +91,18 @@ async function authorizeDispatch(identity: { provider: string; endpoint: string 
   let result: boolean;
   try { result = await authorize(Object.freeze({ subjectUserIds: state.context.subjectUserIds, publication,
     operation: state.context.operation, traceId: state.context.traceId })); }
-  catch { deny("check_unavailable", true); }
+  catch (error) {
+    if (error instanceof AiConsentDenied) { state.denial = error; throw error; }
+    deny("check_unavailable", true);
+  }
   if (typeof result !== "boolean") deny("invalid_authorizer_result", true);
   if (!result) deny("not_granted");
   if (state.denial) throw state.denial;
+}
+
+/** Server-side preflight; does not send data or authorize a later write. */
+export async function assertAiConsentDispatch(identity: { provider: string; endpoint: string }): Promise<void> {
+  await authorizeDispatch(identity);
 }
 
 /** Actual SDK fetch: checked for EVERY request/transport retry, not merely the first model call. */
@@ -98,6 +114,10 @@ export const consentGuardedOpenAiFetch: typeof fetch = async (input, init) => {
   return globalThis.fetch(input, configuration.mode === "enforced" ? { ...init, redirect: "error" } : init);
 };
 
+// OpenAI multipart support probe can use the native Response constructor instead of
+// issuing a synthetic data:, fetch through the outbound consent guard. No URL bypass.
+Object.defineProperty(consentGuardedOpenAiFetch, "Response", { value: Response });
+
 /** Covers directly exported public providers, audio pre-fetch and swallowed nested verifier errors. */
 export function guardAiProvider<T extends object>(provider: T, identity: () => { provider: string; endpoint: string }): T {
   const wrappers = new Map<PropertyKey, unknown>();
@@ -106,7 +126,7 @@ export function guardAiProvider<T extends object>(provider: T, identity: () => {
       const method: unknown = Reflect.get(target, property, receiver);
       if (typeof method !== "function") return method;
       if (!wrappers.has(property)) wrappers.set(property, async (...args: unknown[]) => {
-        if (configuration.mode === "off") return Reflect.apply(method, target, args);
+        if (configuration.mode === "off" && process.env.USTAL_AI_CONSENT_MODE !== "enforced") return Reflect.apply(method, target, args);
         const state = storage.getStore();
         await authorizeDispatch(identity());
         try {

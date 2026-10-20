@@ -1,3 +1,4 @@
+import { assertConsentResultCommit, consentSourceBlocked } from "./worker-consent.js";
 import { randomUUID } from "node:crypto";
 import type PgBoss from "pg-boss";
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
@@ -59,6 +60,7 @@ export async function rebuildProfileIfNeeded(userId: string, traceId: string = r
   }
 
   return db.transaction(async (tx) => {
+    await assertConsentResultCommit(tx);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
     const current = await loadCurrentProfile(tx, userId);
     if (current?.id !== base.id || current.status !== base.status)
@@ -136,6 +138,6 @@ export async function dispatchProfileRebuilds(enqueue: (userId: string) => Promi
         and not exists (select 1 from capability_profiles cp where cp.source_input_id = psi.id and cp.status <> 'invalidated')
     limit 20`);
   const users = (rows as unknown as Array<{ user_id: string }>).map((r) => r.user_id);
-  for (const userId of users) await enqueue(userId);
+  for (const userId of users) if (!await consentSourceBlocked("profile_rebuild", userId)) await enqueue(userId);
   return users.length;
 }

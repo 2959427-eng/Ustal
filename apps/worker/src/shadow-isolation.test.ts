@@ -18,6 +18,8 @@ const allowed = [
   "apps/worker/src/reprocess-facts.ts",
   "apps/worker/src/reprocess-facts-cli.ts",
   "apps/worker/src/index.ts",
+  "apps/worker/src/worker-consent.ts", // job kind and source metadata only
+  "packages/database/src/consent-blocked-work.ts", // job kind metadata only
   "apps/api/src/lib/profile-facts.ts",
   "apps/api/src/routes/profile.ts", // enqueue only (asserted below)
   "packages/database/src/schema.ts",
@@ -44,6 +46,10 @@ describe("profile_facts shadow isolation", () => {
       .map((p) => p.slice(root.length + 1).replace(/\\/g, "/"))
       .filter((p) => !p.includes("/migrations/") && !allowed.includes(p) && pattern.test(readFileSync(join(root, p), "utf8")));
     expect(offenders).toEqual([]);
+  });
+  it("consent metadata never reads shadow fact values", () => {
+    for (const p of ["apps/worker/src/worker-consent.ts", "packages/database/src/consent-blocked-work.ts"])
+      expect(readFileSync(join(root,p),"utf8")).not.toMatch(/schema\.profileFacts|schema\.profileFactExtractions|from\s+profile_facts\b|from\s+profile_fact_extractions\b/i);
   });
   it("the profile route only enqueues the job; it never selects facts", () => {
     const src = readFileSync(join(root, "apps/api/src/routes/profile.ts"), "utf8");

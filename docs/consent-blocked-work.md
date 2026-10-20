@@ -47,7 +47,7 @@ identity) needs a separately reviewed pause strategy; never fabricate a policy U
 
 ## Deleted-user and lock ordering
 
-INSERT guard canonicalizes UUID subjects, then locks active user rows in sorted order BEFORE inserting a sidecar row.
+INSERT guard canonicalizes UUID subjects, then takes shared locks on active user rows in sorted order BEFORE inserting a sidecar row.
 Status=deleted transition deletes all matching sidecar rows (waiting/leased/completed) in the same transaction.
 Concurrent insert either commits first and is removed, or sees deleted status and fails UX001.
 State-only UPDATE validates identity immutability but takes NO user lock. This avoids own-user grant -> wake-row
@@ -86,3 +86,5 @@ Updated fixture `ustal_consent_blocked_review_v2_20261020_test`: 17/17 PASS. Dat
 Logs are outside Git. These primitives remain disconnected from actual workers and do not establish feature readiness.
 
 Fresh root verification: 0028 -> updated 0029 preserves existing user/publication/append-only evidence; targeted account-deletion and consent API regressions 16/16 PASS. All DB fixtures are local and synthetic. No production migration applied.
+
+Worker integration review uses FOR SHARE for sidecar insertion and result fences: compatible with existing FK KEY SHARE, conflicting with consent/deletion/status changes. This avoids upgrading matching-held FK locks to exclusive user locks. The migration must be applied fresh; it has not been deployed.

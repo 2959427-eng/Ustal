@@ -19,6 +19,8 @@ const envSchema = z
     ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().default(15),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(30),
 
+    USTAL_AI_CONSENT_MODE: z.enum(["off", "enforced"]).default("off"),
+    USTAL_AI_CONSENT_PURPOSE: z.preprocess(v => v === "" ? undefined : v, z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,99}$/).optional()),
     AI_PROVIDER: z.enum(["openai", "mock"]).default("mock"),
     OPENAI_API_KEY: z.string().optional(),
     // Пустое значение (как в .env.example: "OPENAI_BASE_URL=") = не задано. Без этого

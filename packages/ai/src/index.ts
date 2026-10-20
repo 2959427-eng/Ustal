@@ -5,7 +5,7 @@ import { openAiProviders } from "./providers/openai.js";
 
 export * from "./types.js";
 export { deriveOpenAiRecipientConfiguration, type ActualRecipientConfiguration } from "./recipient-binding.js";
-export { AiConsentDenied, configureConsentDispatch, withAiConsentContext, type AiConsentContext, type ConsentPublication, type ConsentAuthorizer } from "./consent-dispatch.js";
+export { AiConsentDenied, assertAiConsentDispatch, configureConsentDispatch, withAiConsentContext, type AiConsentContext, type ConsentPublication, type ConsentAuthorizer } from "./consent-dispatch.js";
 export * from "./record-run.js";
 export { mockProviders } from "./providers/mock.js";
 export { reviewPipelineFingerprint, fingerprintReviewPipeline, collectReviewSources, REVIEW_FINGERPRINT_VERSION, type ReviewPipelineDescriptorInput } from "./review-fingerprint.js";

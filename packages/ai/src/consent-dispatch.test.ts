@@ -28,6 +28,25 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(
 const embed = () => providers.openAiEmbedding.embed(["PRIVATE SOURCE"], meta);
 
 describe("central consent dispatcher, actual SDK with fake network only", () => {
+  it("inherited enforced configuration cannot bypass missing CLI bootstrap", async () => {
+    vi.stubEnv("USTAL_AI_CONSENT_MODE", "enforced");
+    await expect(embed()).rejects.toBeInstanceOf(guard.AiConsentDenied);
+    expect(transport).not.toHaveBeenCalled();
+  });
+  it("resolves current publication for every dispatch instead of trusting an old bootstrap version", async () => {
+    let current=publication;
+    guard.configureConsentDispatch({mode:"enforced",resolvePublication:async()=>current,authorize:async input=>input.publication.policyHash===publication.policyHash});
+    await guard.withAiConsentContext(context,embed);
+    current={...publication,policyHash:"c".repeat(64)};
+    await expect(guard.withAiConsentContext(context,embed)).rejects.toBeInstanceOf(guard.AiConsentDenied);
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+  it("typed epoch denial stays consent_required rather than technical outage", async () => {
+    const denied=new guard.AiConsentDenied("consent_required","not_granted");
+    guard.configureConsentDispatch({mode:"enforced",publication,authorize:async()=>{throw denied;}});
+    await expect(guard.withAiConsentContext(context,embed)).rejects.toBe(denied);
+    expect(transport).not.toHaveBeenCalled();
+  });
   it.each([{ status: 307, mode: "enforced" }, { status: 308, mode: "enforced" }, { status: 307, mode: "off" }] as const)("$mode mode HTTP $status redirect behavior", async ({ status, mode }) => {
     let unapprovedRequests = 0;
     const server = createServer((request, response) => {

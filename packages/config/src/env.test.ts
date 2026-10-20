@@ -47,3 +47,8 @@ describe("production startup guard", () => {
     expect(() => loadEnv({ ...production, [key]: value })).toThrow("Invalid environment configuration");
   });
 });
+
+describe("explicit consent worker configuration",()=>{
+ it("defaults off and accepts an empty optional purpose without fabricating one",()=>{expect(loadEnv({...base,USTAL_AI_CONSENT_PURPOSE:""}).USTAL_AI_CONSENT_MODE).toBe("off");expect(loadEnv({...base,USTAL_AI_CONSENT_PURPOSE:""}).USTAL_AI_CONSENT_PURPOSE).toBeUndefined();});
+ it("rejects invalid mode/purpose and preserves explicit enforced configuration",()=>{expect(()=>loadEnv({...base,USTAL_AI_CONSENT_MODE:"yes"})).toThrow();expect(()=>loadEnv({...base,USTAL_AI_CONSENT_PURPOSE:"bad purpose"})).toThrow();expect(loadEnv({...base,USTAL_AI_CONSENT_MODE:"enforced",USTAL_AI_CONSENT_PURPOSE:"synthetic-purpose"}).USTAL_AI_CONSENT_MODE).toBe("enforced");});
+});

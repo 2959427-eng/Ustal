@@ -1,3 +1,5 @@
+import { AiConsentDenied } from "@ustal/ai";
+import { workerConsentEnforced } from "./worker-consent.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
@@ -84,6 +86,7 @@ export async function loadPendingProfileInputs(q: PendingQuery = {}): Promise<Pe
   if (q.after)
     filters.push(sql`and (psi.created_at, psi.id) > (select created_at, id from profile_source_inputs where id = ${q.after})`);
   if (q.only) filters.push(sql`and r.state is distinct from 'exhausted'`);
+  if (q.only === "due" && workerConsentEnforced()) filters.push(sql`and not exists (select 1 from ai_consent_blocked_work b where b.source_id=psi.id and b.kind in ('profile_transcribe','profile_extract') and b.state in ('waiting','ready','leased'))`);
   if (q.only === "due")
     filters.push(sql`and coalesce(j.live, 0) = 0
       and (r.lease_until is null or r.lease_until <= now())
@@ -170,6 +173,10 @@ async function finishAttempt(stage: RecoveryStage, sourceInputId: string, owner:
   if (error === undefined) {
     await getDb().update(schema.profileInputRecovery).set({ state: "succeeded", succeededAt: sql`now()`, failedAttempts: 0,
       leaseUntil: null, leaseOwner: null, updatedAt: sql`now()` }).where(where);
+    return;
+  }
+  if (error instanceof AiConsentDenied) {
+    await getDb().update(schema.profileInputRecovery).set({ state: "retrying", leaseUntil: null, leaseOwner: null, updatedAt: sql`now()` }).where(where);
     return;
   }
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);

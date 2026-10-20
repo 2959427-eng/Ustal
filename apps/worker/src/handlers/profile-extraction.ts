@@ -1,3 +1,5 @@
+import { assertConsentResultCommit } from "../worker-consent.js";
+import { AiConsentDenied } from "@ustal/ai";
 import { priorFactsFromRows, prepareDocument, persistDocument, recordUnknownConcepts } from "../semantic.js";
 import { planNegativeOverrides, scopeRefusalsOfPriorSkills, unmappedResourcesToCarry } from "../profile-negatives.js";
 import { carryForwardProfileItems, explicitLabelKeys } from "../profile-merge.js";
@@ -83,6 +85,7 @@ export async function handleProfileExtraction(
       await withRecoveryTracking("extraction", { id: earlier.id, userId },
         () => extractWithRebase({ ...job, data: { userId, sourceInputId: earlier.id } }));
     } catch (error) {
+      if (error instanceof AiConsentDenied) throw error;
       const stillPending = (await earlierPendingInputs(userId, sourceInputId)).some((p) => p.id === earlier.id);
       if (stillPending) throw new EarlierInputFailed(earlier.id, error);
     }
@@ -106,6 +109,7 @@ export async function runProfileExtractionJob(job: PgBoss.Job<ProfileExtractionJ
   try {
     return await handleProfileExtraction(job);
   } catch (error) {
+      if (error instanceof AiConsentDenied) throw error;
     if (error instanceof ProfileInputExhausted) {
       // Лимит неудач исчерпан: задача завершается без ошибки — pg-boss не повторяет, AI не вызывается.
       return { skipped: "recovery_exhausted" as const };
@@ -129,6 +133,7 @@ async function extractWithRebase(job: PgBoss.Job<ProfileExtractionJobData>) {
   for (let attempt = 0; ; attempt++) {
     try { return await extractProfile(job); }
     catch (error) {
+      if (error instanceof AiConsentDenied) throw error;
       if (!(error instanceof ProfileBaseChanged) || attempt >= 4) throw error;
     }
   }
@@ -234,6 +239,7 @@ async function extractProfile(job: PgBoss.Job<ProfileExtractionJobData>) {
   if (!incremental) scopeRefusalsOfPriorSkills(prepared.facts, prior);
   let created = false;
   const result = await db.transaction(async (tx) => {
+    await assertConsentResultCommit(tx);
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${job.data.userId}, 0))`,
     );

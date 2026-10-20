@@ -1,3 +1,4 @@
+import { assertConsentResultCommit, consentSourceBlocked } from "../worker-consent.js";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type PgBoss from "pg-boss";
 import { getBoss, JOB_TYPES } from "@ustal/queue";
@@ -46,6 +47,7 @@ export async function handleProfileEmbeddingRefresh(job: PgBoss.Job<{ userId: st
     if (vectors.length !== missing.length + 1 || vectors.some((v) => v.length !== 1536 || !v.some((x) => x !== 0)))
       throw new Error("Invalid semantic embeddings");
     const written = await db.transaction(async (tx) => {
+    await assertConsentResultCommit(tx);
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
       const now = await currentApplied(tx, userId);
       if (now?.id !== profile.id) return false; // новая версия за время вызова — считать заново
@@ -80,6 +82,6 @@ export async function enqueueEmbeddingRefresh(userId: string) {
 export async function dispatchEmbeddingRefreshes(enqueue: (userId: string) => Promise<unknown> = enqueueEmbeddingRefresh) {
   const rows = await getDb().select({ userId: schema.capabilityProfiles.userId }).from(schema.capabilityProfiles)
     .where(and(eq(schema.capabilityProfiles.embeddingStale, true), eq(schema.capabilityProfiles.status, "applied"))).limit(20);
-  for (const r of rows) await enqueue(r.userId);
+  for (const r of rows) if (!await consentSourceBlocked("embedding_refresh", r.userId)) await enqueue(r.userId);
   return rows.length;
 }

@@ -1,3 +1,4 @@
+import { assertConsentResultCommit } from "../worker-consent.js";
 import type PgBoss from "pg-boss";
 import { and, eq } from "drizzle-orm";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
@@ -41,10 +42,13 @@ export async function handleOrderTranscribe(job: PgBoss.Job<OrderTranscribeJobDa
   const sttResult = await ai.stt.transcribe({ filePath, mimeType: audio.mimeType }, sttMeta);
   await db.insert(schema.aiRuns).values(buildAiRunRecord(sttMeta, sttStarted, { result: sttResult }));
 
-  await db
+  await db.transaction(async (tx) => {
+    await assertConsentResultCommit(tx);
+  await tx
     .update(schema.orders)
     .set({ transcript: sttResult.data.transcript, sourceStatus: "awaiting_review" })
     .where(eq(schema.orders.id, order.id));
+  });
 
   return { transcript: sttResult.data.transcript };
 }

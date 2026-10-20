@@ -1,3 +1,5 @@
+import { AiConsentDenied } from "@ustal/ai";
+import { consentPair } from "./worker-consent.js";
 import { sql } from "drizzle-orm";
 import { schema, type Database } from "@ustal/database";
 import { buildAiRunRecord, getAiProviders } from "@ustal/ai";
@@ -166,13 +168,15 @@ export async function deliverGeneralAccess(db: Tx, input: GeneralAccessInput): P
     if (!refusedBy && refusals.length) {
       // Variant B: verdicts already memoized for (restriction text, order text, prompt, model) are reused and do not
       // consume the budget; only the restrictions that still need a real AI call are counted against it.
+      let budgetSkipped = false;
+      const consentCheck = await consentPair(u.user_id, async () => {
       const checks = await Promise.all(refusals.map(async (r) => {
         const identity: ReviewCacheIdentity = { reviewType: "general_access_refusal_check", promptVersion: REFUSAL_CHECK_PROMPT_VERSION,
           schemaVersion: "v1", input: { refusal: r.evidence || r.phrase, order: [input.orderText] } };
         const key = reviewCacheKey(identity);
         return { r, identity, key, cached: await readCachedReview<RefusalVerdict>(key) };
       }));
-      if (reviews + checks.filter((c) => !c.cached).length > input.reviewBudget) continue; // не проверено — не показываем в этом прогоне
+      if (reviews + checks.filter((c) => !c.cached).length > input.reviewBudget) { budgetSkipped = true; return; } // не проверено — не показываем в этом прогоне
       for (const { r, identity, key, cached } of checks) {
         if (cached) {
           cacheHits++;
@@ -191,6 +195,7 @@ export async function deliverGeneralAccess(db: Tx, input: GeneralAccessInput): P
           verdicts.push({ refusal: r.phrase, involves: v.involves, reason: v.reason });
           if (v.involves) { refusedBy = `refusal:${r.phrase}`; break; }
         } catch (error) {
+          if (error instanceof AiConsentDenied) throw error;
           await db.insert(schema.aiRuns).values(buildAiRunRecord(meta, started, { error: error instanceof Error ? error : new Error(String(error)) }));
           verdicts.push({ refusal: r.phrase, involves: null, reason: "check_failed" });
           refusedBy = "refusal_check_failed";
@@ -198,6 +203,8 @@ export async function deliverGeneralAccess(db: Tx, input: GeneralAccessInput): P
           break;
         }
       }
+      });
+      if (!consentCheck.allowed || budgetSkipped) continue;
     }
     const audit = { path: "general_access", accessLevel: input.access.accessLevel, accessVersion: input.access.version ?? null,
       accessReason: input.access.reason, refusalsChecked: verdicts, ...(refusedBy ? { refusedBy } : {}) };

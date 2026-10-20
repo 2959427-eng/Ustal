@@ -31,7 +31,7 @@ export async function pauseConsentWork(input: BlockedWorkInput, reason: "consent
   // jsonb expansion works even on the first postgres.js connection, before array OID discovery.
   const rows = await sql`INSERT INTO ai_consent_blocked_work(logical_key,kind,source_id,execution_id,source_version_hash,subject_user_ids,purpose,policy_id,policy_hash,recipient_binding,reason,state,next_probe_at)
     VALUES(${i.logicalKey},${i.kind},${i.sourceId},${i.executionId},${i.sourceVersionHash},
-      ARRAY(SELECT jsonb_array_elements_text(${sql.json(i.subjectUserIds)})::uuid),${i.purpose},${i.policyId},${i.policyHash},${i.recipientBinding},${reason},
+      ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(i.subjectUserIds)}::text::jsonb)::uuid),${i.purpose},${i.policyId},${i.policyHash},${i.recipientBinding},${reason},
       'ready',CASE WHEN ${reason}='policy_unavailable' THEN clock_timestamp()+interval '5 seconds' ELSE clock_timestamp() END)
     ON CONFLICT(logical_key) DO NOTHING RETURNING id`;
   if (rows[0]) return { id: rows[0].id as string, inserted: true };
@@ -42,11 +42,13 @@ export async function pauseConsentWork(input: BlockedWorkInput, reason: "consent
 export type BlockedWorkClaim = { id: string; lease_token: string; wake_seq: number; source_id: string; execution_id: string; source_version_hash: string;
   subject_user_ids: string[]; kind: string; purpose: string; policy_id: string; policy_hash: string; recipient_binding: string; attempts: number };
 /** One short statement, no user locks/HTTP. Lease is bounded to 5–120 seconds. */
-export async function claimConsentWork(limit = 10, leaseSeconds = 30, sql: Executor = getSql()): Promise<BlockedWorkClaim[]> {
+export async function claimConsentWork(limit = 10, leaseSeconds = 30, sql: Executor = getSql(), purpose: string | null = null): Promise<BlockedWorkClaim[]> {
+  if (purpose !== null && !/^[a-z0-9][a-z0-9_.-]{0,99}$/.test(purpose)) throw new Error("Invalid claim purpose");
   if (!Number.isInteger(limit) || limit < 1 || limit > 25 || !Number.isInteger(leaseSeconds) || leaseSeconds < 5 || leaseSeconds > 120)
     throw new Error("Invalid claim bounds");
   return await sql`WITH due AS (SELECT id FROM ai_consent_blocked_work
-    WHERE (state='ready' AND next_probe_at <= clock_timestamp()) OR (state='leased' AND lease_until <= clock_timestamp())
+    WHERE ((state='ready' AND next_probe_at <= clock_timestamp()) OR (state='leased' AND lease_until <= clock_timestamp()))
+      AND (${purpose}::text IS NULL OR purpose=${purpose})
     ORDER BY created_at,id LIMIT ${limit} FOR UPDATE SKIP LOCKED)
     UPDATE ai_consent_blocked_work w SET state='leased',lease_token=gen_random_uuid(),lease_until=clock_timestamp()+${leaseSeconds}*interval '1 second'
     FROM due WHERE w.id=due.id RETURNING w.*` as unknown as BlockedWorkClaim[];
