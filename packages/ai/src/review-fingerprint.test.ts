@@ -27,7 +27,7 @@ describe("review pipeline fingerprint", () => {
   it("the closure contains the provider, schemas, validation and post-processing modules", () => {
     const names = closure.files.map(normalizeSourcePath);
     for (const suffix of ["packages/ai/src/providers/openai.ts", "packages/ai/src/review-constraints.ts", "packages/ai/src/evidence-validation.ts",
-      "packages/ai/src/source-evidence.ts", "packages/ai/src/consent-dispatch.ts", "packages/validation/src/semantic.ts", "packages/config/src/env.ts"])
+      "packages/ai/src/source-evidence.ts", "packages/ai/src/consent-dispatch.ts", "packages/ai/src/recipient-binding.ts", "packages/validation/src/semantic.ts", "packages/config/src/env.ts"])
       expect(names.some((n) => n.endsWith(suffix))).toBe(true);
     expect(Object.keys(closure.packages)).toEqual(expect.arrayContaining(["openai", "zod", "zod-to-json-schema"]));
   });
@@ -41,6 +41,10 @@ describe("review pipeline fingerprint", () => {
   it("central dispatch guard and public-boundary changes automatically change fingerprint", () => {
     expect(edited("consent-dispatch.ts", "if (state?.denial) throw state.denial;")).not.toBe(fp());
     expect(edited("providers/openai.ts", "fetch: consentGuardedOpenAiFetch,")).not.toBe(fp());
+  });
+  it("actual cached SDK recipient projection automatically changes fingerprint", () => {
+    expect(edited("recipient-binding.ts", "sdk.buildHeaders.call(client,")).not.toBe(fp());
+    expect(edited("providers/openai.ts", "deriveOpenAiRecipientConfigurationFromClient(getClient(),")).not.toBe(fp());
   });
   it("2: nested verifier prompts changed (main-result, scope, refusal, action) -> miss", () => {
     expect(edited("providers/openai.ts", "Classify evidence specificity, NOT a claim of inability or exclusivity.")).not.toBe(fp());

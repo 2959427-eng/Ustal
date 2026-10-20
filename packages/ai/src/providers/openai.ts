@@ -4,6 +4,7 @@ import OpenAI, { toFile } from "openai";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { loadEnv } from "@ustal/config";
 import { consentGuardedOpenAiFetch, guardAiProvider } from "../consent-dispatch.js";
+import { deriveOpenAiRecipientConfigurationFromClient, type ActualRecipientConfiguration } from "../recipient-binding.js";
 import { applyRefusalVerification, applyReviewConstraints } from "../review-constraints.js";
 import { assertGroundedEvidence, EvidenceValidationError } from "../evidence-validation.js";
 import { sourceEvidenceSpans } from "../source-evidence.js";
@@ -63,6 +64,17 @@ function getClient(): OpenAI {
     fetch: consentGuardedOpenAiFetch,
   });
   return client;
+}
+
+/** SAME cached client as actual provider dispatch; no client/reset or credentials are exposed. */
+export async function currentOpenAiRecipientConfiguration(): Promise<Readonly<ActualRecipientConfiguration>> {
+  const env = loadEnv();
+  if (env.AI_PROVIDER !== "openai") throw new Error("No real OpenAI recipient configured");
+  return deriveOpenAiRecipientConfigurationFromClient(getClient(), {
+    extraction: env.AI_MODEL_EXTRACTION, normalization: env.AI_MODEL_NORMALIZATION, review: env.AI_MODEL_SEMANTIC_REVIEW,
+    // Provider selects these literals/defaults; model config is read per operation, transport is cached.
+    moderation: env.AI_MODEL_EXTRACTION, embedding: "text-embedding-3-small", stt: "whisper-1",
+  });
 }
 
 export const RATE_CARD_MINOR_PER_1K_TOKENS = {
@@ -1287,7 +1299,7 @@ const rawOpenAiModeration: ModerationProvider = {
   },
 };
 
-const dispatchIdentity = () => ({ provider: "openai", endpoint: loadEnv().OPENAI_BASE_URL ?? "https://api.openai.com/v1" });
+const dispatchIdentity = () => ({ provider: "openai", endpoint: client?.baseURL ?? loadEnv().OPENAI_BASE_URL ?? "https://api.openai.com/v1" });
 export const openAiStt = guardAiProvider(rawOpenAiStt, dispatchIdentity);
 export const openAiExtraction = guardAiProvider(rawOpenAiExtraction, dispatchIdentity);
 export const openAiEmbedding = guardAiProvider(rawOpenAiEmbedding, dispatchIdentity);

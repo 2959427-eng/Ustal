@@ -1,0 +1,11 @@
+# Cached SDK recipient binding — local candidate, 2026-10-20
+
+Bounded closure only; no worker/matching/registration changes, activation, approved real publication, outbox or deployment. Existing SDK client construction/cache and prompts/business defaults remain unchanged. This does not provide complete consent enforcement.
+
+currentOpenAiRecipientConfiguration is now an async provider-owned helper. It obtains the SAME getClient() instance used for provider requests, uses its actual baseURL and installed SDK buildHeaders method, and returns only public endpoint plus secret-free recipient digest. SDK-effective custom header names come from the same client options (including SDK structured records, arrays/Headers/plain objects); final precedence and null deletion come from the SDK itself. Unknown SDK shapes fail closed. No cached client or test reset is exposed. Projection does not dispatch HTTP; tests use fake SDK fetch only.
+
+Transport configuration remains cached; descriptors do not reread endpoint/org/project/custom headers from a later environment. Dynamic operation model selection still follows actual per-call config; fixed provider STT/embedding literals stay fixed. High-level guard identity uses the cached baseURL when already created. Ordinary API-key/Authorization credential changes remain excluded from recipient binding; full cache fingerprint is not weakened. Pure deriveOpenAiRecipientConfiguration stays an explicit fixture/config utility, not production proof.
+
+Actual-SDK tests first reproduced wrong cached-client/env descriptor behavior, then verify cached clientA + envB still describes actual wireA, first creationB describes wireB, env-unset keeps cached headers, actual dynamic/fixed models, SDK null/unset/case precedence and credential-only binding equivalence. Import-graph/fingerprint mutation coverage includes genuine projection changes. No external AI calls.
+
+Future worker bootstrap must await the descriptor and supply it independently to DB authorizer/publication verification; no caller currently activates this. Trusted contexts, typed denial propagation before technical fail-open, queue pause/resume, whole-run consent validity and final approved content remain separate scopes. Keep this feature separate from launch preparation until complete reviewed integration.

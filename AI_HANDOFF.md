@@ -1,3 +1,11 @@
+# AI_HANDOFF — 2026-10-20 — Codex: separate cached SDK recipient binding closure
+
+Scope: `codex/consent-cached-sdk-binding-20261020`, base dormant DB authorizer `365af9b`. Production descriptor now async and provider-owned: SAME cached SDK client/baseURL/effective headers, no fresh-env routing approximation, no client/reset or credentials exposed. Dynamic per-operation model config and fixed provider literals retained; getClient body byte-identical, prompts/defaults unchanged.
+
+Tests-first cachedA/envB/header-unset mismatch RED then corrected. Actual-SDK fake transport validates cachedA stays wireA, firstB describes wireB, null/case precedence, credential-only equivalence and model selection. Full AI241/241/typecheck/diff PASS; independent root read/retest27/27 and AI typecheck PASS. Evidence outside repo; details `docs/consent-cached-sdk-binding.md`.
+
+Keep SEPARATE from launch preparation. Runtime remains OFF/unintegrated: trusted worker contexts, typed policy-denial handling, queue pause/resume, whole-run consent validity and real approved publication still required. No implicit vendor permission, merge, push, deploy or production changes. Previous records preserved.
+
 # AI_HANDOFF — 2026-10-20 — Codex: separate dormant shared consent DB authorizer
 
 Scope: `codex/consent-db-authorizer-20261020`, base SDK slice `74463b3`. Shared API-compatible consent helpers, one all-subject/publication/decision snapshot, separate bounded authorization pool and SDK-effective recipient binding. No approved real disclosure, worker/matching integration, provider activation, registration change or migration0029. Credentials are excluded only from legal-recipient binding; full cache identity remains unchanged.
