@@ -1,3 +1,11 @@
+# AI_HANDOFF — 2026-10-20 — Codex: separate dormant shared consent DB authorizer
+
+Scope: `codex/consent-db-authorizer-20261020`, base SDK slice `74463b3`. Shared API-compatible consent helpers, one all-subject/publication/decision snapshot, separate bounded authorization pool and SDK-effective recipient binding. No approved real disclosure, worker/matching integration, provider activation, registration change or migration0029. Credentials are excluded only from legal-recipient binding; full cache identity remains unchanged.
+
+Real local DB authorizer5/5 plus existing API consent/hash8/8 PASS; offline16/16, full AI236/236 and affected typechecks PASS. Independent root read/retest19/19 and typechecks PASS, no dormant-scope blocker. Root marker findings reproduced RED then fixed generically; cold-client array bind failure found by real tests then fixed within the same single-statement query. Raw evidence stays outside the repository.
+
+Keep SEPARATE from preparation16687d4. Activation still requires descriptor bound to the SAME cached SDK client/immutable bootstrap, trusted contexts, denial/pause/resume handling and cache revision integration. This is not real-vendor legal approval or outbound protection. Details: `docs/consent-db-authorizer.md`. No production, push or deploy. Previous records preserved.
+
 # AI_HANDOFF — 2026-10-20 — Codex: separate dormant SDK consent dispatch slice
 
 Scope: `codex/consent-dispatch-context-20261020`, base consent infrastructure `b45c960f`. Added explicit off-default/bootstrap-only dispatch/context infrastructure, sticky sanitized policy denial at public provider boundaries and guarded actual SDK attempts. No DB authorizer, approved real publication, worker/matching/profile context integration or production activation. Worker denial handling/cache validity/blocked-work resume remain future reviewed scopes.

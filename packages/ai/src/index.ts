@@ -4,6 +4,7 @@ import { mockProviders } from "./providers/mock.js";
 import { openAiProviders } from "./providers/openai.js";
 
 export * from "./types.js";
+export { deriveOpenAiRecipientConfiguration, currentOpenAiRecipientConfiguration, type ActualRecipientConfiguration } from "./recipient-binding.js";
 export { AiConsentDenied, configureConsentDispatch, withAiConsentContext, type AiConsentContext, type ConsentPublication, type ConsentAuthorizer } from "./consent-dispatch.js";
 export * from "./record-run.js";
 export { mockProviders } from "./providers/mock.js";
