@@ -959,3 +959,38 @@ export const mediaCleanupRequests = pgTable("media_cleanup_requests", {
   uniqueIndex("media_cleanup_storage_unique").on(t.storageProvider, t.storageKey),
   index("media_cleanup_due_idx").on(t.storageProvider, t.nextAttemptAt),
 ]);
+
+/** Dormant permission-pause sidecar. Source metadata only; no outbound queue wiring. */
+export const aiConsentBlockedWork = pgTable("ai_consent_blocked_work", {
+  id: id(),
+  logicalKey: text("logical_key").notNull(),
+  kind: text("kind").notNull(),
+  sourceId: uuid("source_id").notNull(),
+  executionId: uuid("execution_id").notNull(),
+  sourceVersionHash: text("source_version_hash").notNull(),
+  subjectUserIds: uuid("subject_user_ids").array().notNull(),
+  purpose: text("purpose").notNull(),
+  policyId: uuid("policy_id").notNull(),
+  policyHash: text("policy_hash").notNull(),
+  recipientBinding: text("recipient_binding").notNull(),
+  reason: text("reason").notNull(),
+  state: text("state").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  wakeSeq: integer("wake_seq").notNull().default(0),
+  nextProbeAt: timestamp("next_probe_at", { withTimezone: true }),
+  leaseToken: uuid("lease_token"),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  createdAt: createdAt(),
+}, t => [
+  uniqueIndex("ai_consent_blocked_logical_unique").on(t.logicalKey),
+  index("ai_consent_blocked_due").on(t.nextProbeAt, t.createdAt, t.id).where(sql`${t.state}='ready'`),
+  index("ai_consent_blocked_expired").on(t.leaseUntil, t.createdAt, t.id).where(sql`${t.state}='leased'`),
+  index("ai_consent_blocked_subjects").using("gin", t.subjectUserIds),
+  index("ai_consent_blocked_source").on(t.kind, t.sourceId),
+  check("ai_consent_blocked_kind", sql`${t.kind} IN ('profile_transcribe','profile_extract','profile_facts','profile_rebuild','embedding_refresh','order_transcribe','order_extract','matching_run')`),
+  check("ai_consent_blocked_state", sql`${t.state} IN ('waiting','ready','leased','enqueued','obsolete')`),
+  check("ai_consent_blocked_reason", sql`${t.reason} IN ('consent_required','policy_unavailable')`),
+  check("ai_consent_blocked_hashes", sql`${t.logicalKey} ~ '^[a-f0-9]{64}$' AND ${t.sourceVersionHash} ~ '^[a-f0-9]{64}$' AND ${t.policyHash} ~ '^[a-f0-9]{64}$' AND ${t.recipientBinding} ~ '^[a-f0-9]{64}$'`),
+  check("ai_consent_blocked_bounds", sql`${t.attempts}>=0 AND ${t.wakeSeq}>=0 AND cardinality(${t.subjectUserIds}) BETWEEN 1 AND 100 AND ${t.purpose} ~ '^[a-z0-9][a-z0-9_.-]{0,99}$'`),
+  check("ai_consent_blocked_lease", sql`(${t.state}='leased' AND ${t.leaseToken} IS NOT NULL AND ${t.leaseUntil} IS NOT NULL) OR (${t.state}<>'leased' AND ${t.leaseToken} IS NULL AND ${t.leaseUntil} IS NULL)`),
+]);

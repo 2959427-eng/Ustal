@@ -1,3 +1,7 @@
+# AI_HANDOFF - 2026-10-20 - Codex: dormant blocked-work independent review
+
+Separate review branch based on f7924aa. Two isolated-DB RED reproductions fixed: grant-before-insert lost wake and repeated denial after resumed execution. Stable execution UUID is now part of immutable intent; new pauses receive one fresh probe before waiting. No worker/queue/API activation. Tests 17/17, targeted API16/16, database typecheck, Drizzle check and actual forward0028->0029 with preserved evidence PASS. Details docs/consent-blocked-work.md. No push/deploy/production actions.
+
 # AI_HANDOFF — 2026-10-20 — Codex: separate cached SDK recipient binding closure
 
 Scope: `codex/consent-cached-sdk-binding-20261020`, base dormant DB authorizer `365af9b`. Production descriptor now async and provider-owned: SAME cached SDK client/baseURL/effective headers, no fresh-env routing approximation, no client/reset or credentials exposed. Dynamic per-operation model config and fixed provider literals retained; getClient body byte-identical, prompts/defaults unchanged.
