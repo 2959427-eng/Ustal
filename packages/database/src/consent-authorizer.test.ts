@@ -27,12 +27,15 @@ beforeEach(() => {
 afterEach(async () => { await closeConsentAuthorizationPool(); vi.useRealTimers(); });
 describe("atomic query contract, fake transport only (not real PostgreSQL evidence)", () => {
   it("uses exactly ONE dedicated-pool statement for all identities/publication/latest decision/revision", async () => {
-    expect(await createConsentBatchAuthorizer(actual)(input)).toBe(true);
+    expect(await createConsentBatchAuthorizer(actual)({ ...input, subjectUserIds: [ids[1]!, ids[0]!, ids[1]!] })).toBe(true);
     expect(fake.calls).toHaveLength(1);
     const query = fake.calls[0]!;
     expect(query.sql).toContain("jsonb_array_elements_text"); expect(query.sql).toContain("ORDER BY d.seq DESC LIMIT 1");
     expect(query.sql).toContain("max(seq)"); expect(query.sql).not.toMatch(/BEGIN|FOR UPDATE/);
-    expect(query.values).toContainEqual(ids);
+    expect(query.sql).toContain("::text::jsonb");
+    const subjects = query.values.filter(value => typeof value === "string" && value.startsWith("["));
+    expect(subjects).toHaveLength(1);
+    expect(JSON.parse(subjects[0] as string)).toEqual(ids);
     expect(fake.options.max).toBe(2); expect(fake.options.connect_timeout).toBe(2);
     expect(fake.options.connection.statement_timeout).toBe(2000);
     fake.rows = (fake.rows as any[]).map(row => ({ ...row, decision: "revoke" }));

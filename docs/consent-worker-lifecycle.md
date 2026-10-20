@@ -29,3 +29,21 @@ Consent decisions take the existing owner user lock then exclusive advisory perm
 Real separate-process acceptance on newly migrated local v5 DB: two actual worker index processes; missing consent0 outbound requests; worker restart plus real grant resumes exactly1 localhost fake AI request, total2 completed queue jobs, failed0. The first v4 attempt exposed unstable timestamp hashing and was stopped; its database was preserved. No production or external AI was used.
 
 Independent read-only audit confirmed0 correctness/security blockers after the concurrency corrections, conditional on final full suites. Enforced HTTP API registration/auth/grant/revoke/wakeup tests2/2 PASS. Current targeted worker16/16 includes SDK retries/epoch changes, real STT/facts, actual matching/cache and author-deletion lock barrier. Final suite totals follow in the integration acceptance record.
+
+## Final local integration acceptance - 2026-10-21
+
+Candidate branch: codex/consent-integration-20261020, prepared separately from launch preparation615a9af and worker feature9d7113c. Only merge conflicts: app route registration (both legal/web deletion and enforced consent retained) and append-only handoff history (both retained). Main and original dirty checkouts were not changed.
+
+Fresh isolated local PostgreSQL databases, actual migrations through0029, synthetic identities/publications, localhost fake AI only:
+- Worker full:357 src tests +76 tests-directory tests =433/433, sequential, no file parallelism.
+- API full219/219; shared database consent full33/33.
+- AI244/244; matching229/229; config21/21; mobile124/124.
+- All workspace typechecks, Drizzle check and API/worker build PASS.
+- Forward0028->0029 preserves existing user/publication/append-only decision evidence.
+- Real worker restart:2 processes,0 requests without grant,1 after grant,2 completed jobs,0 failed.
+
+Initial full invocation omitted synthetic JWT environment variables and was not accepted as evidence. Final candidate suites used complete test settings on fresh databases. One stale fake-SQL test expected an array instead of the now explicitly serialized JSON text scalar; it now asserts exact one bound JSON parameter, canonical sorted/deduplicated subjects and text::jsonb conversion. The real single-snapshot integration test remains unchanged and passes.
+
+Raw logs, harnesses, fixture data and manifests remain outside Git under the local release-candidates directory. No paid/live AI, push, main merge, deployment, production access or real consent approval occurred. Mobile/ontology/matching algorithm bytes are unchanged from launch preparation; provider consent wrappers intentionally change the pipeline fingerprint. Cold review cache after a future rollout is an operational cost, not permission to run a rematch now.
+
+This is a technical candidate with enforcement explicitly off by default. Before activation: approve actual disclosure/contact/recipient policy, present consent to users, apply0028/0029 and coordinate API/worker enforced configuration. Never interpret synthetic fixtures or a missing grant as approval. An already dispatched request cannot be recalled; its result is rejected if consent changes before the commit fence.
