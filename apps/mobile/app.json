@@ -2,8 +2,9 @@
   "expo": {
     "name": "USTAL",
     "slug": "ustal",
+    "owner": "kimkos1980",
     "scheme": "ustal",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,8 +17,35 @@
       "bundleIdentifier": "ru.ustal.app",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Нужен доступ к микрофону, чтобы вы могли надиктовать описание заказа или профиля вместо набора текста.",
-        "NSCameraUsageDescription": "Нужен доступ к камере, чтобы сфотографировать заказ.",
-        "NSPhotoLibraryUsageDescription": "Нужен доступ к фотографиям, чтобы прикрепить их к заказу."
+        "NSCameraUsageDescription": "Нужен доступ к камере, чтобы сфотографировать задачу для заказа или сделать фото профиля.",
+        "NSPhotoLibraryUsageDescription": "Нужен доступ к фотографиям, чтобы прикрепить их к заказу или выбрать фото профиля."
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyTrackingDomains": [],
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "C617.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -36,7 +64,12 @@
     "plugins": [
       "expo-notifications",
       "expo-router",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -46,7 +79,10 @@
       "expo-asset"
     ],
     "extra": {
-      "apiBaseUrl": "https://api.104-171-139-154.sslip.io"
+      "apiBaseUrl": "https://api.104-171-139-154.sslip.io",
+      "eas": {
+        "projectId": "89ebf4b0-85c8-499a-907c-44e2a5f8f5a0"
+      }
     }
   }
 }

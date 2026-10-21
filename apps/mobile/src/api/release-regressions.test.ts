@@ -36,7 +36,10 @@ describe("transport isolation", () => {
   vi.stubEnv("APP_ENV", "production");
   vi.stubEnv("USTAL_API_URL", "https://api.104-171-139-154.sslip.io");
   vi.stubEnv("EAS_PROJECT_ID", "");
-  expect(() => configure({ config: base })).toThrow("EAS_PROJECT_ID");
+  const unlinked = structuredClone(base);
+  delete unlinked.extra.eas;
+  expect(() => configure({ config: unlinked })).toThrow("EAS_PROJECT_ID");
+  expect(configure({ config: base }).extra.eas.projectId).toBe(base.extra.eas.projectId);
   vi.stubEnv("EAS_PROJECT_ID", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   expect(configure({ config: base }).extra.release).toBe(true);
 });
