@@ -12,6 +12,8 @@ export interface AdminSessionPayload {
   sub: string; // admin_users.id
   email: string;
   role: string;
+  /** Отпечаток хеша пароля (admin-access.ts passwordFingerprint): смена пароля отзывает сессию. */
+  pwv: string;
 }
 
 function getSecret(): string {
@@ -23,12 +25,12 @@ function getSecret(): string {
 }
 
 export function signAdminSession(payload: AdminSessionPayload): string {
-  return jwt.sign(payload, getSecret(), { expiresIn: "12h" });
+  return jwt.sign(payload, getSecret(), { algorithm: "HS256", expiresIn: "12h" });
 }
 
 export function verifyAdminSession(token: string): AdminSessionPayload | null {
   try {
-    return jwt.verify(token, getSecret()) as AdminSessionPayload;
+    return jwt.verify(token, getSecret(), { algorithms: ["HS256"] }) as AdminSessionPayload;
   } catch {
     return null;
   }
