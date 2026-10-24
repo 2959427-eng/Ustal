@@ -1,3 +1,10 @@
+## 2026-10-24 — Codex: deployed security fixes integrated locally
+
+Branch codex/security-integration-20261024 at current GitHub main f8b610db7b27c156600fa5dea32e4c4236d9b876. Original admin and relay patches applied without conflicts. Ten runtime admin files and mounted relay Caddyfile match production exactly. Local unit 14/14, lint/typecheck, integrated Docker build, original browser E2E, relay 209 checks and Linux Caddy validation passed. Details and exact file list: docs/security-fixes-integration-2026-10-24.md.
+Older dirty local main, Codex/Claude work and production were not changed. No commit/push/merge/migration/deploy. Before the next release, save and integrate this scoped candidate into main, build admin from that reviewed source, and verify the mounted relay config. Temporary production image overrides must not substitute for integrating these sources.
+
+---
+
 # AI_HANDOFF - 2026-10-20 - Codex: consent worker integration (local only)
 
 Explicit enforced-mode trusted job owners, fresh pair/SDK checks, typed durable pause, short result permission fences, grant wake and bounded restart dispatcher. No matching/ontology/resource semantics changes. Real two-process local restart PASS (0 requests without grant; 1 after grant; 2 jobs; 0 failed). SQL source snapshot, epoch/regrant, publication/recipient replacement, cache and author-deletion concurrency regressions included. Independent read-only audit: no confirmed blockers. Full combined-candidate suites still required; no production/legal activation, main merge, push or deploy. Details docs/consent-worker-lifecycle.md.

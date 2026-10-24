@@ -3,7 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb, schema } from "@ustal/database";
-import { requireAdminSession } from "../../../lib/session";
+import { requireAdminPermission } from "../../../lib/session";
 
 /**
  * Раздел 11 ТЗ: LLM не может создавать активные узлы онтологии — не
@@ -14,7 +14,7 @@ import { requireAdminSession } from "../../../lib/session";
  * узлов онтологии требует более осторожного процесса, чем один клик).
  */
 export async function mergeOntologyCandidateAction(candidateId: string, formData: FormData) {
-  const admin = requireAdminSession();
+  const admin = await requireAdminPermission("ontology.manage");
   const nodeId = String(formData.get("nodeId") ?? "");
   if (!nodeId) throw new Error("Не выбран узел онтологии");
 
@@ -32,7 +32,7 @@ export async function mergeOntologyCandidateAction(candidateId: string, formData
 }
 
 export async function rejectOntologyCandidateAction(candidateId: string) {
-  const admin = requireAdminSession();
+  const admin = await requireAdminPermission("ontology.manage");
   const db = getDb();
   await db
     .update(schema.ontologyCandidates)

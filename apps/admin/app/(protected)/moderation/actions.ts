@@ -4,7 +4,8 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb, schema } from "@ustal/database";
 import { assertOrderTransition } from "@ustal/domain";
-import { requireAdminSession } from "../../../lib/session";
+import { requireAdminPermission } from "../../../lib/session";
+import { assertOneOf, MODERATION_DECISIONS } from "../../../lib/admin-access";
 import { notifyUser } from "../../../lib/notify";
 
 export type ModerationDecision = "allow" | "allow_with_warning" | "reject";
@@ -22,7 +23,8 @@ export type ModerationDecision = "allow" | "allow_with_warning" | "reject";
  * переводит заказ в терминальный статус rejected.
  */
 export async function resolveModerationAction(orderId: string, decision: ModerationDecision, formData: FormData) {
-  const admin = requireAdminSession();
+  const admin = await requireAdminPermission("moderation.resolve");
+  decision = assertOneOf(decision, MODERATION_DECISIONS);
   const note = String(formData.get("note") ?? "");
   const db = getDb();
 
