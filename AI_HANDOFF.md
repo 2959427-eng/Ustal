@@ -1,3 +1,17 @@
+## 2026-10-25 — Codex: privacy-consent technical blockers fixed; release documents still blocked
+
+Existing worktree codex/privacy-consent-20261025, base dc8a74f. API advertises configured aiConsentPurpose; mobile selects only that approved policy and fails closed when old API omits the field. Regression cases cover multiple approved purposes, grant/deny/revoke, old versions and missing purpose. Local DB integration proves actual AI authorizer true after grant and false after revoke while unrelated consent stays effective; a version change invalidates the previous grant. Windows legal test now uses fileURLToPath with all original security assertions intact.
+Full API 210/210 (2 workers, existing isolated local DB with canonical test seed; initial unseeded run failed 3 fixture lookups), full mobile 138/138, targeted legal/consent 14/14 and mobile consent 13/13. API/mobile typecheck passed; API lint is repository no-op; mobile lint passed with 8 existing warnings. Expo production export iOS/Android passed with SDK 57 workspace CLI, offline; no EAS release. Parallel Windows test attempt exhausted resources, so the verified full run was serialized/bounded. No migrations or production access.
+Release blocker deliberately retained: no approved privacy/terms exist; publish approved documents and API before mobile, keep consent mode off. Release order is in docs/legal/README.md. No matching/worker/ontology/schema/dependency changes. Commit/push/PR authorized; merge/deploy forbidden.
+
+---
+
+## 2026-10-25 — Codex: privacy-consent preflight BLOCKED
+
+Original 24-file patch hash verified, applied unchanged on codex/privacy-consent-20261025 from main dc8a74f. Mobile 135/135, API consent/health 7/7, API/mobile typecheck, lint and Expo iOS/Android export passed. New API legal suite 6/7: URL.pathname breaks filesystem walk on Windows. Confirmed functional blocker: mobile selects arbitrary first approved policy among all purposes; revoke may target unrelated purpose and leave AI grant active. Reproduction and full evidence/order: .local-privacy/REVIEW.md and reproduce.mjs. Approved privacy/terms are absent, so publishing this mobile before API/documents would block registration. No fixes beyond supplied patch, commit/push/PR, merge, deploy, EAS action or production change. Consent mode untouched.
+
+---
+
 ## 2026-10-24 — Codex: deployed security fixes integrated locally
 
 Branch codex/security-integration-20261024 at current GitHub main f8b610db7b27c156600fa5dea32e4c4236d9b876. Original admin and relay patches applied without conflicts. Ten runtime admin files and mounted relay Caddyfile match production exactly. Local unit 14/14, lint/typecheck, integrated Docker build, original browser E2E, relay 209 checks and Linux Caddy validation passed. Details and exact file list: docs/security-fixes-integration-2026-10-24.md.

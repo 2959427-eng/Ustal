@@ -3,16 +3,14 @@ import { Text, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { colors, spacing, typography } from "../../src/theme/tokens";
 import { getCities, type City } from "../../src/api/cities";
-import { register } from "../../src/api/auth";
-import { clearRegistrationDraft, getRegistrationDraft } from "../../src/state/registrationDraft";
-import { ensurePushRegistered } from "../../src/notifications/push";
+import { clearRegistrationDraft } from "../../src/state/registrationDraft";
 
 import { CityPicker } from "../../src/components/CityPicker";
 
 export default function SelectCityScreen() {
   const [cities, setCities] = useState<City[]>([]);
   const [loadingCities, setLoadingCities] = useState(true);
-  const [submittingCityId, setSubmittingCityId] = useState<string | null>(null);
+  const [submittingCityId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -22,26 +20,11 @@ export default function SelectCityScreen() {
       .finally(() => setLoadingCities(false));
   }, []);
 
-  const onSelectCity = async (cityId: string) => {
-    const draft = getRegistrationDraft();
-    if (!draft) {
-      // Экран открыт напрямую, без прохождения формы регистрации — данных
-      // для завершения регистрации нет, возвращаем на её начало.
-      router.replace("/(auth)/register");
-      return;
-    }
-    setError(null);
-    setSubmittingCityId(cityId);
-    try {
-      await register({ ...draft, cityId });
-      clearRegistrationDraft();
-      router.replace("/(tabs)");
-      void ensurePushRegistered();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось завершить регистрацию");
-    } finally {
-      setSubmittingCityId(null);
-    }
+  // Устаревший шаг (город выбирается на экране регистрации). Регистрация отсюда невозможна: принятие документов
+  // и согласие на обработку ПДн отмечаются только на экране регистрации.
+  const onSelectCity = async (_cityId: string) => {
+    clearRegistrationDraft();
+    router.replace("/(auth)/register");
   };
 
   return (

@@ -1,7 +1,7 @@
 import { consumeOrderRoute } from "../../src/notifications/navigation";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useEffect, useState } from "react";
-import { Text, TextInput, StyleSheet, ScrollView, View, Pressable } from "react-native";
+import { Text, TextInput, StyleSheet, ScrollView, View, Pressable, Linking } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
@@ -11,6 +11,9 @@ import { getCities, type City } from "../../src/api/cities";
 import { register } from "../../src/api/auth";
 import { passwordConfirmError } from "../../src/lib/password-confirm";
 import { ensurePushRegistered } from "../../src/notifications/push";
+import { ConsentCheckbox } from "../../src/components/ConsentCheckbox";
+import { getLegalDocuments, legalDocumentUrl, registrationDocumentsReady, type LegalDocumentId } from "../../src/api/legal";
+import { registrationConsentError } from "../../src/lib/registration-consent";
 
 const PHONE_PATTERN = /^\+7\d{10}$/;
 
@@ -42,6 +45,9 @@ export default function RegisterScreen() {
   const [citiesError, setCitiesError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [acceptedRules, setAcceptedRules] = useState(false);
+  const [acceptedPdn, setAcceptedPdn] = useState(false);
+  const [documentsReady, setDocumentsReady] = useState(false);
 
   const loadCities = () => {
     setCitiesLoading(true);
@@ -54,12 +60,15 @@ export default function RegisterScreen() {
 
   useEffect(() => {
     loadCities();
+    getLegalDocuments().then((docs) => setDocumentsReady(registrationDocumentsReady(docs))).catch(() => setDocumentsReady(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Ошибку под полем показываем, как только пользователь начал вводить повтор, либо после попытки отправки.
   const confirmError = passwordConfirmError(password, confirm);
   const showConfirmError = confirmError !== null && (confirm.length > 0 || submitAttempted);
+
+  const openDocument = (id: LegalDocumentId) => { void Linking.openURL(legalDocumentUrl(id)); };
 
   const cityName = cities.find((c) => c.id === cityId)?.name ?? "Выбрать город";
 
@@ -85,10 +94,16 @@ export default function RegisterScreen() {
       setError("Выберите город");
       return;
     }
+    // В сборке разработчика (локальный API без опубликованных документов) отметки всё равно обязательны.
+    const consentError = registrationConsentError({ acceptedRules, acceptedPdn, documentsReady, allowUnpublished: __DEV__ });
+    if (consentError) {
+      setError(consentError);
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
-      await register({ name: name.trim(), phone, password, cityId });
+      await register({ name: name.trim(), phone, password, cityId, acceptedRules: true, acceptedPdn: true });
       router.replace(consumeOrderRoute() ?? "/(tabs)");
       void ensurePushRegistered();
     } catch (err) {
@@ -161,9 +176,19 @@ export default function RegisterScreen() {
         <Text style={cityId ? styles.value : styles.placeholder}>{cityName}</Text>
       </Pressable>
 
+      <ConsentCheckbox checked={acceptedRules} onChange={setAcceptedRules}>
+        Принимаю <Text style={styles.link} onPress={() => openDocument("terms")}>пользовательское соглашение</Text> и{" "}
+        <Text style={styles.link} onPress={() => openDocument("privacy")}>политику обработки персональных данных</Text>
+      </ConsentCheckbox>
+      <ConsentCheckbox checked={acceptedPdn} onChange={setAcceptedPdn}>
+        Согласен на обработку моих персональных данных в соответствии с{" "}
+        <Text style={styles.link} onPress={() => openDocument("privacy")}>политикой</Text>
+      </ConsentCheckbox>
+      {!documentsReady && !__DEV__ ? <Text style={styles.hint}>Документы ещё не опубликованы — регистрация временно недоступна.</Text> : null}
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <PrimaryButton label="Зарегистрироваться" onPress={onRegister} loading={submitting} />
+      <PrimaryButton label="Зарегистрироваться" onPress={onRegister} loading={submitting} disabled={!acceptedRules || !acceptedPdn || (!documentsReady && !__DEV__)} />
     </ScrollView>
     </KeyboardAvoid>
   );
@@ -188,4 +213,5 @@ const styles = StyleSheet.create({
   placeholder: { ...typography.body, color: colors.textSecondary },
   hint: { ...typography.caption, color: colors.warning, marginBottom: spacing.sm },
   error: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
+  link: { color: colors.primary, textDecorationLine: "underline" },
 });
