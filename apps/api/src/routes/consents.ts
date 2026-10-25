@@ -12,7 +12,11 @@ const decisionSchema = z.object({
 export default async function consentRoutes(app: FastifyInstance) {
   app.get("/me/consents", { preHandler: app.authenticate }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
-    try { return { ...await readConsents(request.userId), outboundEnforcement: loadEnv().USTAL_AI_CONSENT_MODE === "enforced" }; }
+    try {
+      const env = loadEnv();
+      return { ...await readConsents(request.userId), outboundEnforcement: env.USTAL_AI_CONSENT_MODE === "enforced",
+        aiConsentPurpose: env.USTAL_AI_CONSENT_PURPOSE ?? null };
+    }
     catch (error) {
       if (error instanceof ConsentError) return reply.code(error.status).send({ error: { code: error.code } });
       throw error;

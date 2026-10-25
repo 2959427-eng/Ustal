@@ -1,4 +1,5 @@
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
+import { AiConsentNotice } from "../../src/components/AiConsentNotice";
 import { useEffect, useRef, useState } from "react";
 import { View, Text, TextInput, StyleSheet, ActivityIndicator, ScrollView, Keyboard, Pressable, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
@@ -224,6 +225,7 @@ export default function ProfileScreen() {
         <Text style={styles.backText}>← Назад</Text>
       </Pressable>
       <Text style={styles.title}>Навыки и ресурсы</Text>
+      <AiConsentNotice />
       {notice && <Text style={notice === "Сохранено" ? styles.success : styles.hint}>{notice}</Text>}
 
       {isLoading && <ActivityIndicator color={colors.primary} />}

@@ -206,3 +206,16 @@ describe("deleteAccount (DELETE /me, 2026-10-19)", () => {
     expect(clearTokens).not.toHaveBeenCalled();
   });
 });
+
+it("register не подставляет согласия сам: тело — ровно то, что отметил пользователь", async () => {
+  const { register } = await import("./auth");
+  vi.mocked(apiClient.request).mockResolvedValueOnce({ accessToken: "a", refreshToken: "r" });
+  await register({ name: "Имя", phone: "+70000000000", password: "password1", cityId: "00000000-0000-4000-8000-000000000000", acceptedRules: true, acceptedPdn: true });
+  const [path, init] = vi.mocked(apiClient.request).mock.calls.at(-1)!;
+  expect(path).toBe("/auth/register");
+  expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Имя", phone: "+70000000000", password: "password1", cityId: "00000000-0000-4000-8000-000000000000", acceptedRules: true, acceptedPdn: true });
+  // Без отметок клиент ничего не дописывает — сервер (literal true) отклонит запрос.
+  vi.mocked(apiClient.request).mockResolvedValueOnce({ accessToken: "a", refreshToken: "r" });
+  await register({ name: "Имя", phone: "+70000000000", password: "password1", cityId: "00000000-0000-4000-8000-000000000000" } as never);
+  expect(JSON.parse(String((vi.mocked(apiClient.request).mock.calls.at(-1)![1] as RequestInit).body))).not.toHaveProperty("acceptedPdn");
+});

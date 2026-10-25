@@ -75,6 +75,10 @@ export interface RegisterPayload {
   phone: string;
   password: string;
   cityId: string;
+  /** Пользователь сам отметил: принимаю пользовательское соглашение и политику обработки ПДн. */
+  acceptedRules: true;
+  /** Пользователь сам отметил: согласен на обработку персональных данных. */
+  acceptedPdn: true;
   // Заполняется только когда бэкенд включит обязательное подтверждение для новых
   // регистраций (POST /auth/otp/verify → phoneVerificationToken). Пока фича выключена,
   // поле не передаётся, и сервер его игнорирует.
@@ -84,13 +88,11 @@ export interface RegisterPayload {
 export async function register(payload: RegisterPayload): Promise<void> {
   await isolateSession();
   const generation = sessionGeneration;
-  // acceptedRules/acceptedPdn — в MVP нет отдельного экрана согласий
-  // (раздел 5 ТЗ такого не требует отдельно от факта регистрации), поэтому
-  // сам факт отправки формы регистрации и есть согласие; бэкенд требует
-  // оба поля буквально true (packages/validation/src/auth.ts).
+  // acceptedRules/acceptedPdn — только явные отметки пользователя на экране регистрации (политика, соглашение,
+  // согласие на обработку ПДн). Клиент не подставляет true сам; без отметок сервер отвечает 400.
   const res = await apiClient.request<AuthResponse>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ ...payload, acceptedRules: true, acceptedPdn: true }),
+    body: JSON.stringify(payload),
   });
   if (generation !== sessionGeneration) throw new Error("Session changed");
   await saveTokens(res.accessToken, res.refreshToken);
