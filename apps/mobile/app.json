@@ -53,8 +53,11 @@
       "permissions": [
         "RECORD_AUDIO",
         "CAMERA",
-        "READ_MEDIA_IMAGES",
         "POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -73,7 +76,8 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FFFFFF"
+          "backgroundColor": "#FFFFFF",
+          "android": { "image": "./assets/icon.png" }
         }
       ],
       "expo-asset"

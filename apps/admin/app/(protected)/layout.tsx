@@ -12,8 +12,8 @@ const NAV = [
   { href: "/reports", label: "Жалобы и блокировки" },
 ];
 
-export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const session = requireAdminSession(); // редиректит на /login, если сессии нет
+export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  const session = await requireAdminSession(); // редиректит на /login, если сессии нет
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { areBlocked } from "../lib/blocks.js";
 import { authorTitle } from "../lib/order-text.js";
@@ -16,7 +16,15 @@ export default async function orderViewRoutes(app: FastifyInstance) {
     const order = await db.query.orders.findFirst({ where: eq(schema.orders.id, id) });
     if (!order) return missing();
     const author = await db.query.users.findFirst({ where: eq(schema.users.id, order.authorId) });
-    if (author?.status !== "active" || await areBlocked(db, order.authorId, request.userId)) return missing();
+    if (author?.status !== "active") return missing();
+    const blocked = await areBlocked(db, order.authorId, request.userId);
+    if (blocked) {
+      const assignment = await db.query.orderAssignments.findFirst({ where: and(
+        eq(schema.orderAssignments.orderId, id), eq(schema.orderAssignments.executorId, request.userId),
+        inArray(schema.orderAssignments.status, ["in_progress", "completed", "not_completed"]),
+      ) });
+      if (!assignment) return missing();
+    }
     const own = order.authorId === request.userId;
     if (!own && !["published", "negotiating", "closed"].includes(order.status)) {
       const response = await db.query.responses.findFirst({ where: and(eq(schema.responses.orderId, id), eq(schema.responses.executorId, request.userId)) });
@@ -33,8 +41,8 @@ export default async function orderViewRoutes(app: FastifyInstance) {
     return reply.send({ id, status: order.status, title: authorTitle(order.sourceText) ?? order.normalizedTitle,
       description: order.sourceText ?? order.normalizedDescription, cityId: order.cityId, cityName: city?.name ?? null,
       priceMinor: order.priceMinor, currency: order.currency, acceptsPriceOffers: order.acceptsPriceOffers,
-      photoMediaIds: media.map((m) => m.mediaId), canRespond: !own && ["published", "negotiating"].includes(order.status) && accepting,
-      acceptingResponses: ["published", "negotiating"].includes(order.status) && accepting,
+      photoMediaIds: media.map((m) => m.mediaId), canRespond: !blocked && !own && ["published", "negotiating"].includes(order.status) && accepting,
+      acceptingResponses: !blocked && ["published", "negotiating"].includes(order.status) && accepting,
     });
   });
 }

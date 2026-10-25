@@ -10,9 +10,12 @@ beforeAll(async()=>{
  await sql`INSERT INTO consent_disclosures(id,purpose,version,content,content_hash,status,is_current) VALUES(${policyId},${purpose},'fixture',${JSON.stringify(content)}::text::jsonb,${policyHash},'approved',true)`;
 });
 afterEach(()=>vi.unstubAllEnvs());afterAll(async()=>{await sql`UPDATE users SET status='deleted' WHERE id=${userId}`;await sql.end();});
-it("default/off keeps dormant endpoint unavailable",async()=>{
+it("off authenticates read/revoke without pretending outbound enforcement",async()=>{
  vi.stubEnv("USTAL_AI_CONSENT_MODE","off");const app=await buildApp();
- try{expect((await app.inject({method:"GET",url:"/me/consents"})).statusCode).toBe(404);}finally{await app.close();}
+ try{expect((await app.inject({method:"GET",url:"/me/consents"})).statusCode).toBe(401);
+  const headers={authorization:`Bearer ${signAccessToken(userId)}`};
+  const read=await app.inject({method:"GET",url:"/me/consents",headers});expect(read.statusCode).toBe(200);expect(read.json().outboundEnforcement).toBe(false);
+  const grant=await app.inject({method:"POST",url:"/me/consents",headers,payload:{policyId,policyHash,decision:"grant",expectedRevision:0}});expect(grant.statusCode).toBe(409);expect(grant.json().error.code).toBe("consent_enforcement_inactive");}finally{await app.close();}
 });
 it("enforced API authenticates, grants and atomically wakes paused worker work; revoke does not enqueue",async()=>{
  vi.stubEnv("USTAL_AI_CONSENT_MODE","enforced");vi.stubEnv("USTAL_AI_CONSENT_PURPOSE",purpose);const app=await buildApp();
@@ -27,4 +30,17 @@ it("enforced API authenticates, grants and atomically wakes paused worker work; 
   const revoke=await app.inject({method:"POST",url:"/me/consents",headers,payload:{policyId,policyHash,decision:"revoke",expectedRevision:1}});expect(revoke.statusCode).toBe(200);
   expect(revoke.json().revision).toBe(2);
  }finally{await app.close();}
+});
+
+it("off mode still accepts a fresh revoke for a prior grant",async()=>{
+ vi.stubEnv("USTAL_AI_CONSENT_MODE","enforced");let app=await buildApp();
+ const headers={authorization:`Bearer ${signAccessToken(userId)}`};
+ try {
+  const grant=await app.inject({method:"POST",url:"/me/consents",headers,payload:{policyId,policyHash,decision:"grant",expectedRevision:2}});expect(grant.statusCode).toBe(200);
+ } finally {await app.close();}
+ vi.stubEnv("USTAL_AI_CONSENT_MODE","off");app=await buildApp();
+ try {
+  const revoke=await app.inject({method:"POST",url:"/me/consents",headers,payload:{policyId,policyHash,decision:"revoke",expectedRevision:3}});expect(revoke.statusCode).toBe(200);expect(revoke.json().revision).toBe(4);
+  const read=await app.inject({method:"GET",url:"/me/consents",headers});expect(read.json().outboundEnforcement).toBe(false);expect(read.json().decisions[0].decision).toBe("revoke");
+ } finally {await app.close();}
 });

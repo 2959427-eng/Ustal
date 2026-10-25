@@ -1,3 +1,4 @@
+import { LegalLinks } from "../../src/components/LegalLinks";
 import { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, TextInput, Image } from "react-native";
 import { router } from "expo-router";
@@ -256,6 +257,8 @@ export default function AccountScreen() {
       {reputation && <ReputationBlock reputation={reputation} />}
 
       <PrimaryButton label="Заблокированные пользователи" variant="secondary" onPress={() => router.push("/blocked-users")} />
+      <LegalLinks />
+      <PrimaryButton label="Передача данных AI" variant="secondary" onPress={() => router.push("/ai-consent")} />
       <PrimaryButton label="Удалить аккаунт" variant="secondary" onPress={() => router.push("/delete-account")} />
 
       {!confirmingLogout && (

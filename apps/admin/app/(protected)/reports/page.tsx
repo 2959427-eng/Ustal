@@ -1,3 +1,4 @@
+import { reportAge } from "../../../lib/report-age";
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@ustal/database";
 import { resolveReportAction } from "./actions";
@@ -12,6 +13,7 @@ export default async function ReportsPage() {
     db.query.blocks.findMany({ orderBy: (t, { desc: d }) => d(t.createdAt), limit: 50 }),
   ]);
 
+  const now = Date.now();
   return (
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>Жалобы и блокировки</h1>
@@ -24,16 +26,17 @@ export default async function ReportsPage() {
       <h2 style={{ fontSize: 16, marginBottom: 12 }}>Открытые жалобы ({openReports.length})</h2>
       {openReports.length === 0 ? <p style={{ color: "#999" }}>Очередь пуста.</p> : null}
       {openReports.map((r) => {
+        const age = reportAge(r.createdAt, now);
         const resolveBound = resolveReportAction.bind(null, r.id, "resolved");
         const dismissBound = resolveReportAction.bind(null, r.id, "dismissed");
         return (
-          <div key={r.id} style={CARD_STYLE}>
+          <div key={r.id} style={{ ...CARD_STYLE, ...(age.overdue ? { background: "#fff3e0", border: "1px solid #e67e22" } : {}) }}>
             <div style={{ fontSize: 13, marginBottom: 4 }}>
               <strong>{r.targetType}</strong> · {r.targetId}
             </div>
             <div style={{ fontSize: 13, color: "#666", marginBottom: 4 }}>Причина: {r.reason}</div>
             {r.comment ? <div style={{ fontSize: 13, color: "#666", marginBottom: 8 }}>{r.comment}</div> : null}
-            <div style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>{new Date(r.createdAt).toLocaleString("ru-RU")}</div>
+            <div style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>{new Date(r.createdAt).toLocaleString("ru-RU")} · Возраст: {age.label}{age.overdue ? " · Старше 24 часов" : ""}</div>
             <div style={{ display: "flex", gap: 8 }}>
               <form action={resolveBound}>
                 <button type="submit" style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: "#27ae60", color: "#fff", fontSize: 12, cursor: "pointer" }}>

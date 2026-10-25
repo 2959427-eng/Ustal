@@ -1,7 +1,8 @@
+import { LegalLinks } from "../../src/components/LegalLinks";
 import { consumeOrderRoute } from "../../src/notifications/navigation";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useState } from "react";
-import { ActivityIndicator, Text, TextInput, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Text, TextInput, StyleSheet, ScrollView } from "react-native";
 import { router } from "expo-router";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
@@ -29,7 +30,8 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoid style={styles.container}>
+    <KeyboardAvoid>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>Вход</Text>
       <TextInput
         style={styles.input}
@@ -54,12 +56,14 @@ export default function LoginScreen() {
       ) : (
         <PrimaryButton label="Войти" onPress={onSubmit} />
       )}
+      <LegalLinks />
+      </ScrollView>
     </KeyboardAvoid>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background, justifyContent: "center" },
+  container: { flexGrow: 1, padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background, justifyContent: "center" },
   title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
   input: { ...typography.body, borderWidth: 1, borderColor: colors.border, borderRadius: radii.sm, padding: spacing.sm, color: colors.textPrimary },
   error: { ...typography.caption, color: colors.danger },

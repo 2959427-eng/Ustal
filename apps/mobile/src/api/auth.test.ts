@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@ustal/api-client";
 import { apiClient, setCachedAccessToken } from "./client";
 import { saveTokens, clearTokens, getRefreshToken } from "./session";
-import { refreshSession, isSessionUsable, login, logout, deleteAccount } from "./auth";
+import { refreshSession, isSessionUsable, login, logout, deleteAccount, register } from "./auth";
 import { queryClient } from "../state/query-client";
 
 /**
@@ -204,5 +204,29 @@ describe("deleteAccount (DELETE /me, 2026-10-19)", () => {
     vi.mocked(apiClient.request).mockRejectedValue(new ApiRequestError("Неверный пароль", 403, "invalid_password"));
     await expect(deleteAccount("bad")).rejects.toBeInstanceOf(ApiRequestError);
     expect(clearTokens).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("adult self-declaration", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+  it("does not register or send credentials without explicit confirmation", async () => {
+    await expect(register({ name: "Test", phone: "+79991234567", password: "password123", cityId: "city" } as never)).rejects.toThrow("18");
+    expect(apiClient.request).not.toHaveBeenCalled();
+  });
+  it.each(["acceptedRules", "acceptedPdn"])("does not invent %s or clear the current session", async field => {
+    const payload = { name: "Test", phone: "+70000000001", password: "fixture-only", cityId: "city", acceptedAge18: true,
+      acceptedRules: true, acceptedPdn: true, [field]: false };
+    await expect(register(payload as never)).rejects.toThrow("условиями");
+    expect(apiClient.request).not.toHaveBeenCalled();
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+  it("sends the explicit age confirmation without granting AI consent", async () => {
+    vi.mocked(apiClient.request).mockResolvedValue({ accessToken: "a", refreshToken: "r", userId: "u" });
+    await register({ name: "Test", phone: "+79991234567", password: "password123", cityId: "city", acceptedAge18: true, acceptedRules: true, acceptedPdn: true });
+    const [url, options] = vi.mocked(apiClient.request).mock.calls[0];
+    expect(url).toBe("/auth/register");
+    expect(JSON.parse(options!.body as string)).toMatchObject({ acceptedAge18: true, acceptedRules: true, acceptedPdn: true });
+    expect(apiClient.request).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicProfile } from "../../src/api/users";
 import { getCities } from "../../src/api/cities";
+import { ReportAndBlockRow } from "../../src/components/ReportAndBlockRow";
 import { ReputationBlock } from "../../src/components/ReputationBlock";
 import { AuthorAvatar } from "../../src/components/AuthorAvatar";
 import { colors, spacing, typography } from "../../src/theme/tokens";
@@ -38,6 +39,7 @@ export default function UserProfileScreen() {
           <Text style={styles.hint}>На USTAL с {since}</Text>
           {!!p.about && <Text style={styles.about}>{p.about}</Text>}
           <ReputationBlock reputation={p.reputation} />
+          <ReportAndBlockRow key={p.id} userId={p.id} />
         </View>
       )}
     </ScrollView>

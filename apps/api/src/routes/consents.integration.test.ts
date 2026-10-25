@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { assertLocalTestDatabase, getSql } from "@ustal/database";
 import consentRoutes from "./consents.js";
 import { disclosureHash } from "../lib/consents.js";
@@ -21,6 +21,7 @@ const decide = (decision: string, revision: number, policyId = approved, extra =
 });
 
 beforeAll(async () => {
+  vi.stubEnv("USTAL_AI_CONSENT_MODE", "enforced");
   await db`INSERT INTO users(id, phone, password_hash) VALUES (${actor}, ${`test_${actor.slice(0, 12)}`}, 'test'), (${other}, ${`test_${other.slice(0, 12)}`}, 'test')`;
   await db`INSERT INTO consent_disclosures(id, purpose, version, content, content_hash, status, is_current)
     VALUES (${draft}, ${purpose + '-draft'}, 'draft', ${db.json(content)}, ${hash}, 'draft', true),
@@ -34,7 +35,7 @@ beforeAll(async () => {
   });
   await app.register(consentRoutes);
 });
-afterAll(async () => { await app.close(); await db.end(); });
+afterAll(async () => { vi.unstubAllEnvs(); await app.close(); await db.end(); });
 
 describe("consent infrastructure (no outbound enforcement)", () => {
   it("requires auth; existing users have revision zero and no fabricated grant", async () => {

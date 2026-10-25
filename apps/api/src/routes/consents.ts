@@ -8,11 +8,11 @@ const decisionSchema = z.object({
   decision: z.enum(["grant", "revoke"]), expectedRevision: z.number().int().min(0).max(2147483646),
 }).strict();
 
-// Registered only with explicit enforced consent configuration; login/lifecycle remain available.
+// Read/revoke remain available during staged rollout; off mode never implies outbound protection.
 export default async function consentRoutes(app: FastifyInstance) {
   app.get("/me/consents", { preHandler: app.authenticate }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
-    try { return { ...await readConsents(request.userId), outboundEnforcement: loadEnv().USTAL_AI_CONSENT_MODE === "enforced" }; }
+    try { const env = loadEnv(); return { ...await readConsents(request.userId), outboundEnforcement: env.USTAL_AI_CONSENT_MODE === "enforced", aiConsentPurpose: env.USTAL_AI_CONSENT_PURPOSE ?? null }; }
     catch (error) {
       if (error instanceof ConsentError) return reply.code(error.status).send({ error: { code: error.code } });
       throw error;
@@ -22,6 +22,9 @@ export default async function consentRoutes(app: FastifyInstance) {
     reply.header("Cache-Control", "no-store");
     const parsed = decisionSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: { code: "invalid_consent_decision" } });
+    if (parsed.data.decision === "grant" && loadEnv().USTAL_AI_CONSENT_MODE !== "enforced") {
+      return reply.code(409).send({ error: { code: "consent_enforcement_inactive" } });
+    }
     try { return await decideConsent(request.userId, parsed.data); }
     catch (error) {
       if (error instanceof ConsentError) return reply.code(error.status).send({ error: { code: error.code } });

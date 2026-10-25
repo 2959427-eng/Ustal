@@ -30,7 +30,7 @@ import {
 import { RatingCard } from "../../src/components/RatingCard";
 import { getMyResponse, myKeys } from "../../src/api/my";
 import type { MyResponseItem } from "../../src/api/my";
-import { blockUser } from "../../src/api/blocks";
+import { ReportAndBlockRow } from "../../src/components/ReportAndBlockRow";
 import { getOrderAuthor } from "../../src/api/users";
 import { AuthorAvatar } from "../../src/components/AuthorAvatar";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
@@ -558,63 +558,6 @@ function ContactActions({ contact }: { contact: OrderContact }) {
       >
         <Text style={styles.contactButtonWhatsappText}>WhatsApp</Text>
       </Pressable>
-    </View>
-  );
-}
-
-/** Раздел 28/29 ТЗ: жалоба и блокировка конкретного человека — контекстные действия, не отдельный экран. */
-function ReportAndBlockRow({ userId }: { userId: string }) {
-  const queryClient = useQueryClient();
-  const [reportOpen, setReportOpen] = useState(false);
-  const inFlight = useRef(false);
-  const [blocking, setBlocking] = useState(false);
-  const [blocked, setBlocked] = useState(false);
-  const [blockError, setBlockError] = useState<string | null>(null);
-
-  const handleBlock = () => {
-    Alert.alert("Заблокировать пользователя?", "Вы больше не будете видеть заказы и отклики друг друга.", [
-      { text: "Отмена", style: "cancel" },
-      {
-        text: "Заблокировать",
-        style: "destructive",
-        onPress: async () => {
-          if (inFlight.current) return;
-          inFlight.current = true;
-          setBlocking(true);
-          setBlockError(null);
-          try {
-            await blockUser(userId);
-            setBlocked(true);
-            // Только данные, которые меняет блокировка (F04): кандидаты и карточки заказов, отклики,
-            // лента и список заблокированных. Без глобального сброса кэша.
-            for (const queryKey of [["order-candidates"], ["order"], ["order-view"], ["my-responses"], ["feed"], ["blocks"]])
-              void queryClient.invalidateQueries({ queryKey });
-          } catch (err) {
-            // Ошибка не выглядит как успех: явное сообщение, состояние не меняется, можно повторить (F03).
-            setBlockError(`Не удалось заблокировать пользователя. ${err instanceof Error ? err.message : ""}`.trim());
-          } finally {
-            inFlight.current = false;
-            setBlocking(false);
-          }
-        },
-      },
-    ]);
-  };
-
-  return (
-    <View style={styles.rowActions}>
-      <Pressable onPress={() => setReportOpen(true)} hitSlop={6}>
-        <Text style={styles.mutedLink}>Пожаловаться</Text>
-      </Pressable>
-      {blocked ? (
-        <Text style={styles.mutedLink}>Пользователь заблокирован</Text>
-      ) : (
-        <Pressable onPress={handleBlock} hitSlop={6} disabled={blocking}>
-          <Text style={styles.mutedLink}>{blocking ? "Блокируем…" : "Заблокировать"}</Text>
-        </Pressable>
-      )}
-      {blockError && <Text style={styles.error}>{blockError}</Text>}
-      <ReportModal visible={reportOpen} onClose={() => setReportOpen(false)} targetType="user" targetId={userId} />
     </View>
   );
 }

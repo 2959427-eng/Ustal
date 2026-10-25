@@ -1,3 +1,5 @@
+import { getLegalDocuments, registrationDocumentsReady } from "../../src/api/legal";
+import { LegalLinks } from "../../src/components/LegalLinks";
 import { consumeOrderRoute } from "../../src/notifications/navigation";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useEffect, useState } from "react";
@@ -30,6 +32,11 @@ const PHONE_PATTERN = /^\+7\d{10}$/;
  */
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
+  const [documentsReady, setDocumentsReady] = useState(false);
+  useEffect(() => { void getLegalDocuments().then(d => setDocumentsReady(registrationDocumentsReady(d))).catch(() => setDocumentsReady(false)); }, []);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [rulesAccepted, setRulesAccepted] = useState(false);
+  const [pdnAccepted, setPdnAccepted] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+7");
   const [password, setPassword] = useState("");
@@ -64,6 +71,9 @@ export default function RegisterScreen() {
   const cityName = cities.find((c) => c.id === cityId)?.name ?? "Выбрать город";
 
   const onRegister = async () => {
+    if (!__DEV__ && !documentsReady) { setError("Документы ещё не опубликованы — регистрация временно недоступна"); return; }
+    if (!ageConfirmed) { setError("Подтвердите, что вам исполнилось 18 лет"); return; }
+    if (!rulesAccepted || !pdnAccepted) { setError("Подтвердите условия и обработку данных"); return; }
     if (name.trim().length === 0) {
       setError("Укажите, как к вам обращаться");
       return;
@@ -88,7 +98,7 @@ export default function RegisterScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      await register({ name: name.trim(), phone, password, cityId });
+      await register({ name: name.trim(), phone, password, cityId, acceptedAge18: true, acceptedRules: true, acceptedPdn: true });
       router.replace(consumeOrderRoute() ?? "/(tabs)");
       void ensurePushRegistered();
     } catch (err) {
@@ -163,7 +173,13 @@ export default function RegisterScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <PrimaryButton label="Зарегистрироваться" onPress={onRegister} loading={submitting} />
+      <LegalLinks />
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: rulesAccepted }} disabled={submitting} onPress={() => setRulesAccepted(v => !v)}><Text>{rulesAccepted ? "☑" : "☐"} Принимаю пользовательское соглашение</Text></Pressable>
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: pdnAccepted }} disabled={submitting} onPress={() => setPdnAccepted(v => !v)}><Text>{pdnAccepted ? "☑" : "☐"} Согласен с обработкой персональных данных</Text></Pressable>
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: ageConfirmed }} accessibilityLabel="Мне исполнилось 18 лет" onPress={() => setAgeConfirmed(v => !v)} disabled={submitting}>
+        <Text style={styles.hint}>{ageConfirmed ? "☑" : "☐"} Мне исполнилось 18 лет</Text>
+      </Pressable>
+      <PrimaryButton disabled={!ageConfirmed || !rulesAccepted || !pdnAccepted} label="Зарегистрироваться" onPress={onRegister} loading={submitting} />
     </ScrollView>
     </KeyboardAvoid>
   );

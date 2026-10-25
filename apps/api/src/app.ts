@@ -30,6 +30,8 @@ import myRoutes from "./routes/my.js";
 import notificationsRoutes from "./routes/notifications.js";
 import devicesRoutes from "./routes/devices.js";
 import usersRoutes from "./routes/users.js";
+import legalRoutes from "./routes/legal.js";
+import legalDocumentRoutes from "./routes/legal-documents.js";
 
 export async function buildApp() {
   const env = loadEnv();
@@ -112,10 +114,12 @@ export async function buildApp() {
   });
 
   await app.register(authRoutes);
+  await app.register(legalRoutes);
+  await app.register(legalDocumentRoutes);
   await app.register(otpRoutes);
   await app.register(phoneVerificationRoutes);
   await app.register(meRoutes);
-  if (env.USTAL_AI_CONSENT_MODE === "enforced") await app.register(consentRoutes);
+  await app.register(consentRoutes);
   await app.register(citiesRoutes);
   await app.register(profileRoutes);
   await app.register(profileFactsRoutes);

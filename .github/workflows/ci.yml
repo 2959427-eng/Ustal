@@ -40,7 +40,20 @@ jobs:
       - run: npm run typecheck
       - run: npm run db:migrate
       - run: npm run db:seed
+      # Изолированная БД blind-evaluation и ограниченная роль ustal_blind_test_runtime для её интеграционных тестов
+      # (tests/extractor.test.ts). Тот же скрипт, что локально; только тестовые учётные данные CI.
+      - run: npm run blind:setup-db
+        env:
+          TEST_DB_HOST: localhost
+          TEST_DB_ADMIN_USER: ustal
+          TEST_DB_ADMIN_PASSWORD: ustal
+          TEST_DB_PASSWORD: ci-only-blind-test-password
+          TEST_DB_RUNTIME_PASSWORD: ci-only-blind-runtime-password
       - run: npm run test
+        env:
+          TEST_DB_HOST: localhost
+          TEST_DB_PASSWORD: ci-only-blind-test-password
+          TEST_DB_RUNTIME_PASSWORD: ci-only-blind-runtime-password
       - run: npm run build
 
   docker-images:

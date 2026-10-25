@@ -188,7 +188,13 @@ describe("source revoke: the AI profile is rebuilt from the remaining messages a
 
     // Matching recalculates through the existing rematch path; the order no longer matches.
     const queued: string[] = [];
-    await dispatchRematches(async (orderId) => { queued.push(orderId); });
+    // The dispatcher is a bounded global tick (oldest requests first, as in the worker loop): requests left by other
+    // test files running in parallel can come first, so tick until this user's request is done, like the worker does.
+    for (let i = 0; i < 20; i++) {
+      await dispatchRematches(async (orderId) => { queued.push(orderId); });
+      const pending = await db.query.rematchRequests.findFirst({ where: eq(schema.rematchRequests.userId, u) });
+      if (!pending || pending.cursor === "ffffffff-ffff-ffff-ffff-ffffffffffff") break;
+    }
     expect(queued).toContain(oid);
     reviewCalls.length = 0;
     expect(await matched(oid, u)).toBe(false);

@@ -5,19 +5,22 @@
 {$RELAY_DOMAIN} {
 	encode zstd gzip
 
-	@authorizedOpenai {
-		path /v1/*
-		header Authorization "Bearer {$RELAY_CLIENT_TOKEN}"
-	}
-	handle @authorizedOpenai {
-		reverse_proxy https://api.openai.com {
-			header_up Host api.openai.com
-			header_up Authorization "Bearer {$OPENAI_API_KEY}"
-			header_down -server
+	# Header placeholder joins duplicate values: ambiguous credentials fail closed.
+	@unauthorized expression `{env.RELAY_CLIENT_TOKEN} == '' || {http.request.header.Authorization} != 'Bearer ' + {env.RELAY_CLIENT_TOKEN}`
+	# Match escaped URI, not normalized path; queries cannot change the route.
+	@allowed expression `({http.request.method} == 'POST' && {http.request.uri}.matches('^/v1/(chat/completions|embeddings|audio/transcriptions)([?].*)?$')) || ({http.request.method} == 'GET' && {http.request.uri}.matches('^/v1/models([?].*)?$'))`
+	route {
+		respond /health "ok" 200
+		respond @unauthorized "unauthorized" 401
+		handle @allowed {
+			reverse_proxy https://api.openai.com {
+				header_up Host api.openai.com
+				header_up Authorization "Bearer {$OPENAI_API_KEY}"
+				header_up -OpenAI-Organization
+				header_up -OpenAI-Project
+				header_down -server
+			}
 		}
+		respond "forbidden" 403
 	}
-
-	respond /health "ok" 200
-	respond /v1/* "unauthorized" 401
-	respond 404
 }

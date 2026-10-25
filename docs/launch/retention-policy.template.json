@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "agePolicy": "[AGE_POLICY_TBD]",
+  "launchTerritories": "[LAUNCH_TERRITORIES_TBD]",
+  "dataRetention": "[DATA_RETENTION_TBD]",
+  "backupRetention": "[BACKUP_RETENTION_TBD]",
+  "categories": {
+    "deleted_account_personal_data": {
+      "approved": false,
+      "durationDays": null,
+      "approvalReference": null
+    },
+    "completed_orders_history": {
+      "approved": false,
+      "durationDays": null,
+      "approvalReference": null
+    },
+    "reviews_ratings": {
+      "approved": false,
+      "durationDays": null,
+      "approvalReference": null
+    },
+    "security_audit_logs": {
+      "approved": false,
+      "durationDays": null,
+      "approvalReference": null
+    },
+    "backups": {
+      "approved": false,
+      "durationDays": null,
+      "approvalReference": null
+    },
+    "ai_profile_derived_data": {
+      "approved": false,
+      "durationDays": null,
+      "approvalReference": null
+    }
+  }
+}

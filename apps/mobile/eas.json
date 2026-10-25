@@ -8,5 +8,10 @@
       "env": { "APP_ENV": "production", "USTAL_API_URL": "https://api.104-171-139-154.sslip.io" },
       "ios": { "image": "macos-tahoe-26.5-xcode-26.6", "buildConfiguration": "Release", "simulator": false }
     }
+  },
+  "submit": {
+    "production": {
+      "ios": { "ascAppId": "6824967297" }
+    }
   }
 }

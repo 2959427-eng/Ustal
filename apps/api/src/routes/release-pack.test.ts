@@ -24,7 +24,7 @@ vi.mock("@ustal/database", async (original) => {
       cities: { findFirst: async () => ({ name: "City" }) },
       orderMedia: { findMany: async () => [{ mediaId: "photo", position: 0 }] },
       contactUnlocks: { findMany: async () => [] },
-      orderAssignments: { findMany: async () => [{ orderId: state.order?.id, id: "assignment", status: "in_progress", executorReport: null }] },
+      orderAssignments: { findFirst: async () => undefined, findMany: async () => [{ orderId: state.order?.id, id: "assignment", status: "in_progress", executorReport: null }] },
     },
     // Число активных откликов для приёма откликов (order-view, 2026-10-15): лимит не достигнут.
     select: () => ({ from: () => ({ where: async () => [{ n: 0 }] }) }),

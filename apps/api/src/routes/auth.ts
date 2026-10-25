@@ -25,6 +25,10 @@ export default async function authRoutes(app: FastifyInstance) {
   // per-route через тот же @fastify/rate-limit (не отдельный пакет — просто
   // route-level override, ничего не ломает для остальных ручек).
   app.post("/auth/register", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const ageMode = loadEnv().USTAL_REGISTRATION_AGE_MODE;
+    if (ageMode === "required" && (request.body as { acceptedAge18?: unknown } | null)?.acceptedAge18 !== true) {
+      return reply.code(400).send({ error: { code: "age_confirmation_required", message: "Для новой регистрации подтвердите, что вам исполнилось 18 лет. Обновите приложение, если это поле отсутствует." } });
+    }
     const body = registerSchema.parse(request.body);
 
     // Номер занят и заблокированным аккаунтом: иначе бан обходится повторной регистрацией.
@@ -57,37 +61,46 @@ export default async function authRoutes(app: FastifyInstance) {
     const passwordHash = await hashPassword(body.password);
     const now = new Date();
 
-    const [user] = await db
-      .insert(schema.users)
-      .values({
-        phone: body.phone,
-        passwordHash,
-        status: "active",
-        phoneVerifiedAt: phoneVerificationMode === "required_for_new" ? now : null,
-        verificationLevel: phoneVerificationMode === "required_for_new" ? "phone" : "none",
-      })
-      .returning();
-    if (!user) throw new Error("Failed to create user");
+    const result = await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(schema.users)
+        .values({
+          phone: body.phone,
+          passwordHash,
+          status: "active",
+          phoneVerifiedAt: phoneVerificationMode === "required_for_new" ? now : null,
+          verificationLevel: phoneVerificationMode === "required_for_new" ? "phone" : "none",
+        })
+        .returning();
+      if (!user) throw new Error("Failed to create user");
 
-    await db.insert(schema.userProfiles).values({
-      userId: user.id,
-      name: body.name,
-      cityId: body.cityId,
-      acceptedRulesAt: now,
-      acceptedPdnAt: now,
+      await tx.insert(schema.userProfiles).values({
+        userId: user.id,
+        name: body.name,
+        cityId: body.cityId,
+        acceptedRulesAt: now,
+        acceptedPdnAt: now,
+      });
+
+      if (body.acceptedAge18 === true) {
+        await tx.insert(schema.auditLogs).values({ actorType: "user", actorId: user.id,
+          action: "registration_age_confirmed", targetType: "user", targetId: user.id,
+          metadata: { policy: "18+", method: "self_declaration", source: "registration", enforcementMode: ageMode } });
+      }
+      const accessToken = signAccessToken(user.id);
+      const refresh = generateRefreshToken();
+      await tx.insert(schema.userSessions).values({
+        userId: user.id,
+        refreshTokenHash: refresh.hash,
+        familyId: randomUUID(), // новая цепочка ротации — первая сессия аккаунта на этом устройстве
+        deviceInfo: request.headers["user-agent"] ?? null,
+        expiresAt: refresh.expiresAt,
+      });
+
+      return { accessToken, refreshToken: refresh.token, userId: user.id };
     });
 
-    const accessToken = signAccessToken(user.id);
-    const refresh = generateRefreshToken();
-    await db.insert(schema.userSessions).values({
-      userId: user.id,
-      refreshTokenHash: refresh.hash,
-      familyId: randomUUID(), // новая цепочка ротации — первая сессия аккаунта на этом устройстве
-      deviceInfo: request.headers["user-agent"] ?? null,
-      expiresAt: refresh.expiresAt,
-    });
-
-    return reply.code(201).send({ accessToken, refreshToken: refresh.token, userId: user.id });
+    return reply.code(201).send(result);
   });
 
   app.post("/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {

@@ -52,3 +52,9 @@ describe("explicit consent worker configuration",()=>{
  it("defaults off and accepts an empty optional purpose without fabricating one",()=>{expect(loadEnv({...base,USTAL_AI_CONSENT_PURPOSE:""}).USTAL_AI_CONSENT_MODE).toBe("off");expect(loadEnv({...base,USTAL_AI_CONSENT_PURPOSE:""}).USTAL_AI_CONSENT_PURPOSE).toBeUndefined();});
  it("rejects invalid mode/purpose and preserves explicit enforced configuration",()=>{expect(()=>loadEnv({...base,USTAL_AI_CONSENT_MODE:"yes"})).toThrow();expect(()=>loadEnv({...base,USTAL_AI_CONSENT_PURPOSE:"bad purpose"})).toThrow();expect(loadEnv({...base,USTAL_AI_CONSENT_MODE:"enforced",USTAL_AI_CONSENT_PURPOSE:"synthetic-purpose"}).USTAL_AI_CONSENT_MODE).toBe("enforced");});
 });
+
+describe("staged registration age self-declaration", () => {
+ it("preserves old registration by default", () => expect(loadEnv(base).USTAL_REGISTRATION_AGE_MODE).toBe("compatibility"));
+ it("accepts explicit required rollout", () => expect(loadEnv({ ...base, USTAL_REGISTRATION_AGE_MODE: "required" }).USTAL_REGISTRATION_AGE_MODE).toBe("required"));
+ it("rejects an invalid rollout mode", () => expect(() => loadEnv({ ...base, USTAL_REGISTRATION_AGE_MODE: "enforce-ish" })).toThrow(/USTAL_REGISTRATION_AGE_MODE/));
+});

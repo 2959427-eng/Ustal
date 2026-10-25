@@ -6,6 +6,7 @@ import { assertLocalTestDatabase, getDb, getSql, schema } from "@ustal/database"
 import responsesRoutes from "./responses.js";
 import contactsRoutes from "./contacts.js";
 import assignmentsRoutes from "./assignments.js";
+import orderViewRoutes from "./order-view.js";
 import blocksRoutes from "./blocks.js";
 
 vi.mock("../lib/notify.js", () => ({ notifyUser: vi.fn(async () => "n") }));
@@ -22,7 +23,7 @@ beforeAll(async () => {
   app.decorate("authenticate", async (request: import("fastify").FastifyRequest) => {
     request.userId = request.headers["x-test-user"] as string;
   });
-  for (const r of [responsesRoutes, contactsRoutes, assignmentsRoutes, blocksRoutes]) await app.register(r);
+  for (const r of [responsesRoutes, contactsRoutes, assignmentsRoutes, blocksRoutes, orderViewRoutes]) await app.register(r);
   await app.ready();
   const [city] = await db.insert(schema.cities).values({
     name: "TEST blocks", regionName: "TEST", federalDistrict: "TEST", timezone: "Asia/Vladivostok", isActive: false,
@@ -125,3 +126,30 @@ it("in_progress is NOT torn down: contacts are closed, but the customer can stil
   await unblock();
   void and;
 });
+
+for (const direction of ["customer", "executor"] as const) {
+  for (const status of ["in_progress", "completed", "not_completed", "selected", "cancelled", "unassigned"] as const) {
+    it(`blocked card access: ${direction} blocks, assignment ${status}`, async () => {
+      const { orderId, responseId } = await setup();
+      if (status !== "unassigned") await db.insert(schema.orderAssignments).values({ orderId, responseId, executorId: exec, status });
+      // Even a public order cannot override the assignment boundary after a block.
+      await app.inject({ method: "POST", url: "/blocks", headers: as(direction === "customer" ? customer : exec), payload: { blockedId: direction === "customer" ? exec : customer } });
+      const view = await app.inject({ method: "GET", url: `/orders/${orderId}/view`, headers: as(exec) });
+      const allowed = ["in_progress", "completed", "not_completed"].includes(status);
+      expect(view.statusCode).toBe(allowed ? 200 : 404);
+      if (allowed) {
+        expect(view.json()).toMatchObject({ id: orderId, canRespond: false, acceptingResponses: false });
+        expect(Object.keys(view.json()).some(k => /phone|contact|whatsapp/i.test(k))).toBe(false);
+        expect((await db.query.orderAssignments.findFirst({ where: eq(schema.orderAssignments.orderId, orderId) }))?.status).toBe(status);
+      }
+      expect(await contactStatus(orderId, exec, customer)).toBe(404);
+      expect(await contactStatus(orderId, customer, exec)).toBe(404);
+      expect((await app.inject({ method: "POST", url: `/orders/${orderId}/responses`, headers: as(exec), payload: {} })).statusCode).toBe(404);
+      expect((await app.inject({ method: "POST", url: `/orders/${orderId}/assignments`, headers: as(customer), payload: { responseId } })).statusCode).toBe(404);
+      // No assignment on a different order grants access to this blocked pair's card.
+      const [other] = await db.insert(schema.orders).values({ authorId: customer, cityId, status: "published" }).returning();
+      expect((await app.inject({ method: "GET", url: `/orders/${other!.id}/view`, headers: as(exec) })).statusCode).toBe(404);
+      await unblock();
+    });
+  }
+}

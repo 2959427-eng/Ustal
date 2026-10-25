@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb, schema } from "@ustal/database";
 import { clearAdminSessionCookie, setAdminSessionCookie } from "../../lib/session";
+import { isAdminRole, passwordFingerprint } from "../../lib/admin-access";
 import { checkLoginRateLimit, recordFailedLoginAttempt, resetLoginAttempts } from "../../lib/login-rate-limit";
 
 export interface LoginState {
@@ -55,8 +56,13 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     return genericError;
   }
 
+  // Отключённая учётная запись (роль вне ADMIN_ROLES) не входит; ответ тот же, что и на неверный пароль.
+  if (!isAdminRole(admin.role)) {
+    recordFailedLoginAttempt(rateLimitKey);
+    return genericError;
+  }
   resetLoginAttempts(rateLimitKey);
-  setAdminSessionCookie({ sub: admin.id, email: admin.email, role: admin.role });
+  setAdminSessionCookie({ sub: admin.id, email: admin.email, role: admin.role, pwv: passwordFingerprint(admin.passwordHash) });
   redirect("/");
 }
 

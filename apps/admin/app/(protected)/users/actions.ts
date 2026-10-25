@@ -1,9 +1,10 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb, schema } from "@ustal/database";
-import { requireAdminSession } from "../../../lib/session";
+import { requireAdminPermission } from "../../../lib/session";
+import { assertOneOf, USER_STATUS_VALUES } from "../../../lib/admin-access";
 
 /**
  * Блокировка аккаунта — сразу разрывает возможность получать новые access
@@ -12,9 +13,11 @@ import { requireAdminSession } from "../../../lib/session";
  * следующий refresh получит 401 и отзовёт сессию.
  */
 export async function setUserStatusAction(userId: string, status: "active" | "blocked") {
-  requireAdminSession();
+  await requireAdminPermission("users.set_status");
+  status = assertOneOf(status, USER_STATUS_VALUES);
   const db = getDb();
-  await db.update(schema.users).set({ status }).where(eq(schema.users.id, userId));
+  // Только active <-> blocked: удалённый аккаунт (status=deleted) не «оживить» вызовом action напрямую.
+  await db.update(schema.users).set({ status }).where(and(eq(schema.users.id, userId), inArray(schema.users.status, ["active", "blocked"])));
   if (status === "blocked") {
     // Разрываем уже выданные refresh-сессии; access-токен перестаёт работать сам (проверка status в API).
     await db
