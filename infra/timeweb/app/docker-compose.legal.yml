@@ -1,0 +1,13 @@
+# Apply only with an owner-approved publication file, in the same rollout as API.
+# Installing this override is not approval of the document's content.
+services:
+  api:
+    environment:
+      USTAL_LEGAL_PUBLICATION_FILE: /run/ustal/legal-publication.json
+    volumes:
+      - type: bind
+        source: ${USTAL_LEGAL_PUBLICATION_HOST_FILE:?set absolute path to the approved legal publication JSON}
+        target: /run/ustal/legal-publication.json
+        read_only: true
+        bind:
+          create_host_path: false

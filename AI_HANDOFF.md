@@ -1,3 +1,19 @@
+## 2026-10-26 — Codex: owner-authorized rebaseline5defee9, legal rollout pending
+
+All legal WIP preserved in archive+stash fb7dca35ae7932258b1e9d6cb6d22974873bcff2. Fast-forwarded accepted5defee931387e2d607a7f28eaef647c5b8cbba90; retained new Caddy alias and every upstream mobile/config change without editing/rebuilding clients. API/legal21, affected URL42, Caddy18, API typecheck and actual approved owner bundle PASS. Caddy test now anchors exact public-site block to avoid api.ustal.site substring. New-domain DNS absent; shipped builds continue old API domain, no redirects/cutover. Production remains f8b610db/0029 before rollout. Isolated backup restore PASS remains retained. Owner authorized release commit/push and API+Caddy+bundle publication; no matching/worker/AI Consent changes. This entry is preparation, not proof of deployment.
+
+## 2026-10-26 — Codex: owner-approved legal publication release prepared
+
+Owner authorized publication and API/Caddy rollout, then explicitly authorized commit/push after the narrowly scoped validator false-positive fix. Four owner texts preserved except authorized draft-status removal; deletion country Russia explicitly confirmed. Existing Markdown renderer shared, five-document approved bundle validated; no fabricated legal metadata. Ordinary необходимости accepted while real placeholders/TBD/TODO/review markers remain blocked. Legal/web21 tests + API typecheck + actual owner-bundle rendering PASS; Caddy18checks PASS. Isolated production backup restore PASS with exact snapshot metrics, separate network-none/no-port volume, stopped. No mobile/matching/worker/AI Consent changes. Deployment evidence/rollback assets outside Git in legal-production-20261026. This entry precedes final commit/rollout; do not infer deployment success from it.
+
+## 2026-10-26 — Codex: legal-link changes and owner-review documents prepared
+
+Owner requested preparation only. Guard anchored to approved b5d1911; accepts only exact snapshot at base or one direct child carrying identical manifest, with branch/path/file checks retained and LF-normalized text hashes. Five owner-review pages generated from actual renderer under docs/launch/legal-approval-20261026; approved=false, no production bundle. Review markers blocked even if flag toggled. Corrected pseudonymization/contact-access wording and removed unconfirmed operator residence; no AI/matching/mobile changes. Legal/APIweb20 PASS. Separate commit file list, guard negative probes and rollout steps prepared; no commit/push/deploy/publication. Approval questions only in APPROVAL.md.
+
+## 2026-10-26 — Codex: shipped iOS2/Android4 legal links prepared, no deploy
+
+Started clean at owner-approved b5d191180002235aecbfb4974738cdc348c360d4. Build-source manifest hashes verify five LegalLinks on API origin plus AI screen ustal.site/privacy in both shipped builds; mobile unchanged, no rebuild. Existing API renderer/deletion/publication guard reused. Prepared exact Caddy read-only site paths and API-origin deletion redirect, plus read-only legal-bundle Compose override (no invented approved JSON). Caddy18/APIweb20 checks PASS, fullCaddy and Compose config valid. Actual prod still f8b610db, all10 legal URL probes404; no native-device or production fix claimed. Publication remains conditional on owner approval of actual texts/bundle and separately authorized API+Caddy rollout. Details docs/launch/legal-links-server-update-20261026.md; evidence legal-links-b5d1911-20261026. No worker/matching/DB/consent/env secrets/store/commit/push/deploy changes.
+
 ## 2026-10-26 — Codex: api.ustal.site preparation, release-base patch
 
 Isolated codex/api-domain-ustal-site-20261026 branch from published release b5d191180002235aecbfb4974738cdc348c360d4; main 5d5e63d diverges and was not merged. Canonical Desktop release legal WIP left untouched; historical pre-commit baseline verifier remains unchanged (does not pass on this branch).

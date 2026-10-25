@@ -7,6 +7,32 @@ import { renderLegalPage, titles } from "../legal/pages.js";
 const approved = () => validatePublication({ approved: true, version: "test-only", effectiveDate: "2026-10-21", supportEmail: "support@ustal.test", publicOrigin: "https://ustal.test", agePolicy: "Test fixture age policy", territories: "Test fixture territories", retention: "Test fixture retention", backupRetention: "Test fixture backups", processors: "Test fixture processors", processingLocations: "Test fixture locations", legalBasis: "Test fixture legal basis", activeWorkSupport: "Test fixture manual resolution" });
 afterEach(() => vi.unstubAllEnvs());
 describe("legal publication boundary", () => {
+  it("publishes the exact approved owner documents instead of legacy section text", async () => {
+    const documents = Object.fromEntries(Object.keys(titles).map(page => [page, `## OWNER ${page}\n\nExact owner text <script>unsafe</script>.` ]));
+    const bundle = { approved: true, version: "2026-10-26", effectiveDate: "2026-10-26", supportEmail: "support@ustal.test", publicOrigin: "https://ustal.test", documents };
+    expect(() => validatePublication({ ...bundle, documents: { ...documents, privacy: "При необходимости обратитесь в поддержку." } })).not.toThrow();
+    for (const marker of ["[PLACEHOLDER]", "[УКАЗАТЬ]", "[ПРОВЕРИТЬ]", "TBD", "TODO", "placeholder", "НЕОБХОДИМО УТВЕРДИТЬ срок", "НЕОБХОДИМО ПОДТВЕРДИТЬ страну", "НА УТВЕРЖДЕНИЕ", "ПРОЕКТ"]) {
+      expect(() => validatePublication({ ...bundle, documents: { ...documents, privacy: marker } })).toThrow();
+    }
+    const publication = validatePublication(bundle);
+    const app = Fastify(); await app.register(routes, { publication });
+    try {
+      for (const page of Object.keys(titles)) {
+        const response = await app.inject(`/${page}`);
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toContain(`OWNER ${page}`);
+        expect(response.body).toContain("&lt;script&gt;unsafe&lt;/script&gt;");
+        expect(response.body).not.toContain("<script>unsafe");
+      }
+      expect((await app.inject("/delete-account")).body).toContain('id="login-form"');
+      expect((await app.inject("/delete-account")).body).toContain('/account/delete/client.js');
+    } finally { await app.close(); }
+    expect(() => validatePublication({ ...bundle, approved: false })).toThrow();
+    expect(() => validatePublication({ ...bundle, documents: { ...documents, privacy: "[DATA_RETENTION_TBD]" } })).toThrow();
+    expect(() => validatePublication({ ...bundle, documents: { ...documents, support: "" } })).toThrow();
+    const incomplete = { ...documents }; delete incomplete.terms;
+    expect(() => validatePublication({ ...bundle, documents: incomplete })).toThrow();
+  });
   it("discloses OFF behavior without promising an AI opt-out", () => {
     const html = renderLegalPage("privacy");
     expect(html).toContain("контроль согласия сервером выключен (OFF)");
@@ -39,11 +65,15 @@ describe("legal publication boundary", () => {
       for (const page of Object.keys(titles)) {
         const r = await published.inject(`/${page}`);
         expect(r.statusCode).toBe(200); expect(r.body).not.toMatch(/TBD|\[USTAL_SUPPORT_EMAIL\]|Локальный проект/);
+        expect(r.headers["content-type"]).toContain("text/html; charset=utf-8");
+        expect(r.body).toContain("<h1>USTAL — ");
       }
+      expect((await published.inject("/legal.css")).headers["content-type"]).toContain("text/css");
+      expect((await published.inject("/account/delete/client.js")).headers["content-type"]).toContain("application/javascript");
     } finally { await published.close(); }
   });
   it("rejects unfinished publication, unsafe origins and absent explicit approval", () => {
-    for (const patch of [{ approved: false }, { effectiveDate: "2026-02-30" }, { supportEmail: "[USTAL_SUPPORT_EMAIL]" }, { processors: "[AI_PROCESSORS_TBD]" }, { retention: "" }, { publicOrigin: "http://ustal.test" }, { publicOrigin: "https://u:password@ustal.test" }]) {
+    for (const patch of [{ approved: false }, { effectiveDate: "2026-02-30" }, { supportEmail: "[USTAL_SUPPORT_EMAIL]" }, { processors: "[AI_PROCESSORS_TBD]" }, { retention: "" }, { retention: "НЕОБХОДИМО УТВЕРДИТЬ срок" }, { version: "review-2026-10-26" }, { publicOrigin: "http://ustal.test" }, { publicOrigin: "https://u:password@ustal.test" }]) {
       expect(() => validatePublication({ ...approved(), ...patch })).toThrow();
     }
   });

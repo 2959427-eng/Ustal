@@ -11,3 +11,34 @@
 	encode zstd gzip
 	reverse_proxy admin:4100
 }
+
+# Public legal links in the existing iOS/Android builds use both origins.
+# API still requires its separately approved publication bundle.
+ustal.site {
+	encode zstd gzip
+	@legalRead {
+		method GET HEAD
+		path /privacy /terms /community-guidelines /support /legal.css
+	}
+	handle @legalRead {
+		reverse_proxy api:4000
+	}
+	@deleteRead {
+		method GET HEAD
+		path /delete-account
+	}
+	handle @deleteRead {
+		# Keep the existing deletion form, scripts and auth requests same-origin.
+		redir https://{$API_DOMAIN}/delete-account 302
+	}
+	handle / {
+		respond "USTAL" 200
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
+
+www.ustal.site {
+	redir https://ustal.site{uri} permanent
+}

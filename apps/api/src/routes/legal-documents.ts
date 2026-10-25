@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { renderLegalMarkdown } from "../legal/markdown.js";
 import type { FastifyInstance } from "fastify";
 
 /**
@@ -29,17 +30,9 @@ export async function loadLegalDocument(id: LegalDocumentId, dir = LEGAL_DIR): P
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Минимальная разметка без зависимостей: заголовки, списки, абзацы, **жирный**. Весь текст экранируется. */
 export function renderLegalHtml(doc: LegalDocument): string {
-  const inline = (s: string) => escape(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  const blocks = doc.body.split(/\n{2,}/).map((block) => {
-    const lines = block.split("\n");
-    const heading = /^(#{1,3})\s+(.*)$/.exec(lines[0]!);
-    if (heading && lines.length === 1) return `<h${heading[1]!.length}>${inline(heading[2]!)}</h${heading[1]!.length}>`;
-    if (lines.every((l) => /^-\s+/.test(l))) return `<ul>${lines.map((l) => `<li>${inline(l.replace(/^-\s+/, ""))}</li>`).join("")}</ul>`;
-    return `<p>${lines.map(inline).join("<br>")}</p>`;
-  });
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">`
     + `<title>USTAL</title><style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px;color:#111}</style>`
-    + `</head><body>${blocks.join("\n")}<p><small>Версия ${escape(doc.version)}</small></p></body></html>`;
+    + `</head><body>${renderLegalMarkdown(doc.body)}<p><small>Версия ${escape(doc.version)}</small></p></body></html>`;
 }
 
 export default async function legalRoutes(app: FastifyInstance, opts: { dir?: string } = {}) {
