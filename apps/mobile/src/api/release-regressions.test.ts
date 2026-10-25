@@ -34,7 +34,7 @@ describe("transport isolation", () => {
 
  it("accepts the reviewed HTTPS origin and requires a real project setting", () => {
   vi.stubEnv("APP_ENV", "production");
-  vi.stubEnv("USTAL_API_URL", "https://api.104-171-139-154.sslip.io");
+  vi.stubEnv("USTAL_API_URL", "https://api.ustal.site");
   vi.stubEnv("EAS_PROJECT_ID", "");
   const unlinked = structuredClone(base);
   delete unlinked.extra.eas;

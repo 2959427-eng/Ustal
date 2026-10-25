@@ -83,7 +83,7 @@
       "expo-asset"
     ],
     "extra": {
-      "apiBaseUrl": "https://api.104-171-139-154.sslip.io",
+      "apiBaseUrl": "https://api.ustal.site",
       "eas": {
         "projectId": "89ebf4b0-85c8-499a-907c-44e2a5f8f5a0"
       }
