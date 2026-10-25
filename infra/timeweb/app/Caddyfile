@@ -2,7 +2,7 @@
 	email {$ACME_EMAIL}
 }
 
-{$API_DOMAIN} {
+{$API_DOMAIN}, api.ustal.site {
 	encode zstd gzip
 	reverse_proxy api:4000
 }

@@ -23,7 +23,7 @@ describe("iOS TestFlight release configuration", () => {
     expect(config.owner).toBe("kimkos1980");
     expect(config.extra.eas.projectId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(config.extra.release).toBe(true);
-    expect(config.extra.apiBaseUrl).toBe("https://api.104-171-139-154.sslip.io");
+    expect(config.extra.apiBaseUrl).toBe("https://api.ustal.site");
   });
 
   it("lets EAS own the build number and production store distribution", () => {
