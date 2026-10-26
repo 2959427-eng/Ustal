@@ -4,10 +4,10 @@ Owner decision, 2026-10-25; integration verified 2026-10-26: Codex is the only r
 
 - Repository: `C:/Users/User/Desktop/ustal-release-1.0.0`
 - Branch: `release/ustal-1.0.0`
-- Base commit: `5defee931387e2d607a7f28eaef647c5b8cbba90`
+- Base commit: `f38ce4c360c65ff95878d9bc79587c533195d8bc`
 - Reviewed upstream: `5d5e63d9f280a1ca05a52d8b9b1f6cac1dc70e3b`
 - Production ancestor: `f8b610db7b27c156600fa5dea32e4c4236d9b876`
-- Pending change: legal-link routing, publication preparation and baseline guard correction; no new commit authorized. Exact content is identified by `release-baseline.json` file hashes.
+- Pending change: owner-authorized legal-page presentation corrections only; commit/push and API-only rollout authorized on 2026-10-26. Exact content is identified by `release-baseline.json` file hashes.
 
 Before any work run `node scripts/verify-release-baseline.mjs`. Stop on repository, branch, HEAD or file-hash mismatch. Do not fall back to another checkout or main. Do not edit until the integrator agrees a new baseline.
 

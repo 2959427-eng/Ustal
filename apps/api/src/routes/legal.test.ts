@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import routes from "./legal.js";
 import { validatePublication } from "../legal/publication.js";
+import { renderLegalMarkdown } from "../legal/markdown.js";
 import { renderLegalPage, titles } from "../legal/pages.js";
 
 const approved = () => validatePublication({ approved: true, version: "test-only", effectiveDate: "2026-10-21", supportEmail: "support@ustal.test", publicOrigin: "https://ustal.test", agePolicy: "Test fixture age policy", territories: "Test fixture territories", retention: "Test fixture retention", backupRetention: "Test fixture backups", processors: "Test fixture processors", processingLocations: "Test fixture locations", legalBasis: "Test fixture legal basis", activeWorkSupport: "Test fixture manual resolution" });
@@ -20,6 +22,8 @@ describe("legal publication boundary", () => {
       for (const page of Object.keys(titles)) {
         const response = await app.inject(`/${page}`);
         expect(response.statusCode).toBe(200);
+        expect(response.body).not.toContain("<nav");
+        for (const destination of Object.keys(titles)) expect(response.body).not.toContain(`href="/${destination}"`);
         expect(response.body).toContain(`OWNER ${page}`);
         expect(response.body).toContain("&lt;script&gt;unsafe&lt;/script&gt;");
         expect(response.body).not.toContain("<script>unsafe");
@@ -32,6 +36,67 @@ describe("legal publication boundary", () => {
     expect(() => validatePublication({ ...bundle, documents: { ...documents, support: "" } })).toThrow();
     const incomplete = { ...documents }; delete incomplete.terms;
     expect(() => validatePublication({ ...bundle, documents: incomplete })).toThrow();
+  });
+  it("shows one deletion heading without operator details and preserves the remaining owner text and form", async () => {
+    const original = readFileSync(new URL("../../../../docs/launch/legal/delete-account.md", import.meta.url), "utf8");
+    const documents = Object.fromEntries(Object.keys(titles).map(page => [page, page === "delete-account" ? original : `## OWNER ${page}`]));
+    const publication = validatePublication({ approved: true, version: "2026-10-26", effectiveDate: "2026-10-26", supportEmail: "support@ustal.site", publicOrigin: "https://ustal.site", documents });
+    const app = Fastify(); await app.register(routes, { publication });
+    try {
+      const { body, statusCode } = await app.inject("/delete-account");
+      expect(statusCode).toBe(200);
+      expect(body.match(/<h1>/g)).toHaveLength(1);
+      expect(body).not.toContain("Ким Дмитрий Эдуардович");
+      expect(body).not.toContain("Оператор:");
+      expect(body).toContain("Контакт: support@ustal.site.");
+      const remaining = original.split(/Оператор: Ким Дмитрий Эдуардович, Россия\. /)[1]!;
+      const { renderLegalMarkdown } = await import("../legal/markdown.js");
+      expect(body).toContain(renderLegalMarkdown(remaining.replace(/\r\n/g, "\n")));
+      expect(body).toContain('id="login-form"');
+      expect(body).toContain('id="delete-password"');
+      expect(body).toContain('/account/delete/client.js');
+      expect(renderLegalPage("privacy", publication)).toContain("Оператор: физическое лицо Ким Дмитрий Эдуардович");
+    } finally { await app.close(); }
+    expect(documents["delete-account"]).toBe(original);
+  });
+  it("shows one clickable support contact without operator details or raw Markdown", () => {
+    const original = readFileSync(new URL("../../../../docs/launch/legal/support.md", import.meta.url), "utf8");
+    const documents = Object.fromEntries(Object.keys(titles).map(page => [page, original]));
+    const p = validatePublication({ approved: true, version: "2026-10-26", effectiveDate: "2026-10-26", supportEmail: "support@ustal.site", publicOrigin: "https://ustal.site", documents });
+    const html = renderLegalPage("support", p);
+    expect(html).not.toContain("Оператор:");
+    expect(html).not.toContain("Ким Дмитрий Эдуардович");
+    expect(html).not.toContain("[support@");
+    expect(html.match(/<a href="mailto:support@ustal.site">support@ustal.site<\/a>/g)).toHaveLength(1);
+    expect(html.match(/support@ustal.site/g)).toHaveLength(2); // href and visible label only
+    expect(html).toContain("Поддержка не является экстренной службой");
+    expect(html).toContain("Не включайте пароль, коды, банковские реквизиты");
+    expect(documents.support).toBe(original);
+  });
+  it("starts community rules with one title and the first rule, preserving every rule without the operator block", () => {
+    const original = readFileSync(new URL("../../../../docs/launch/legal/community-guidelines.md", import.meta.url), "utf8");
+    const documents = Object.fromEntries(Object.keys(titles).map(page => [page, original]));
+    const p = validatePublication({ approved: true, version: "2026-10-26", effectiveDate: "2026-10-26", supportEmail: "support@ustal.site", publicOrigin: "https://ustal.site", documents });
+    const html = renderLegalPage("community-guidelines", p);
+    expect(html.match(/<h1>/g)).toHaveLength(1);
+    expect(html).toContain('<main><h1>USTAL — Правила сообщества</h1><h2>Уважение и законность</h2>');
+    expect(html).not.toMatch(/Оператор:|Ким Дмитрий|support@|mailto:/);
+    const remaining = original.replace(/\r\n/g, "\n").split("## Уважение и законность")[1]!;
+    expect(html).toContain("Запрещены незаконные товары и услуги");
+    expect(html).toContain("Утверждённый срок реакции и правила эскалации должны быть обеспечены перед публичным запуском.");
+    expect(html).toContain(renderLegalMarkdown("## Уважение и законность" + remaining));
+    expect(documents["community-guidelines"]).toBe(original);
+  });
+  it("shows one privacy heading while preserving the rest of the approved document", () => {
+    const original = readFileSync(new URL("../../../../docs/launch/legal/privacy.md", import.meta.url), "utf8");
+    const documents = Object.fromEntries(Object.keys(titles).map(page => [page, original]));
+    const p = validatePublication({ approved: true, version: "2026-10-26", effectiveDate: "2026-10-26", supportEmail: "support@ustal.site", publicOrigin: "https://ustal.site", documents });
+    const html = renderLegalPage("privacy", p);
+    expect(html.match(/<h1>/g)).toHaveLength(1);
+    expect(html).toContain("<h1>USTAL — Политика конфиденциальности</h1>");
+    const remaining = original.slice(original.indexOf("\n") + 1);
+    expect(html).toContain(renderLegalMarkdown(remaining));
+    expect(documents.privacy).toBe(original);
   });
   it("discloses OFF behavior without promising an AI opt-out", () => {
     const html = renderLegalPage("privacy");
@@ -46,6 +111,7 @@ describe("legal publication boundary", () => {
       for (const page of Object.keys(titles)) {
         const r = await app.inject(`/${page}`);
         expect(r.statusCode).toBe(200); expect(r.body).toContain('name="viewport"');
+        expect(r.body).not.toContain("<nav");
         expect(r.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
         expect(r.headers["cache-control"]).toBe("no-store"); expect(r.body).not.toContain("WedLink");
       }

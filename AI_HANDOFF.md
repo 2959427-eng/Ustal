@@ -1,3 +1,11 @@
+## 2026-10-26 - Codex: combined legal presentation corrections (local only)
+
+Shared renderer retains removal of navigation on all five routes. Privacy and deletion show one heading; deletion omits operator while preserving support and form. Support omits operator and shows one clickable email without raw Markdown or duplicate footer contact. Community starts with one title then Respect and legality; operator/contact block omitted. Approved source documents and all mobile files untouched. API legal/deletion25 tests PASS; API typecheck PASS. No commit/push/deploy. Previous responsive390/360 checks predate these additional presentation edits.
+
+## 2026-10-26 - Codex: remove repeated legal navigation (local only)
+
+Removed five-link navigation and unused nav CSS from shared API legal renderer. Approved documents, mobile login/register links, direct routes and deletion form/client unchanged. API legal/deletion 21 tests and mobile legal links 3 tests PASS. Local approved bundle checked at 390px and 360px: all five pages render without navigation or horizontal overflow; deletion form present. Responsive browser checks only, not physical iOS/Android device certification. No commit/push/deploy; production unchanged.
+
 ## 2026-10-26 — Codex: owner-authorized rebaseline5defee9, legal rollout pending
 
 All legal WIP preserved in archive+stash fb7dca35ae7932258b1e9d6cb6d22974873bcff2. Fast-forwarded accepted5defee931387e2d607a7f28eaef647c5b8cbba90; retained new Caddy alias and every upstream mobile/config change without editing/rebuilding clients. API/legal21, affected URL42, Caddy18, API typecheck and actual approved owner bundle PASS. Caddy test now anchors exact public-site block to avoid api.ustal.site substring. New-domain DNS absent; shipped builds continue old API domain, no redirects/cutover. Production remains f8b610db/0029 before rollout. Isolated backup restore PASS remains retained. Owner authorized release commit/push and API+Caddy+bundle publication; no matching/worker/AI Consent changes. This entry is preparation, not proof of deployment.

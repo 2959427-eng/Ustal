@@ -64,6 +64,25 @@ export function sections(page: LegalPage, p?: LegacyLegalPublication): Section[]
 }
 export function renderLegalPage(page: LegalPage, p?: LegalPublication): string {
   const email = p?.supportEmail;
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>USTAL — ${titles[page]}</title><link rel="stylesheet" href="/legal.css"></head><body><nav aria-label="Документы USTAL">${Object.entries(titles).map(([key,title])=>`<a href="/${key}">${title}</a>`).join(" ")}</nav><main>${p ? "" : '<p role="note"><strong>Локальный проект документов. Не утверждён для публикации.</strong></p>'}<h1>USTAL — ${titles[page]}</h1>${p && "documents" in p ? renderLegalMarkdown(p.documents[page]) : sections(page,p).map(([title,text])=>`<section><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></section>`).join("")}<footer><p>Оператор: физическое лицо Ким Дмитрий Эдуардович</p><p>Контакт: ${email ? `<a href="mailto:${encodeURIComponent(email)}">${escapeHtml(email)}</a>` : "[USTAL_SUPPORT_EMAIL]"}</p>${p ? `<p>Версия ${escapeHtml(p.version)}. Действует с ${escapeHtml(p.effectiveDate)}.</p>` : ""}</footer></main></body></html>`;
+  let document = p && "documents" in p ? p.documents[page] : undefined;
+  if ((page === "delete-account" || page === "support") && document !== undefined) {
+    // Presentation only; the approved source documents remain unchanged.
+    document = document.replace(/\r\n/g, "\n")
+      .replace(/^Оператор: Ким Дмитрий Эдуардович, Россия\.[ \t]*/m, "");
+    if (page === "delete-account") document = document.replace(/^# USTAL — Удаление аккаунта и данных[ \t]*\n/, "");
+  }
+  if (page === "community-guidelines" && document !== undefined) {
+    document = document.replace(/\r\n/g, "\n")
+      .replace(/^# USTAL — Правила сообщества[ \t]*\n/m, "")
+      .replace(/^Оператор: Ким Дмитрий Эдуардович, Россия\. Контакт: \[support@ustal\.site\]\(mailto:support@ustal\.site\)\.[ \t]*$/m, "")
+      .trimStart();
+  }
+  if (page === "privacy" && document !== undefined) {
+    document = document.replace(/^# USTAL — Политика конфиденциальности[ \t]*\r?\n/, "");
+  }
+  let content = document !== undefined ? renderLegalMarkdown(document) : sections(page, p && "documents" in p ? undefined : p).map(([title,text])=>`<section><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></section>`).join("");
+  const supportContact = page === "support" && content.includes("[support@ustal.site](mailto:support@ustal.site)");
+  if (supportContact) content = content.replace("[support@ustal.site](mailto:support@ustal.site)", '<a href="mailto:support@ustal.site">support@ustal.site</a>');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>USTAL — ${titles[page]}</title><link rel="stylesheet" href="/legal.css"></head><body><main>${p ? "" : '<p role="note"><strong>Локальный проект документов. Не утверждён для публикации.</strong></p>'}<h1>USTAL — ${titles[page]}</h1>${content}<footer>${(page === "delete-account" || page === "support" || page === "community-guidelines") ? "" : "<p>Оператор: физическое лицо Ким Дмитрий Эдуардович</p>"}${supportContact || page === "community-guidelines" ? "" : `<p>Контакт: ${email ? `<a href="mailto:${encodeURIComponent(email)}">${escapeHtml(email)}</a>` : "[USTAL_SUPPORT_EMAIL]"}</p>`}${p ? `<p>Версия ${escapeHtml(p.version)}. Действует с ${escapeHtml(p.effectiveDate)}.</p>` : ""}</footer></main></body></html>`;
 }
-export const legalCss = "body{font:18px/1.65 system-ui;margin:0 auto;padding:24px;max-width:820px;color:#182329;background:#fff;overflow-wrap:anywhere}nav{display:flex;flex-wrap:wrap;gap:12px}a{color:#075c8c}h1{font-size:28px}h2{font-size:22px}label{display:block;margin:12px 0}input:not([type=checkbox]),button{font:inherit;box-sizing:border-box;max-width:100%;padding:10px}input:not([type=checkbox]){width:100%}button{cursor:pointer}button:disabled{opacity:.6}footer{border-top:1px solid #ddd;margin-top:24px}[hidden]{display:none!important}";
+export const legalCss = "body{font:18px/1.65 system-ui;margin:0 auto;padding:24px;max-width:820px;color:#182329;background:#fff;overflow-wrap:anywhere}a{color:#075c8c}h1{font-size:28px}h2{font-size:22px}label{display:block;margin:12px 0}input:not([type=checkbox]),button{font:inherit;box-sizing:border-box;max-width:100%;padding:10px}input:not([type=checkbox]){width:100%}button{cursor:pointer}button:disabled{opacity:.6}footer{border-top:1px solid #ddd;margin-top:24px}[hidden]{display:none!important}";
