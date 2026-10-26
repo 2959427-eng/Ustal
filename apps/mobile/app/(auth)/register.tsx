@@ -1,5 +1,6 @@
 import { getLegalDocuments, registrationDocumentsReady } from "../../src/api/legal";
-import { LegalLinks } from "../../src/components/LegalLinks";
+import { LegalLink, LegalLinks } from "../../src/components/LegalLinks";
+import { postRegistrationRoute } from "../../src/lib/ai-consent-flow";
 import { consumeOrderRoute } from "../../src/notifications/navigation";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { useEffect, useState } from "react";
@@ -99,7 +100,8 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       await register({ name: name.trim(), phone, password, cityId, acceptedAge18: true, acceptedRules: true, acceptedPdn: true });
-      router.replace(consumeOrderRoute() ?? "/(tabs)");
+      // Сразу после регистрации и до любой ИИ-обработки — «Как работает USTAL» с решением о передаче данных.
+      router.replace(postRegistrationRoute(consumeOrderRoute()));
       void ensurePushRegistered();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось завершить регистрацию");
@@ -175,7 +177,9 @@ export default function RegisterScreen() {
 
       <LegalLinks />
       <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: rulesAccepted }} disabled={submitting} onPress={() => setRulesAccepted(v => !v)}><Text>{rulesAccepted ? "☑" : "☐"} Принимаю пользовательское соглашение</Text></Pressable>
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: pdnAccepted }} disabled={submitting} onPress={() => setPdnAccepted(v => !v)}><Text>{pdnAccepted ? "☑" : "☐"} Согласен с обработкой персональных данных</Text></Pressable>
+      <LegalLink page="terms" label="Открыть пользовательское соглашение" />
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: pdnAccepted }} disabled={submitting} onPress={() => setPdnAccepted(v => !v)}><Text>{pdnAccepted ? "☑" : "☐"} Ознакомлен(а) с политикой конфиденциальности и согласен(на) на обработку персональных данных</Text></Pressable>
+      <LegalLink page="privacy" label="Открыть политику конфиденциальности" />
       <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: ageConfirmed }} accessibilityLabel="Мне исполнилось 18 лет" onPress={() => setAgeConfirmed(v => !v)} disabled={submitting}>
         <Text style={styles.hint}>{ageConfirmed ? "☑" : "☐"} Мне исполнилось 18 лет</Text>
       </Pressable>

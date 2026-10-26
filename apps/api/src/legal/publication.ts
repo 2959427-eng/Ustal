@@ -57,3 +57,11 @@ export function loadPublication(): LegalPublication | undefined {
   const path = process.env.USTAL_LEGAL_PUBLICATION_FILE;
   return path ? validatePublication(JSON.parse(readFileSync(path, "utf8"))) : undefined;
 }
+
+let cachedPublication: { path: string | undefined; value: LegalPublication | undefined } | undefined;
+/** Та же утверждённая публикация, что отдаёт routes/legal.ts; файл читается один раз на путь. */
+export function currentPublication(): LegalPublication | undefined {
+  const path = process.env.USTAL_LEGAL_PUBLICATION_FILE;
+  if (!cachedPublication || cachedPublication.path !== path) cachedPublication = { path, value: loadPublication() };
+  return cachedPublication.value;
+}

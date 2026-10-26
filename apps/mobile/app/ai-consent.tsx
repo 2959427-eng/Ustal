@@ -1,45 +1,112 @@
 import { useCallback, useRef, useState } from "react";
-import { ScrollView, Text, Linking } from "react-native";
-import { router, useFocusEffect } from "expo-router";
-import { getConsents, changeConsent } from "../src/api/consents";
-import type { ConsentSnapshot } from "../src/lib/ai-consent";
+import { ScrollView, Text, StyleSheet, View } from "react-native";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { aiConsentErrorMessage, decideAiConsent, getAiConsent, revokeAiConsentGrant } from "../src/api/consents";
+import { AI_CONSENT_STATUS_LABEL, type AiConsentState, type RevocableGrant } from "../src/lib/ai-consent-state";
+import { afterAiConsentRoute, AI_CONSENT_GRANT_LABEL, AI_CONSENT_NOT_ENFORCED, AI_CONSENT_REFUSE_LABEL, AI_CONSENT_TEXT } from "../src/lib/ai-consent-flow";
 import { PrimaryButton } from "../src/components/PrimaryButton";
+import { LegalLink } from "../src/components/LegalLinks";
+import { colors, spacing, typography } from "../src/theme/tokens";
+
+/**
+ * «Как работает USTAL» — утверждённый текст (AI_CONSENT_TEXT) и решение пользователя.
+ * Открывается один раз после регистрации (onboarding=1), при входе при новой версии условий и из «Аккаунт».
+ * Экран ничего не разрешает сам: передачу блокирует сервер (USTAL_AI_CONSENT_MODE=enforced), пока нет grant.
+ */
 export default function AiConsentScreen() {
-  const [snapshot, setSnapshot] = useState<ConsentSnapshot | null>(null);
+  const { onboarding, next } = useLocalSearchParams<{ onboarding?: string; next?: string }>();
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<AiConsentState | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const lock = useRef(false);
+
   const load = useCallback(async () => {
-    if (lock.current) return;
-    lock.current = true; setBusy(true); setSnapshot(null); setError("");
-    try { setSnapshot(await getConsents()); }
-    catch { setError("Настройки AI недоступны. Разрешение не изменено. При текущей версии сервера этот экран не гарантирует остановку AI. Для прекращения передачи не отправляйте новые тексты или голос; обратитесь в support@ustal.site."); }
-    finally { lock.current = false; setBusy(false); }
+    setError("");
+    try { setState(await getAiConsent()); }
+    catch { setState(null); setError("Не удалось загрузить состояние. Проверьте подключение и обновите экран."); }
   }, []);
-  useFocusEffect(useCallback(() => { void load(); return () => setSnapshot(null); }, [load]));
-  const decide = async (purpose: string, decision: "grant" | "revoke") => {
-    if (!snapshot || lock.current) return;
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const leave = () => router.replace(afterAiConsentRoute({ onboarding: onboarding === "1", next }));
+
+  const run = async (action: () => Promise<unknown>, thenLeave: boolean) => {
+    if (lock.current) return;
     lock.current = true; setBusy(true); setError("");
-    try { await changeConsent(snapshot, purpose, decision); setSnapshot(await getConsents()); }
-    catch { setSnapshot(null); setError("Изменение не подтверждено. Обновите экран и проверьте состояние разрешения."); }
-    finally { lock.current = false; setBusy(false); }
+    try {
+      await action();
+      void queryClient.invalidateQueries({ queryKey: ["ai-consent"] });
+      if (thenLeave) leave(); else await load();
+    } catch (e) {
+      await load();
+      setError(aiConsentErrorMessage(e));
+    } finally { lock.current = false; setBusy(false); }
   };
-  return <ScrollView contentContainerStyle={{ padding: 24, gap: 16 }}>
-    <Text accessibilityRole="header">Передача данных AI</Text>
-    <Text>OpenAI получает данные через relay USTAL. Разрешение не выдаётся фактом регистрации или открытием этого экрана.</Text>
-    {error ? <Text accessibilityRole="alert">{error}</Text> : null}
-    {snapshot && !snapshot.outboundEnforcement ? <Text>Контроль согласия сервером выключен. Этот экран пока не управляет передачей AI. Не отправляйте новые данные, если не хотите их обработки.</Text> : null}
-    {snapshot?.outboundEnforcement && !snapshot.policies.some(p => p.purpose === snapshot.aiConsentPurpose) ? <Text>Утверждённые условия пока недоступны.</Text> : null}
-    {snapshot?.policies.filter(p => p.purpose === snapshot.aiConsentPurpose).map(p => <ScrollView key={p.id}>
-      <Text>{p.purpose} — версия {p.version}</Text>
-      <Text>{p.content.humanText || "Текст условий недоступен"}</Text>
-      <Text>{snapshot.decisions.some(d => d.purpose === p.purpose && d.effective) ? "Разрешение действует" : "Действующего разрешения нет"}</Text>
-      <PrimaryButton label="Разрешить передачу" disabled={!snapshot.outboundEnforcement || p.status !== "approved" || busy} onPress={() => void decide(p.purpose, "grant")} />
-    </ScrollView>)}
-    {snapshot?.decisions.filter(d => d.decision === "grant").map(d => <PrimaryButton key={d.purpose} label={`Отозвать разрешение: ${d.purpose}`} disabled={busy} variant="secondary" onPress={() => void decide(d.purpose, "revoke")} />)}
-    <Text>Если контроль выключен, отзыв записывается, но не гарантирует остановку AI. При действующем контроле отказ приостанавливает новые AI-операции. Отзыв не отменяет уже отправленный запрос. Непроверенный контент не должен публиковаться в обход модерации.</Text>
-    <PrimaryButton label="Продолжить без нового разрешения" variant="secondary" disabled={busy} onPress={() => router.back()} />
-    <Text onPress={() => void Linking.openURL("https://ustal.site/privacy")}>Privacy Policy</Text>
-    <PrimaryButton label="Обновить состояние" loading={busy} onPress={() => void load()} />
-  </ScrollView>;
+  const decide = (decision: "grant" | "revoke") => {
+    if (state?.kind !== "required") return;
+    void run(() => decideAiConsent(state, decision), onboarding === "1" || state.status !== "granted");
+  };
+  const revokeGrant = (grant: RevocableGrant) => void run(() => revokeAiConsentGrant(grant), false);
+
+  const asking = state?.kind === "required" && state.status !== "granted";
+  const revocable = state && state.kind !== "required" ? state.revocable ?? [] : [];
+
+  return (
+    <ScrollView contentContainerStyle={styles.content}>
+      <Text style={styles.title} accessibilityRole="header">Как работает USTAL</Text>
+      <Text style={styles.text}>{AI_CONSENT_TEXT[0]}</Text>
+      <Text style={styles.text}>{AI_CONSENT_TEXT[1]}</Text>
+      <LegalLink page="privacy" label={AI_CONSENT_TEXT[2]} />
+      {asking ? <Text style={styles.text}>{AI_CONSENT_TEXT[3]}</Text> : null}
+      {error ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
+
+      {state?.kind === "required" && (
+        <View style={styles.gap}>
+          <Text style={styles.caption}>Версия условий {state.policy.version} · {AI_CONSENT_STATUS_LABEL[state.status]}</Text>
+          <Text style={styles.link} accessibilityRole="button" onPress={() => setShowTerms((v) => !v)}>
+            {showTerms ? "Скрыть полные условия" : `Полные условия (версия ${state.policy.version})`}
+          </Text>
+          {showTerms ? <Text style={styles.text} selectable>{state.text}</Text> : null}
+          {asking ? (
+            <>
+              <PrimaryButton label={AI_CONSENT_GRANT_LABEL} loading={busy} onPress={() => decide("grant")} />
+              <PrimaryButton label={AI_CONSENT_REFUSE_LABEL} variant="secondary" disabled={busy} onPress={() => decide("revoke")} />
+            </>
+          ) : (
+            <>
+              <PrimaryButton label="Отозвать разрешение" variant="secondary" loading={busy} onPress={() => decide("revoke")} />
+              <PrimaryButton label="Продолжить" disabled={busy} onPress={leave} />
+            </>
+          )}
+        </View>
+      )}
+
+      {state && state.kind !== "required" && (
+        <View style={styles.gap}>
+          <Text style={styles.text}>{state.kind === "not_required" ? AI_CONSENT_NOT_ENFORCED
+            : state.reason === "notice_mismatch"
+              ? "Условия на сервере не совпадают с текстом в приложении. Разрешение не может быть дано, данные в OpenAI не передаются. Обновите приложение."
+              : "Утверждённые условия пока недоступны, поэтому сервер не передаёт ваши данные в OpenAI. Функции ИИ временно не работают."}</Text>
+          {revocable.map((g) => (
+            <PrimaryButton key={g.purpose} label="Отозвать разрешение" variant="secondary" loading={busy} onPress={() => revokeGrant(g)} />
+          ))}
+          <PrimaryButton label="Продолжить" disabled={busy} onPress={leave} />
+        </View>
+      )}
+      {!state && !error ? <Text style={styles.caption}>Загружаем…</Text> : null}
+      {!state && error ? <PrimaryButton label="Обновить" onPress={() => void load()} /> : null}
+    </ScrollView>
+  );
 }
+
+const styles = StyleSheet.create({
+  content: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background, flexGrow: 1 },
+  gap: { gap: spacing.md },
+  title: { fontSize: 24, fontWeight: "700", color: colors.textPrimary },
+  text: { ...typography.body, color: colors.textPrimary },
+  caption: { ...typography.caption, color: colors.textSecondary },
+  error: { ...typography.caption, color: colors.danger },
+  link: { ...typography.caption, color: colors.primary, textDecorationLine: "underline" },
+});

@@ -8,6 +8,8 @@ import { hashPassword, verifyPassword } from "../lib/password.js";
 import { isLoginThrottled, recordLoginFailure, resetLoginFailures } from "../lib/login-throttle.js";
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from "../lib/auth-tokens.js";
 import { verifyPhoneVerificationToken } from "../lib/phone-verification-token.js";
+import { currentPublication } from "../legal/publication.js";
+import { registrationDocumentEvidence } from "../legal/registration-evidence.js";
 
 /**
  * Auth: Argon2id, access + rotating refresh tokens, revoke, rate limiting
@@ -82,6 +84,10 @@ export default async function authRoutes(app: FastifyInstance) {
         acceptedPdnAt: now,
       });
 
+      // Принятие соглашения и политики: время = acceptedRulesAt/acceptedPdnAt, версия и хеши страниц — здесь.
+      await tx.insert(schema.auditLogs).values({ actorType: "user", actorId: user.id,
+        action: "registration_documents_accepted", targetType: "user", targetId: user.id,
+        metadata: { ...registrationDocumentEvidence(currentPublication()), acceptedRules: true, acceptedPdn: true, acceptedAt: now.toISOString() } });
       if (body.acceptedAge18 === true) {
         await tx.insert(schema.auditLogs).values({ actorType: "user", actorId: user.id,
           action: "registration_age_confirmed", targetType: "user", targetId: user.id,

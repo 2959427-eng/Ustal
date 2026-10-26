@@ -18,3 +18,20 @@ export function LegalLinks() {
     {error && <Text accessibilityRole="alert">{error}</Text>}
   </View>;
 }
+
+/** Одна ссылка на документ — для отметок регистрации, где у каждого документа своя ссылка. */
+export function LegalLink({ page, label }: { page: typeof legalLinks[number][0]; label: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const open = async () => {
+    setError(null);
+    try {
+      const origin = Constants.expoConfig?.extra?.apiBaseUrl;
+      if (typeof origin !== "string") throw Error("missing_legal_origin");
+      await Linking.openURL(legalUrl(origin, page));
+    } catch { setError("Не удалось открыть документ. Проверьте подключение и повторите попытку."); }
+  };
+  return <View>
+    <Pressable accessibilityRole="link" onPress={() => void open()}><Text style={{ color: "#075c8c", textDecorationLine: "underline" }}>{label}</Text></Pressable>
+    {error && <Text accessibilityRole="alert">{error}</Text>}
+  </View>;
+}
