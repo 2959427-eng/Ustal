@@ -24,3 +24,11 @@ Root integration must register the route with real authenticate/rateLimit plugin
 ## Local evidence
 
 Tests were authored before implementation; initial run failed because the route module did not exist. Targeted unit/integration tests exercise real PostgreSQL, with a test-only authentication hook to isolate the unregistered route. Tests fail closed unless NODE_ENV=test and DATABASE_URL names a local *_test database. Dedicated test evidence rows are intentionally retained (append-only); no production or user database is touched.
+
+## Notice binding (2026-10-26)
+
+The app shows a fixed owner-approved notice (`AI_CONSENT_TEXT`, apps/mobile/src/lib/ai-consent-flow.ts). A grant is bound to it:
+- the approved disclosure must carry `content.notice` — an array of paragraphs equal, character for character, to `AI_CONSENT_TEXT`; `content.humanText` holds the full terms, shown in the app before the decision ("Полные условия"). Both are covered by `content_hash`;
+- the app grants only when the current approved policy's notice matches, and re-reads `/me/consents` right before sending; if policy, version, hash or revision changed, nothing is sent;
+- a grant body carries `policyVersion` and `notice`; under the existing user/advisory locks `decideConsent` rejects a different version (`consent_policy_changed`) and, for a policy with a notice, a missing/different notice or version (`consent_notice_mismatch`), as well as a notice sent for a policy without one;
+- revoke/refusal needs no notice; `policyVersion` on revoke is checked when present. Old clients without these fields keep the previous behaviour only for policies without `content.notice`; once the published policy has a notice, an old client's grant is rejected (fail-closed) and the user must update the app.

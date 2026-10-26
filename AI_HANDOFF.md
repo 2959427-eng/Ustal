@@ -1,3 +1,7 @@
+## 2026-10-26 — Codex: AI Consent v3 independently reviewed for release PR
+
+Original v3 SHA 3fc6f22f2b97d96b6e95bd1d40513e368ea3b4dfc6149ff4208374a5cf1b73c1 applied unchanged to clean e981662 in isolated worktree. Exact owner copy / notice-policy binding and off-mode revoke checked. Fresh local DB tests: API265, worker433, database33, mobile191; matching229 and AI244 PASS. Mobile Expo typecheck + API/worker/database typecheck PASS; mobile lint 0 errors / 8 existing warnings. See docs/launch/ai-consent-v3-review-20261026.md for evidence and legacy-client/policy/legal release gates. PR only to release/ustal-1.0.0; no merge, production, enforced, deploy or EAS actions.
+
 ## 2026-10-26 - Codex: combined legal presentation corrections (local only)
 
 Shared renderer retains removal of navigation on all five routes. Privacy and deletion show one heading; deletion omits operator while preserving support and form. Support omits operator and shows one clickable email without raw Markdown or duplicate footer contact. Community starts with one title then Respect and legality; operator/contact block omitted. Approved source documents and all mobile files untouched. API legal/deletion25 tests PASS; API typecheck PASS. No commit/push/deploy. Previous responsive390/360 checks predate these additional presentation edits.

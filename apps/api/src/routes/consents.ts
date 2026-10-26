@@ -6,6 +6,9 @@ import { ConsentError, decideConsent, readConsents } from "../lib/consents.js";
 const decisionSchema = z.object({
   policyId: z.string().uuid(), policyHash: z.string().regex(/^[a-f0-9]{64}$/),
   decision: z.enum(["grant", "revoke"]), expectedRevision: z.number().int().min(0).max(2147483646),
+  // Клиенты с 2026-10-26: версия и дословный текст показанного уведомления; старые клиенты их не присылают.
+  policyVersion: z.string().min(1).max(128).optional(),
+  notice: z.array(z.string().min(1).max(4000)).min(1).max(20).optional(),
 }).strict();
 
 // Read/revoke remain available during staged rollout; off mode never implies outbound protection.

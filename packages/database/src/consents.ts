@@ -21,7 +21,18 @@ export function disclosureHash(content: unknown): string {
 export class ConsentError extends Error {
   constructor(public status: number, public code: string) { super(code); }
 }
-export type ConsentDecision = { policyId: string; policyHash: string; decision: "grant" | "revoke"; expectedRevision: number };
+export type ConsentDecision = {
+  policyId: string; policyHash: string; decision: "grant" | "revoke"; expectedRevision: number;
+  /** Версия и дословный текст уведомления, показанные пользователю (клиенты с 2026-10-26). */
+  policyVersion?: string; notice?: string[];
+};
+
+/** Утверждённое краткое уведомление политики (content.notice: абзацы, показанные в окне согласия). */
+export function policyNotice(content: unknown): string[] | null {
+  const notice = content && typeof content === "object" ? (content as { notice?: unknown }).notice : undefined;
+  return Array.isArray(notice) && notice.length > 0 && notice.every(p => typeof p === "string" && p.trim() !== "") ? notice as string[] : null;
+}
+const sameNotice = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((p, i) => p === b[i]);
 
 export async function readConsents(userId: string) {
   return getSql().begin(async tx => {
@@ -51,8 +62,16 @@ export async function decideConsent(userId: string, input: ConsentDecision) {
     const [policy] = await tx`SELECT * FROM consent_disclosures WHERE id=${input.policyId} FOR SHARE`;
     if (!policy || policy.content_hash !== input.policyHash || disclosureHash(policy.content) !== input.policyHash)
       throw new ConsentError(409, "consent_policy_changed");
+    if (input.policyVersion !== undefined && input.policyVersion !== policy.version)
+      throw new ConsentError(409, "consent_policy_changed");
     if (input.decision === "grant" && (policy.status !== "approved" || !policy.is_current))
       throw new ConsentError(409, "consent_policy_not_approved_current");
+    // Grant привязан к показанному тексту: политика с утверждённым уведомлением принимает согласие только при
+    // дословном совпадении текста и версии; присланный текст без уведомления в политике — тоже отказ (fail-closed).
+    const notice = policyNotice(policy.content);
+    if (input.decision === "grant" && (notice || input.notice) &&
+      (!notice || !input.notice || input.policyVersion !== policy.version || !sameNotice(notice, input.notice)))
+      throw new ConsentError(409, "consent_notice_mismatch");
     const [latest] = await tx`SELECT d.* FROM consent_decisions d JOIN consent_disclosures p ON p.id=d.policy_id
       WHERE d.user_id=${userId} AND p.purpose=${policy.purpose} ORDER BY d.seq DESC LIMIT 1`;
     if (latest?.decision === input.decision && latest.policy_id === input.policyId && latest.policy_hash === input.policyHash)
