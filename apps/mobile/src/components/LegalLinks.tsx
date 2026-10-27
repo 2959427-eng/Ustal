@@ -1,37 +1,22 @@
 import { useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
-import Constants from "expo-constants";
-import { legalLinks, legalUrl } from "../lib/legal-links";
+import { Pressable, Text, View } from "react-native";
+import { legalLinks, type LegalPage } from "../lib/legal-links";
+import { LegalDocumentModal } from "./LegalDocumentModal";
 
+/** Ссылки на юридические документы: открываются во встроенном окне поверх экрана (LegalDocumentModal). */
 export function LegalLinks() {
-  const [error, setError] = useState<string | null>(null);
-  const open = async (page: typeof legalLinks[number][0]) => {
-    setError(null);
-    try {
-      const origin = Constants.expoConfig?.extra?.apiBaseUrl;
-      if (typeof origin !== "string") throw Error("missing_legal_origin");
-      await Linking.openURL(legalUrl(origin, page));
-    } catch { setError("Не удалось открыть страницу USTAL. Проверьте подключение и повторите попытку."); }
-  };
+  const [open, setOpen] = useState<LegalPage | null>(null);
   return <View style={{ gap: 12, paddingVertical: 16 }}>
-    {legalLinks.map(([page, label]) => <Pressable key={page} accessibilityRole="link" onPress={() => void open(page)}><Text style={{ color: "#075c8c", textDecorationLine: "underline" }}>{label}</Text></Pressable>)}
-    {error && <Text accessibilityRole="alert">{error}</Text>}
+    {legalLinks.map(([page, label]) => <Pressable key={page} accessibilityRole="link" onPress={() => setOpen(page)}><Text style={{ color: "#075c8c", textDecorationLine: "underline" }}>{label}</Text></Pressable>)}
+    <LegalDocumentModal page={open} onClose={() => setOpen(null)} />
   </View>;
 }
 
-/** Одна ссылка на документ — для отметок регистрации, где у каждого документа своя ссылка. */
-export function LegalLink({ page, label }: { page: typeof legalLinks[number][0]; label: string }) {
-  const [error, setError] = useState<string | null>(null);
-  const open = async () => {
-    setError(null);
-    try {
-      const origin = Constants.expoConfig?.extra?.apiBaseUrl;
-      if (typeof origin !== "string") throw Error("missing_legal_origin");
-      await Linking.openURL(legalUrl(origin, page));
-    } catch { setError("Не удалось открыть документ. Проверьте подключение и повторите попытку."); }
-  };
+/** Одна ссылка на документ — для отметок регистрации и окна согласия. */
+export function LegalLink({ page, label }: { page: LegalPage; label: string }) {
+  const [open, setOpen] = useState(false);
   return <View>
-    <Pressable accessibilityRole="link" onPress={() => void open()}><Text style={{ color: "#075c8c", textDecorationLine: "underline" }}>{label}</Text></Pressable>
-    {error && <Text accessibilityRole="alert">{error}</Text>}
+    <Pressable accessibilityRole="link" onPress={() => setOpen(true)}><Text style={{ color: "#075c8c", textDecorationLine: "underline" }}>{label}</Text></Pressable>
+    <LegalDocumentModal page={open ? page : null} onClose={() => setOpen(false)} />
   </View>;
 }
