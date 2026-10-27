@@ -1,3 +1,8 @@
+## 2026-10-27 — Codex: legal modals adapted to v7, PASS for PR
+
+Verified input SHA66f14ada7e01f517ec962f844cd7858626bc1c025d6ac8efcfac93ffe15370e3. Own codex/legal-documents-modal-v7 worktree from45aa23f; transferred only legal-window files/tests, preserved v7 lockfile/dependencies/session fixes. Added cancellation/remount isolation and independent registration/login form checks. Mobile225 +Expo navigation36 PASS; typecheck PASS; lint0 errors/8 existing warnings. Five current server documents loaded read-only. HTML/anchor targets rendered as inert native text; no browser execution. No merge, builds, OTA, production/main/other WIP edits. See docs/launch/legal-documents-modal-review-20261027.md.
+
+---
 ## 2026-10-27 — Codex: owner-authorized v7 release commit/push; API gate PASS
 
 Exact40-file v7/native/release-metadata allowlist verified on53b2fe0, no unrelated WIP. New api.ustal.site DNS104.171.139.154 (Google/Cloudflare), strict TLS valid to2027-01-24, health200 locally and independent DE/US Globalping. Legacy sslip origin strict TLS/health200 and /me401 without redirects retained; external DE/US health200. EAS production API pinned new domain, remote counters2/4 -> next3/5, OTA disabled; existing signing checked this session. Commit/push authorized only release/ustal-1.0.0. EAS Build/OTA/submission/production changes not performed. Build gate READY, physical acceptance remains after build. See docs/launch/v7-native-build-preparation-20261027.md.
@@ -1737,6 +1742,3 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
   провайдера.
 - Не удалять старого S3-пользователя `ustal-app-media` до явного решения —
   просто неиспользуемый, не мешает.
-
-
-
