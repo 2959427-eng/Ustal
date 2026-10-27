@@ -1,3 +1,8 @@
+## 2026-10-27 — Codex: legal modals merged, iPhone/TestFlight update authorized
+
+Owner requested the iPhone update and explicitly authorized TestFlight upload, without App Store publication. PR7 CI build-and-test passed; reviewed head292e0f5 merged into release as9d7ec73039bd409481e17d78e451e2a7be7af5a2. Canonical checkout fast-forwarded cleanly; v7 dependencies/native/OTA/session behavior preserved. Preparing only a new iOS production build and TestFlight upload; no Android rebuild, OTA, server/worker/production/enforced changes. Existing225 unit/36 navigation/typecheck/lint PASS and PR CI reused without unnecessary repeat. New canonical manifest anchored at9d7ec73 records this exact preparation.
+
+---
 ## 2026-10-27 — Codex: legal modals adapted to v7, PASS for PR
 
 Verified input SHA66f14ada7e01f517ec962f844cd7858626bc1c025d6ac8efcfac93ffe15370e3. Own codex/legal-documents-modal-v7 worktree from45aa23f; transferred only legal-window files/tests, preserved v7 lockfile/dependencies/session fixes. Added cancellation/remount isolation and independent registration/login form checks. Mobile225 +Expo navigation36 PASS; typecheck PASS; lint0 errors/8 existing warnings. Five current server documents loaded read-only. HTML/anchor targets rendered as inert native text; no browser execution. No merge, builds, OTA, production/main/other WIP edits. See docs/launch/legal-documents-modal-review-20261027.md.

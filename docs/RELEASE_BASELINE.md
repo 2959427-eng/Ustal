@@ -1,3 +1,7 @@
+## Current approved snapshot — 2026-10-27
+
+Release merge: `9d7ec73039bd409481e17d78e451e2a7be7af5a2` (PR7 legal modals, CI PASS). This manifest anchors the iOS/TestFlight preparation to that merge. Owner authorized integration, a new iOS build and TestFlight upload only; no App Store publication, OTA, server or production changes. Earlier preparation notes below are historical.
+
 # USTAL 1.0.0 — canonical integration baseline
 
 Owner decision, 2026-10-25; integration verified 2026-10-26: Codex is the only release integrator. Claude implements only against an explicitly agreed snapshot and supplies a patch for independent review.
