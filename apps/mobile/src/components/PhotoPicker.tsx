@@ -1,8 +1,10 @@
+import type { ApiSession } from "@ustal/api-client";
 import { useState } from "react";
 import { View, Text, Image, Pressable, StyleSheet, ActivityIndicator, Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { ApiRequestError } from "@ustal/api-client";
 import { uploadMedia } from "../api/media";
+import { currentApiSession } from "../api/client";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
 export interface PickedPhoto {
@@ -47,16 +49,19 @@ export function PhotoPicker({ photos, onChange, disabled, max = MAX_PHOTOS_DEFAU
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const uploadAsset = async (asset: ImagePicker.ImagePickerAsset): Promise<PickedPhoto> => {
+  const uploadAsset = async (asset: ImagePicker.ImagePickerAsset, session: ApiSession): Promise<PickedPhoto> => {
     const mimeType = asset.mimeType ?? "image/jpeg";
     const name = asset.fileName ?? `photo-${Date.now()}.jpg`;
-    const { mediaId } = await uploadMedia("photo", { uri: asset.uri, name, type: mimeType });
+    const { mediaId } = await uploadMedia("photo", { uri: asset.uri, name, type: mimeType }, session);
     return { mediaId, uri: asset.uri };
   };
 
   const pickFrom = async (source: "library" | "camera") => {
     const remaining = max - photos.length;
     if (remaining <= 0) return;
+    // Загрузка принадлежит сессии, в которой начат выбор фото: после смены сессии файлы не отправляются,
+    // а уже загруженные не попадают в форму.
+    const session = currentApiSession();
     setError(null);
     try {
       const permission =
@@ -94,12 +99,14 @@ export function PhotoPicker({ photos, onChange, disabled, max = MAX_PHOTOS_DEFAU
       let lastDetail = "";
       for (const asset of result.assets.slice(0, remaining)) {
         try {
-          uploaded.push(await uploadAsset(asset));
+          if (session !== currentApiSession()) return;
+          uploaded.push(await uploadAsset(asset, session));
         } catch (cause) {
           failedCount += 1;
           lastDetail = describeError(cause, asset);
         }
       }
+      if (session !== currentApiSession()) return;
       if (uploaded.length > 0) {
         onChange([...photos, ...uploaded]);
       }

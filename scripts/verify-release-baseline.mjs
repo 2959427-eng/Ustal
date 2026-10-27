@@ -33,9 +33,10 @@ for (const [name, hash] of Object.entries(manifest.files)) {
   const path = resolve(root, name);
   if (relative(root, path).startsWith("..") || !existsSync(path) || contentHash(path) !== hash) problems.push(`Content differs: ${name}`);
 }
-const current = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+const current = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).filter(name => existsSync(resolve(root, name)));
 for (const name of current) if (name !== "release-baseline.json" && !(name in manifest.files)) problems.push(`Unexpected file: ${name}`);
 if (problems.length) {
   console.error("STOP: baseline mismatch\n" + problems.join("\n"));
   process.exitCode = 1;
 } else console.log(`PASS ${manifest.branch} HEAD ${head}; exact snapshot anchored at ${manifest.baseCommit} verified`);
+

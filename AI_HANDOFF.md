@@ -1,3 +1,18 @@
+## 2026-10-27 — Codex: owner-authorized v7 release commit/push; API gate PASS
+
+Exact40-file v7/native/release-metadata allowlist verified on53b2fe0, no unrelated WIP. New api.ustal.site DNS104.171.139.154 (Google/Cloudflare), strict TLS valid to2027-01-24, health200 locally and independent DE/US Globalping. Legacy sslip origin strict TLS/health200 and /me401 without redirects retained; external DE/US health200. EAS production API pinned new domain, remote counters2/4 -> next3/5, OTA disabled; existing signing checked this session. Commit/push authorized only release/ustal-1.0.0. EAS Build/OTA/submission/production changes not performed. Build gate READY, physical acceptance remains after build. See docs/launch/v7-native-build-preparation-20261027.md.
+
+---
+## 2026-10-27 — Codex: final v7 prep READY
+
+Owner-authorized canonical fast-forward HEAD/index to remote53b2fe0; full701-file pre-sync snapshot and WIP retained, byte equality proven. 695 source files match audited v7; server/worker/DB/infra unchanged from baseline. Canonical dependencies installed from lockfile; 11 affected tests +mobile typecheck+apple/android crypto57 autolinking PASS. iOS EAS cert/profile active through2027-04-14, Android default JKS present; no credential changes or Apple login. EAS counters2/4 -> next3/5, old OTA channels absent; new OTA explicitly disabled with separate runtime. READY for separately authorized commit/push/build, physical acceptance after build remains required. Report: C:/Users/User/Desktop/ustal-release-candidates/v7-final-prep-20261027/RESULT.md. No commit/push/EAS Build/deploy/OTA.
+
+---
+## 2026-10-27 — Codex: v7 integration and native build preparation
+
+Canonical release working tree prepared from reviewed 53b2fe0 + verified v7; local HEAD remains e981662 (remote release is 53b2fe0). No history movement/commit/push/build/OTA/publication. Verified source equality with audited v7; API/worker/database/infra unchanged from source baseline. New updates.enabled=false, unique runtime 1.0.0-v7-expo57-crypto57; removed ignored stale local buildNumber. EAS read-only counters iOS2/Android4 -> next autoIncrement 3/5. Existing builds runtime/channel null, project channels empty; old build SHA source has no updater configuration. Physical device acceptance and native signing/compilation remain outstanding. Before actual build: align release history and pin snapshot under separate authorization; recheck remote counters. Full minimal-device plan: docs/launch/v7-native-build-preparation-20261027.md. AI Consent OFF and production unchanged.
+
+---
 ## 2026-10-26 — Codex: AI Consent v3 independently reviewed for release PR
 
 Original v3 SHA 3fc6f22f2b97d96b6e95bd1d40513e368ea3b4dfc6149ff4208374a5cf1b73c1 applied unchanged to clean e981662 in isolated worktree. Exact owner copy / notice-policy binding and off-mode revoke checked. Fresh local DB tests: API265, worker433, database33, mobile191; matching229 and AI244 PASS. Mobile Expo typecheck + API/worker/database typecheck PASS; mobile lint 0 errors / 8 existing warnings. See docs/launch/ai-consent-v3-review-20261026.md for evidence and legacy-client/policy/legal release gates. PR only to release/ustal-1.0.0; no merge, production, enforced, deploy or EAS actions.
@@ -1722,3 +1737,6 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
   провайдера.
 - Не удалять старого S3-пользователя `ustal-app-media` до явного решения —
   просто неиспользуемый, не мешает.
+
+
+

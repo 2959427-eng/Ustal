@@ -50,22 +50,48 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * Непрозрачный ключ сессии клиента: новый объект при каждой смене сессии (cancelAll). Сравнивается по ссылке —
+ * не повторяется, не угадывается и не переживает перезапуск JS (2026-10-27, вместо числового счётчика).
+ */
+export type ApiSession = Readonly<{ readonly __apiSession: true }>;
+const newApiSession = (): ApiSession => Object.freeze({ __apiSession: true as const });
+
+/** Запрос, привязанный к сессии (ключ из currentSession()), не уходит после смены сессии. */
+export type ApiRequestInit = RequestInit & { session?: ApiSession };
+
+/** Сессия, от имени которой начато действие, уже закончилась (выход/вход/регистрация/удаление/истечение). */
+export class ApiSessionChangedError extends Error {
+  constructor() { super("Session changed"); this.name = "ApiSessionChangedError"; }
+}
+
 export class ApiClient {
   private refreshing: Promise<boolean> | null = null;
   private active = new Set<AbortController>();
-  private generation = 0;
+  private session: ApiSession = newApiSession();
+
+  /**
+   * Номер текущей сессии клиента. Действие пользователя запоминает его в начале и передаёт во все свои запросы
+   * (`session`): после cancelAll() (смена сессии) такие запросы не отправляются и не получают токен новой сессии.
+   */
+  currentSession(): ApiSession { return this.session; }
+
+  private assertSession(session: ApiSession): void {
+    if (session !== this.session) throw new ApiSessionChangedError();
+  }
 
   /** Cancel transport as well as Query observers; late A responses cannot reach B. */
   cancelAll(): void {
-    this.generation += 1;
+    this.session = newApiSession();
     for (const controller of this.active) controller.abort();
     this.active.clear();
     this.refreshing = null;
   }
 
-  private async bounded<T>(operation: (signal: AbortSignal) => Promise<T>, external?: AbortSignal | null, timeoutMs = this.options.timeoutMs ?? 20_000): Promise<T> {
+  private async bounded<T>(operation: (signal: AbortSignal, session: ApiSession) => Promise<T>, external?: AbortSignal | null, timeoutMs = this.options.timeoutMs ?? 20_000, session?: ApiSession): Promise<T> {
+    if (session !== undefined) this.assertSession(session); // устаревшее действие — ни запроса, ни токена
     const controller = new AbortController();
-    const generation = this.generation;
+    const owner = this.session;
     this.active.add(controller);
     const abort = () => controller.abort();
     external?.addEventListener("abort", abort, { once: true });
@@ -82,8 +108,8 @@ export class ApiClient {
       if (controller.signal.aborted) onAbort();
     });
     try {
-      const result = await Promise.race([stopped, operation(controller.signal)]);
-      if (generation !== this.generation) throw new Error("Session changed");
+      const result = await Promise.race([stopped, operation(controller.signal, owner)]);
+      if (owner !== this.session) throw new Error("Session changed");
       return result;
     } finally {
       clearTimeout(timer!);
@@ -116,14 +142,18 @@ export class ApiClient {
    * не имела никакого восстановления и на просроченном access token (TTL 15 мин) сразу
    * показывала «Сессия истекла».
    */
-  private async fetchAuthed(path: string, makeInit: (token: string | null) => RequestInit, signal: AbortSignal): Promise<Response> {
+  private async fetchAuthed(path: string, makeInit: (token: string | null) => RequestInit, signal: AbortSignal, owner: ApiSession): Promise<Response> {
     const url = `${this.options.baseUrl}${path}`;
     let sentToken = this.options.getAccessToken();
     if (sentToken === null && this.options.loadAccessToken) {
       await this.options.loadAccessToken().catch(() => null);
+      if (signal.aborted) throw new Error("Request cancelled");
+      this.assertSession(owner);
       sentToken = this.options.getAccessToken();
     }
     if (signal.aborted) throw new Error("Request cancelled");
+    // Токен читается синхронно непосредственно перед отправкой и только в той сессии, где начат запрос.
+    this.assertSession(owner);
     let res = await fetch(url, { ...makeInit(sentToken), signal });
     if (signal.aborted) throw new Error("Request cancelled");
     if (res.status !== 401 || path.startsWith("/auth/")) return res;
@@ -132,12 +162,15 @@ export class ApiClient {
     const current = this.options.getAccessToken();
     const haveFresh = current !== null && current !== sentToken ? true : await this.refreshOnce();
     if (signal.aborted) throw new Error("Request cancelled");
-    if (haveFresh) res = await fetch(url, { ...makeInit(this.options.getAccessToken()), signal });
+    if (haveFresh) {
+      this.assertSession(owner); // повтор после refresh — только токеном той же сессии
+      res = await fetch(url, { ...makeInit(this.options.getAccessToken()), signal });
+    }
     return res;
   }
 
-  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    return this.bounded(async (signal) => {
+  async request<T>(path: string, { session, ...init }: ApiRequestInit = {}): Promise<T> {
+    return this.bounded(async (signal, owner) => {
       const res = await this.fetchAuthed(path, (token) => ({
         ...init,
         headers: {
@@ -145,7 +178,7 @@ export class ApiClient {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...init.headers,
         },
-      }), signal);
+      }), signal, owner);
 
       if (signal.aborted) throw new Error("Request cancelled");
 
@@ -163,7 +196,7 @@ export class ApiClient {
       }
       if (res.status === 204) return undefined as T;
       return (await res.json()) as T;
-    }, init.signal);
+    }, init.signal, undefined, session);
   }
 
   /**
@@ -173,13 +206,13 @@ export class ApiClient {
    * `multipart/form-data` должен выставить сам `fetch`/полифилл `FormData`
    * по телу запроса, поэтому здесь `Content-Type` не задаётся вручную.
    */
-  async uploadForm<T>(path: string, form: FormData): Promise<T> {
-    return this.bounded(async (signal) => {
+  async uploadForm<T>(path: string, form: FormData, session?: ApiSession): Promise<T> {
+    return this.bounded(async (signal, owner) => {
       const res = await this.fetchAuthed(path, (token) => ({
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: form,
-      }), signal);
+      }), signal, owner);
 
       if (signal.aborted) throw new Error("Request cancelled");
 
@@ -193,6 +226,6 @@ export class ApiClient {
         throw new ApiRequestError(body?.error?.message ?? `Request failed: ${res.status}`, res.status, body?.error?.code);
       }
       return (await res.json()) as T;
-    }, undefined, this.options.timeoutMs ?? 60_000);
+    }, undefined, this.options.timeoutMs ?? 60_000, session);
   }
 }

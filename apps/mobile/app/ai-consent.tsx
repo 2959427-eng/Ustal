@@ -3,6 +3,7 @@ import { ScrollView, Text, StyleSheet, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { aiConsentErrorMessage, decideAiConsent, getAiConsent, revokeAiConsentGrant } from "../src/api/consents";
+import { currentApiSession } from "../src/api/client";
 import { AI_CONSENT_STATUS_LABEL, type AiConsentState, type RevocableGrant } from "../src/lib/ai-consent-state";
 import { afterAiConsentRoute, AI_CONSENT_GRANT_LABEL, AI_CONSENT_NOT_ENFORCED, AI_CONSENT_REFUSE_LABEL, AI_CONSENT_TEXT } from "../src/lib/ai-consent-flow";
 import { PrimaryButton } from "../src/components/PrimaryButton";
@@ -11,7 +12,8 @@ import { colors, spacing, typography } from "../src/theme/tokens";
 
 /**
  * «Как работает USTAL» — утверждённый текст (AI_CONSENT_TEXT) и решение пользователя.
- * Открывается один раз после регистрации (onboarding=1), при входе при новой версии условий и из «Аккаунт».
+ * Открывается перед первой ИИ-обработкой (заполнение профиля, заказ; next — куда вернуться), при новой версии
+ * условий — перед следующей обработкой, и из «Аккаунт». После регистрации не показывается (2026-10-26).
  * Экран ничего не разрешает сам: передачу блокирует сервер (USTAL_AI_CONSENT_MODE=enforced), пока нет grant.
  */
 export default function AiConsentScreen() {
@@ -25,7 +27,12 @@ export default function AiConsentScreen() {
 
   const load = useCallback(async () => {
     setError("");
-    try { setState(await getAiConsent()); }
+    // Состояние привязано к сессии, в которой получено (consents.ts); ответ прежней сессии не показывается.
+    const session = currentApiSession();
+    try {
+      const next = await getAiConsent(session);
+      if (session === currentApiSession()) setState(next);
+    }
     catch { setState(null); setError("Не удалось загрузить состояние. Проверьте подключение и обновите экран."); }
   }, []);
   useFocusEffect(useCallback(() => { void load(); }, [load]));

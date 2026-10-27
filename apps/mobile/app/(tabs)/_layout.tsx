@@ -1,7 +1,4 @@
-import { useEffect } from "react";
-import { router, Tabs } from "expo-router";
-import { getAiConsent } from "../../src/api/consents";
-import { shouldPromptAiConsent } from "../../src/lib/ai-consent-state";
+import { Tabs } from "expo-router";
 
 /**
  * Навигация верхнего уровня: только два реальных экрана — «Возможности» и
@@ -15,11 +12,8 @@ import { shouldPromptAiConsent } from "../../src/lib/ai-consent-state";
  * нет свайпа «назад» на iOS, а кнопку «← Назад» на этом экране убрали.
  */
 export default function TabsLayout() {
-  // Один раз при входе в приложение: если сервер требует согласие на ИИ-обработку, а решения нет (или текст обновился),
-  // показываем экран согласия. Отказ не переспрашиваем; решение меняется в «Аккаунт» → «Обработка данных ИИ».
-  useEffect(() => {
-    void getAiConsent().then((s) => { if (shouldPromptAiConsent(s)) router.push("/ai-consent"); }).catch(() => {});
-  }, []);
+  // Окно согласия на ИИ при входе не показывается (2026-10-26): оно открывается перед первой ИИ-обработкой
+  // (checkAiAction в профиле, заказе и повторе разбора). Решение меняется в «Аккаунт» → «Передача данных AI».
   return (
     <Tabs
       screenOptions={{

@@ -1,10 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { AI_CONSENT_GRANT_LABEL, AI_CONSENT_NOT_ENFORCED, AI_CONSENT_REFUSE_LABEL, AI_CONSENT_TEXT, afterAiConsentRoute, postRegistrationRoute } from "./ai-consent-flow";
+import { AI_ACTION_MESSAGES, AI_CONSENT_GRANT_LABEL, AI_CONSENT_NOT_ENFORCED, AI_CONSENT_REFUSE_LABEL, AI_CONSENT_TEXT, CONSENT_FOR_PROFILE_ROUTE, PROFILE_FILL_ROUTE, afterAiConsentRoute, aiBlockedRoute, postRegistrationRoute } from "./ai-consent-flow";
 
 describe("порядок экранов согласия на ИИ", () => {
-  it("после регистрации сначала «Как работает USTAL», запомненный заказ — потом", () => {
-    expect(postRegistrationRoute(null)).toEqual({ pathname: "/ai-consent", params: { onboarding: "1" } });
-    expect(postRegistrationRoute({ pathname: "/order/[id]", params: { id: "42" } })).toEqual({ pathname: "/ai-consent", params: { onboarding: "1", next: "/order/42" } });
+  it("после регистрации — сразу в приложение (или запомненный заказ), без окна согласия", () => {
+    expect(postRegistrationRoute(null)).toBe("/(tabs)");
+    const order = { pathname: "/order/[id]" as const, params: { id: "42" } };
+    expect(postRegistrationRoute(order)).toEqual(order);
+    expect(JSON.stringify(postRegistrationRoute(order))).not.toContain("ai-consent");
+  });
+  it("окно согласия из профиля возвращает в профиль", () => {
+    expect(CONSENT_FOR_PROFILE_ROUTE).toEqual({ pathname: "/ai-consent", params: { next: "/(tabs)/profile" } });
+    expect(afterAiConsentRoute({ onboarding: false, next: CONSENT_FOR_PROFILE_ROUTE.params.next })).toBe(PROFILE_FILL_ROUTE);
+  });
+  it("заблокированное ИИ-действие: решения нет → окно согласия; отказ/нет условий → профиль (с профиля — сообщение на месте)", () => {
+    const ask = { ok: false as const, gate: "ask" as const, message: AI_ACTION_MESSAGES.ask };
+    const blocked = { ok: false as const, gate: "blocked" as const, message: AI_ACTION_MESSAGES.refused };
+    const unknown = { ok: false as const, gate: "unknown" as const, message: AI_ACTION_MESSAGES.unknown };
+    expect(aiBlockedRoute({ ok: true }, "other")).toBeNull();
+    expect(aiBlockedRoute(ask, "profile")).toBe(CONSENT_FOR_PROFILE_ROUTE);
+    expect(aiBlockedRoute(ask, "other")).toBe(CONSENT_FOR_PROFILE_ROUTE);
+    expect(aiBlockedRoute(blocked, "profile")).toBeNull();
+    expect(aiBlockedRoute(blocked, "other")).toBe(PROFILE_FILL_ROUTE);
+    expect(aiBlockedRoute(unknown, "other")).toBeNull();
+    for (const m of Object.values(AI_ACTION_MESSAGES)) expect(m).toMatch(/не передаются|не отправлен|не обрабатывает/);
   });
   it("после решения — только внутренний путь, внешний/протокольный адрес и петля на себя игнорируются", () => {
     expect(afterAiConsentRoute({ onboarding: true })).toBe("/(tabs)");

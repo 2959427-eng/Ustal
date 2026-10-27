@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiConsentState, consentDecisionBody, shouldPromptAiConsent, type ConsentsResponse } from "./ai-consent-state";
+import { aiActionGate, aiConsentState, consentDecisionBody, shouldPromptAiConsent, type ConsentsResponse } from "./ai-consent-state";
 import { AI_CONSENT_TEXT } from "./ai-consent-flow";
 import { registrationConsentError, registrationDocumentsReady } from "./registration-consent";
 
@@ -105,5 +105,18 @@ describe("уведомление политики привязано к утве
     const grant = { purpose: policy.purpose, policyId: "p1", policyHash: "h1", decision: "grant" as const, seq: 2, decidedAt: "2026-10-20T00:00:00Z", effective: false };
     expect(aiConsentState(res({ policies: [{ ...policy, content: { humanText: "Текст согласия" } }], decisions: [grant] })))
       .toEqual({ kind: "unavailable", reason: "notice_mismatch", revocable: [{ purpose: policy.purpose, policyId: "p1", policyHash: "h1", revision: 3 }] });
+  });
+});
+
+describe("aiActionGate: можно ли запускать ИИ-обработку", () => {
+  it("granted → allow; undecided/outdated → ask; refused/unavailable → blocked; off → allow (без защиты)", () => {
+    const d = (decision: "grant" | "revoke", id = "p2", hash = "h2", effective = true) =>
+      ({ purpose: policy.purpose, policyId: id, policyHash: hash, decision, seq: 1, decidedAt: "2026-10-26T00:00:00Z", effective });
+    expect(aiActionGate(aiConsentState(res({ decisions: [d("grant")] })))).toBe("allow");
+    expect(aiActionGate(aiConsentState(res()))).toBe("ask");
+    expect(aiActionGate(aiConsentState(res({ decisions: [d("grant", "p1", "h1", false)] })))).toBe("ask");
+    expect(aiActionGate(aiConsentState(res({ decisions: [d("revoke")] })))).toBe("blocked");
+    expect(aiActionGate(aiConsentState(res({ policies: [] })))).toBe("blocked");
+    expect(aiActionGate(aiConsentState(res({ outboundEnforcement: false })))).toBe("allow");
   });
 });

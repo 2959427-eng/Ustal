@@ -1,3 +1,4 @@
+import type { ApiSession } from "@ustal/api-client";
 import { apiClient } from "./client";
 
 export type OrderStatus =
@@ -108,11 +109,12 @@ export interface PublishOrderResult {
  * прежде чем запустится extraction; text-заказ — без паузы, сразу extraction.
  * Идемпотентно по Idempotency-Key, как /profile/inputs.
  */
-export function createOrder(input: CreateOrderInput, idempotencyKey: string): Promise<CreateOrderAccepted> {
+export function createOrder(input: CreateOrderInput, idempotencyKey: string, session?: ApiSession): Promise<CreateOrderAccepted> {
   return apiClient.request<CreateOrderAccepted>("/orders", {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify({ ...input, mediaIds: input.mediaIds ?? [] }),
+    session,
   });
 }
 
@@ -120,8 +122,8 @@ export function getOrder(orderId: string): Promise<OrderDetail> {
   return apiClient.request<OrderDetail>(`/orders/${orderId}`);
 }
 
-export function retryOrder(orderId: string): Promise<void> {
-  return apiClient.request(`/orders/${orderId}/retry`, { method: "POST" });
+export function retryOrder(orderId: string, session?: ApiSession): Promise<void> {
+  return apiClient.request(`/orders/${orderId}/retry`, { method: "POST", session });
 }
 
 /**

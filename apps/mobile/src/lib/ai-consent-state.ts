@@ -62,6 +62,19 @@ export function aiConsentState(res: ConsentsResponse | null): AiConsentState {
   return { kind: "required", policy, text, revision: res.revision, status };
 }
 
+/**
+ * Перед любой ИИ-обработкой (профиль, заказ, повтор разбора): allow — отправлять; ask — сначала окно согласия;
+ * blocked — не отправлять (отказ или нет утверждённых условий). not_required (режим off) — allow: сервер разрешения
+ * не запрашивает и сам ничего не блокирует; эта проверка в интерфейсе защитой не является.
+ */
+export type AiActionGate = "allow" | "ask" | "blocked";
+export function aiActionGate(s: AiConsentState): AiActionGate {
+  if (s.kind === "not_required") return "allow";
+  if (s.kind === "unavailable") return "blocked";
+  if (s.status === "granted") return "allow";
+  return s.status === "refused" ? "blocked" : "ask";
+}
+
 /** Нужно ли предложить экран согласия при входе: решения ещё нет или текст обновился. Отказ не переспрашиваем. */
 export const shouldPromptAiConsent = (s: AiConsentState) => s.kind === "required" && (s.status === "undecided" || s.status === "outdated");
 

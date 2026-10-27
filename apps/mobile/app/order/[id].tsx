@@ -35,6 +35,9 @@ import { getOrderAuthor } from "../../src/api/users";
 import { AuthorAvatar } from "../../src/components/AuthorAvatar";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { submitProfileInput } from "../../src/api/profile";
+import { checkAiAction } from "../../src/api/consents";
+import { currentApiSession } from "../../src/api/client";
+import { aiBlockedRoute } from "../../src/lib/ai-consent-flow";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
 import { ReportModal } from "../../src/components/ReportModal";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
@@ -167,6 +170,8 @@ function AuthorHeader({ orderId }: { orderId: string }) {
 
 function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail }) {
   const queryClient = useQueryClient();
+  // ИИ-действия экрана — только от имени сессии, в которой экран открыт.
+  const mountSession = useRef(currentApiSession()).current;
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
   // Синхронный guard публикации / повторной обработки / удаления: два нажатия до следующего render
@@ -256,8 +261,16 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
       )}
       {order.status === "processing_failed" && <PrimaryButton label="Повторить обработку" loading={closing} onPress={() => guarded(async () => {
         setClosing(true); setCloseError(null);
-        try { await retryOrder(orderId); invalidate(); }
-        catch { setCloseError("Не удалось повторить обработку."); }
+        const session = mountSession;
+        try {
+          const check = await checkAiAction(session);
+          if (session !== currentApiSession()) return;
+          if (!check.ok) { setCloseError(check.message); const route = aiBlockedRoute(check, "other"); if (route) router.push(route); return; }
+          await retryOrder(orderId, session);
+          if (session !== currentApiSession()) return;
+          invalidate();
+        }
+        catch { if (session === currentApiSession()) setCloseError("Не удалось повторить обработку."); }
         finally { setClosing(false); }
       })} />}
       {(order.status === "processing_failed" || order.status === "processing") && closeError &&
@@ -343,16 +356,30 @@ function AuthorView({ orderId, order }: { orderId: string; order: OrderDetail })
  */
 function SimpleTaskNotice({ title }: { title: string | null }) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [blocked, setBlocked] = useState<string | null>(null);
+  const router = useRouter();
+  const mountSession = useRef(currentApiSession()).current;
   const sending = useRef(false);
   const send = async () => {
     if (sending.current) return;
     sending.current = true;
     setState("sending");
+    setBlocked(null);
+    const session = mountSession;
     try {
-      await submitProfileInput({ inputType: "text", text: `Не беру такие заказы: «${title ?? "эта задача"}»` }, generateIdempotencyKey("profile-input"));
+      const check = await checkAiAction(session);
+      if (session !== currentApiSession()) return;
+      if (!check.ok) {
+        setState("idle"); setBlocked(check.message);
+        const route = aiBlockedRoute(check, "other");
+        if (route) router.push(route);
+        return;
+      }
+      await submitProfileInput({ inputType: "text", text: `Не беру такие заказы: «${title ?? "эта задача"}»` }, generateIdempotencyKey("profile-input"), session);
+      if (session !== currentApiSession()) return;
       setState("sent");
     } catch {
-      setState("error");
+      if (session === currentApiSession()) setState("error");
     } finally {
       sending.current = false;
     }
@@ -368,6 +395,7 @@ function SimpleTaskNotice({ title }: { title: string | null }) {
               { text: "Не показывать", onPress: () => { void send(); } },
             ])} />}
       {state === "error" && <Text style={styles.error}>Не удалось сохранить. Попробуйте ещё раз.</Text>}
+      {blocked && <Text style={styles.error}>{blocked}</Text>}
     </View>
   );
 }

@@ -1,11 +1,15 @@
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
 import { AiConsentNotice } from "../../src/components/AiConsentNotice";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image, Pressable, Switch, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { PhotoPicker, type PickedPhoto } from "../../src/components/PhotoPicker";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
+import { checkAiAction } from "../../src/api/consents";
+import { currentApiSession } from "../../src/api/client";
+import { aiBlockedRoute } from "../../src/lib/ai-consent-flow";
+import { isCurrentDraftSession, readFormDraft, useFormDraft, useOnSessionChange, type OrderFormDraft } from "../../src/lib/form-drafts";
 import { createOrder, getOrder, publishOrder, cancelOrder, retryOrder, type OrderDetail } from "../../src/api/orders";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
@@ -36,13 +40,27 @@ type Step = "compose" | "processing" | "failed" | "preview" | "publishing" | "pu
  */
 export default function CreateOrderScreen() {
   const queryClient = useQueryClient();
-  const { prefillText } = useLocalSearchParams<{ prefillText?: string }>();
+  const { prefillText, prefillSession } = useLocalSearchParams<{ prefillText?: string; prefillSession?: string }>();
+  // Текст из параметров навигации — только если он передан в текущей сессии (проверка в момент чтения:
+  // после A→B те же параметры A на сохранённом или пересозданном экране игнорируются).
+  // Текст из композера той же сессии лежит и в черновике заказа — так он принимается и без id (старая сборка).
+  const ownPrefill = () => (prefillText && (isCurrentDraftSession(prefillSession) || readFormDraft("order")?.text === prefillText) ? prefillText : "");
   const [step, setStep] = useState<Step>("compose");
-  const [text, setText] = useState(prefillText ?? "");
-  const [photos, setPhotos] = useState<PickedPhoto[]>([]);
-  const [priceText, setPriceText] = useState("");
-  const [acceptsPriceOffers, setAcceptsPriceOffers] = useState(false);
+  // Несохранённый заказ переживает переход к окну согласия и обратно; очищается после создания или сброса (✕).
+  const [form, setForm, clearForm, discardForm, ownsForm] = useFormDraft("order", () => ({ text: ownPrefill(), priceText: "", acceptsPriceOffers: false, photos: [] }));
+  const formRef = useRef(form);
+  formRef.current = form;
+  // Устаревший обработчик (смена сессии) не пишет ни в черновик, ни в formRef.
+  const patchForm = (patch: Partial<OrderFormDraft>) => { const next = { ...formRef.current, ...patch }; if (setForm(next)) formRef.current = next; };
+  const { text, photos, priceText, acceptsPriceOffers } = form;
+  const setText = (value: string) => patchForm({ text: value });
+  const setPhotos = (value: PickedPhoto[]) => patchForm({ photos: value });
+  const setPriceText = (value: string) => patchForm({ priceText: value });
+  const setAcceptsPriceOffers = (value: boolean) => patchForm({ acceptsPriceOffers: value });
   const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const sessionResetRef = useRef<() => void>(() => {});
+  useOnSessionChange(useCallback(() => sessionResetRef.current(), []));
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [pollTimedOut, setPollTimedOut] = useState(false);
@@ -63,10 +81,12 @@ export default function CreateOrderScreen() {
   // если с главной пришли новые параметры, а композер ещё пуст (ничего не
   // отправлено и не начато заново), подхватываем их и здесь.
   useEffect(() => {
-    if (step !== "compose" || text.trim().length > 0) return;
-    if (prefillText) setText(prefillText);
+    // Текст из композера записывается и в черновик — переживает окно согласия внутри той же сессии.
+    const prefill = ownPrefill();
+    if (step !== "compose" || !prefill || (text.trim().length > 0 && text !== prefill)) return;
+    setText(prefill);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefillText]);
+  }, [prefillText, prefillSession]);
 
   const stopPolling = () => {
     if (pollTimerRef.current) {
@@ -112,21 +132,39 @@ export default function CreateOrderScreen() {
     pollTimerRef.current = setInterval(pollOrder, POLL_INTERVAL_MS);
   };
 
+  /** ИИ-обработка без согласия не запускается: сообщение и переход к заполнению профиля / окну согласия. */
+  const blockAi = (check: Extract<Awaited<ReturnType<typeof checkAiAction>>, { ok: false }>) => {
+    setSubmitError(check.message);
+    const route = aiBlockedRoute(check, "other");
+    if (route) router.push(route);
+  };
+
   const handleSubmit = async () => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || submitLock.current || !ownsForm()) return; // обработчик прежней сессии ничего не отправляет
+    submitLock.current = true;
     setSubmitError(null);
     setSubmitting(true);
+    // Всё действие — от имени сессии, в которой нажата кнопка; после смены сессии ни одного запроса.
+    const session = currentApiSession();
+    const stale = () => session !== currentApiSession() || !ownsForm();
     try {
+      const check = await checkAiAction(session);
+      if (stale()) return;
+      if (!check.ok) { blockAi(check); return; }
       const priceMinor = priceText.trim() ? Math.round(Number(priceText.trim()) * 100) : undefined;
       const mediaIds = photos.map((p) => p.mediaId);
       const idempotencyKey = generateIdempotencyKey("order-create");
-      const accepted = await createOrder({ inputType: "text", text: trimmed, priceMinor, acceptsPriceOffers, mediaIds }, idempotencyKey);
+      const accepted = await createOrder({ inputType: "text", text: trimmed, priceMinor, acceptsPriceOffers, mediaIds }, idempotencyKey, session);
+      if (stale()) return;
       orderIdRef.current = accepted.orderId;
+      discardForm(); // заказ создан — черновик больше не нужен (на экране он остаётся до сброса)
       startExtractionPolling();
     } catch (err) {
+      if (stale()) return;
       setSubmitError(err instanceof Error ? err.message : "Не удалось создать заказ. Попробуйте ещё раз.");
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
@@ -147,15 +185,26 @@ export default function CreateOrderScreen() {
     }
   };
 
+  // Смена сессии на сохранённом экране: созданный заказ A, его опрос и шаг формы не переходят к B
+  // (черновик формы сбрасывает useFormDraft).
+  sessionResetRef.current = () => {
+    stopPolling();
+    orderIdRef.current = null;
+    pollDeadlineRef.current = null;
+    setOrder(null);
+    setSubmitError(null);
+    setPublishError(null);
+    setPollTimedOut(false);
+    setStep("compose");
+  };
+
   const reset = () => {
     stopPolling();
     orderIdRef.current = null;
     pollDeadlineRef.current = null;
     setOrder(null);
-    setText("");
-    setPhotos([]);
-    setPriceText("");
-    setAcceptsPriceOffers(false);
+    const empty = { text: "", priceText: "", acceptsPriceOffers: false, photos: [] };
+    if (clearForm(empty)) formRef.current = empty;
     setSubmitError(null);
     setPublishError(null);
     setPollTimedOut(false);
@@ -223,11 +272,20 @@ export default function CreateOrderScreen() {
       <Text style={styles.title}>Не удалось обработать заказ.</Text>
       {submitError && <Text style={styles.hint}>{submitError}</Text>}
       <PrimaryButton label="Попробовать снова" loading={submitting} onPress={async () => {
-        if (!orderIdRef.current) return;
+        if (!orderIdRef.current || !ownsForm()) return;
         setSubmitting(true);
         setSubmitError(null);
-        try { await retryOrder(orderIdRef.current); startExtractionPolling(); }
-        catch { setSubmitError("Не удалось повторить обработку. Попробуйте ещё раз."); }
+        const session = currentApiSession();
+        const orderId = orderIdRef.current;
+        try {
+          const check = await checkAiAction(session);
+          if (session !== currentApiSession()) return;
+          if (!check.ok) { blockAi(check); return; }
+          await retryOrder(orderId, session);
+          if (session !== currentApiSession()) return;
+          startExtractionPolling();
+        }
+        catch { if (session === currentApiSession()) setSubmitError("Не удалось повторить обработку. Попробуйте ещё раз."); }
         finally { setSubmitting(false); }
       }} />
     </View>;

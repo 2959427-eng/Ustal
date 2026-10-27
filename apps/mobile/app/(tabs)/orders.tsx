@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SwipeToDelete } from "../../src/components/SwipeToDelete";
 import { canDeleteOrder } from "../../src/lib/order-delete";
+import { formDraftSession, readFormDraft, useOnSessionChange, writeFormDraft } from "../../src/lib/form-drafts";
 import { cancelOrder } from "../../src/api/orders";
 import { HomeHeader } from "../../src/components/HomeHeader";
 import { useNotificationBadges } from "../../src/notifications/badges";
@@ -51,12 +52,20 @@ export default function OrdersScreen() {
 
   const [needText, setNeedText] = useState("");
   const canContinue = needText.trim().length > 0;
+  // Вкладка остаётся примонтированной: текст композера прежнего пользователя не переходит к следующему.
+  useOnSessionChange(useCallback(() => setNeedText(""), []));
 
   const handlePublish = () => {
     if (!canContinue) return;
+    const draftSession = formDraftSession();
+    const current = readFormDraft("order", draftSession);
+    // Начатый на экране заказа черновик не перезаписываем (как и раньше: prefill — только в пустую форму).
+    if (!current?.text.trim()) writeFormDraft("order", { text: needText.trim(), priceText: current?.priceText ?? "", acceptsPriceOffers: current?.acceptsPriceOffers ?? false, photos: current?.photos ?? [] }, draftSession);
     router.push({
       pathname: "/(tabs)/create",
-      params: { prefillText: needText.trim() },
+      // prefillSession — криптостойкий id сессии (не данные): экран заказа восстанавливает текст только в этой же
+      // сессии и этом же запуске. Текст также кладётся в черновик заказа (память, привязка к сессии).
+      params: { prefillText: needText.trim(), prefillSession: formDraftSession().id ?? "" },
     });
     // Текст уже передан на экран создания заказа; вкладка «Заказы» остаётся примонтированной,
     // поэтому без очистки в поле после публикации висел бы прошлый заказ.

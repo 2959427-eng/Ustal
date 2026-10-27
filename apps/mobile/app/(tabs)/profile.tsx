@@ -8,8 +8,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { ProfileItemsManager } from "../../src/components/ProfileItemsManager";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
+import { checkAiAction } from "../../src/api/consents";
+import { currentApiSession } from "../../src/api/client";
+import { aiBlockedRoute } from "../../src/lib/ai-consent-flow";
 import { getProfile, submitProfileInput, getProfileDraft, applyProfileDraft, discardProfileDraft, recognizedLabels } from "../../src/api/profile";
 import { generateIdempotencyKey } from "../../src/lib/idempotency-key";
+import { useFormDraft } from "../../src/lib/form-drafts";
 import { PROFILE_INPUT_PENDING_KEY, type ProfileInputPending } from "../../src/lib/profile-draft";
 
 const POLL_INTERVAL_MS = 3000;
@@ -73,8 +77,10 @@ export default function ProfileScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [text, setText] = useState("");
+  // Черновик переживает переход к окну согласия и обратно (экран пересоздаётся); очищается только после отправки.
+  const [text, setText, clearText, , ownsForm] = useFormDraft("profile", () => "");
   const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // waiting — ждём результат extraction после отправки текста.
   const [waiting, setWaiting] = useState(false);
@@ -132,22 +138,37 @@ export default function ProfileScreen() {
 
   const onSubmit = async () => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || submitLock.current || !ownsForm()) return; // обработчик прежней сессии ничего не отправляет
+    submitLock.current = true;
     setSubmitError(null);
     setNotice(null);
     Keyboard.dismiss();
     setSubmitting(true);
+    // Всё действие (проверка согласия и отправка) — от имени сессии, в которой нажата кнопка.
+    const session = currentApiSession();
+    const stale = () => session !== currentApiSession() || !ownsForm();
     try {
+      // До первой ИИ-обработки — окно согласия; после решения возвращаемся сюда, текст сохраняется.
+      const check = await checkAiAction(session);
+      if (stale()) return;
+      if (!check.ok) {
+        const route = aiBlockedRoute(check, "profile");
+        if (route) router.push(route); else setSubmitError(check.message);
+        return;
+      }
       const idempotencyKey = generateIdempotencyKey("profile-input");
-      await submitProfileInput({ inputType: "text", text: trimmed }, idempotencyKey);
-      setText("");
+      await submitProfileInput({ inputType: "text", text: trimmed }, idempotencyKey, session);
+      if (stale()) return;
+      clearText("");
       // 2026-09-30: сразу в «Мой профиль» — статус AI и «Проверить и применить» показываются там.
       queryClient.setQueryData<ProfileInputPending>(PROFILE_INPUT_PENDING_KEY, { at: Date.now(), prevDraftId: draft?.draft?.id ?? null });
       void queryClient.invalidateQueries({ queryKey: ["profileDraft"] });
       router.navigate("/(tabs)/account");
     } catch (err) {
+      if (stale()) return;
       setSubmitError(err instanceof Error ? err.message : "Не удалось отправить. Попробуйте ещё раз.");
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };

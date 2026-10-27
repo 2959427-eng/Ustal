@@ -1,3 +1,4 @@
+import type { ApiSession } from "@ustal/api-client";
 import { Platform } from "react-native";
 import { apiClient, getApiBaseUrl } from "./client";
 
@@ -49,7 +50,7 @@ export interface MediaUploaded {
  * заранее даёт верный mime в `file.type` — не полагаемся на то, что
  * угадает `fetch`, а пересобираем `Blob` с явным типом из `file.type`.
  */
-export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promise<MediaUploaded> {
+export async function uploadMedia(kind: MediaKind, file: UploadableFile, session?: ApiSession): Promise<MediaUploaded> {
   const form = new FormData();
   form.append("kind", kind);
   let blob: Blob;
@@ -65,7 +66,7 @@ export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promis
     const local = new LocalFile(file.uri);
     if (!local.exists) throw new Error("Выбранный файл не найден на устройстве.");
     form.append("file", local as unknown as Blob, file.name);
-    return apiClient.uploadForm<MediaUploaded>("/media", form);
+    return apiClient.uploadForm<MediaUploaded>("/media", form, session);
   } else {
     const response = await fetch(file.uri);
     if (!response.ok) throw new Error("Не удалось прочитать выбранный файл.");
@@ -73,7 +74,7 @@ export async function uploadMedia(kind: MediaKind, file: UploadableFile): Promis
     blob = new Blob([raw], { type: file.type });
   }
   form.append("file", blob, file.name);
-  return apiClient.uploadForm<MediaUploaded>("/media", form);
+  return apiClient.uploadForm<MediaUploaded>("/media", form, session);
 }
 
 /**

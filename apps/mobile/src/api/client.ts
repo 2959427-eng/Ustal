@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { ApiClient } from "@ustal/api-client";
+import { ApiClient, type ApiSession } from "@ustal/api-client";
 import { getAccessToken } from "./session";
 import { productionApiUrl } from "../../config/api-url";
 
@@ -90,6 +90,12 @@ void primeTokenCache().catch(() => {});
 export function getApiBaseUrl(): string {
   return baseUrl;
 }
+
+/**
+ * Сессия, от имени которой начинается действие пользователя. Передаётся во все запросы действия ({ session }):
+ * после выхода/входа/регистрации/удаления/истечения такие запросы не уходят и не получают токен новой сессии.
+ */
+export const currentApiSession = (): ApiSession => apiClient.currentSession();
 
 export function setCachedAccessToken(token: string | null): void {
   tokenRevision += 1;

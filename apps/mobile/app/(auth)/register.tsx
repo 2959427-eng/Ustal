@@ -100,7 +100,7 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       await register({ name: name.trim(), phone, password, cityId, acceptedAge18: true, acceptedRules: true, acceptedPdn: true });
-      // Сразу после регистрации и до любой ИИ-обработки — «Как работает USTAL» с решением о передаче данных.
+      // Сразу в приложение; окно «Как работает USTAL» — при первом заполнении профиля, до первой ИИ-обработки.
       router.replace(postRegistrationRoute(consumeOrderRoute()));
       void ensurePushRegistered();
     } catch (err) {

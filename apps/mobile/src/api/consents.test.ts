@@ -5,7 +5,7 @@ import { AI_CONSENT_TEXT } from "../lib/ai-consent-flow";
 import type { ConsentsResponse } from "../lib/ai-consent-state";
 
 const request = vi.hoisted(() => vi.fn());
-vi.mock("./client", () => ({ apiClient: { request } }));
+vi.mock("./client", () => ({ apiClient: { request }, currentApiSession: () => 0 }));
 
 const policy = { id: "current", purpose: "ai", version: "2", policyHash: "hash2", status: "approved", content: { humanText: "Полные утверждённые условия", notice: [...AI_CONSENT_TEXT] } };
 const response = (over: Partial<ConsentsResponse> = {}): ConsentsResponse =>
@@ -46,7 +46,7 @@ describe("единый контракт согласия на ИИ (GET/POST /me
     const s = await required();
     request.mockResolvedValueOnce(response()).mockResolvedValueOnce({ changed: true, revision: 8 });
     await decideAiConsent(s, "grant");
-    expect(request.mock.calls[1]).toEqual(["/me/consents"]);
+    expect(request.mock.calls[1]).toEqual(["/me/consents", { session: 0 }]);
     expect(request.mock.calls[2][0]).toBe("/me/consents");
     expect(JSON.parse(request.mock.calls[2][1].body)).toEqual({ policyId: "current", policyHash: "hash2", policyVersion: "2", notice: [...AI_CONSENT_TEXT], expectedRevision: 7, decision: "grant" });
   });
@@ -137,5 +137,22 @@ describe("единый контракт согласия на ИИ (GET/POST /me
     expect(s.status).toBe("granted");
     request.mockResolvedValueOnce(response({ decisions: [granted] })).mockResolvedValueOnce({ changed: false, revision: 7 });
     await expect(decideAiConsent(s, "grant")).resolves.toEqual({ changed: false, revision: 7 });
+  });
+});
+
+describe("решение по согласию привязано к сессии, в которой получено состояние", () => {
+  it("состояние не из getAiConsent (нет привязки) — grant и revoke не отправляются", async () => {
+    request.mockReset();
+    const forged = { kind: "required" as const, policy: { ...policy }, text: "x", revision: 7, status: "undecided" as const };
+    await expect(decideAiConsent(forged, "grant")).rejects.toThrow("Session changed");
+    await expect(decideAiConsent(forged, "revoke")).rejects.toThrow("Session changed");
+    await expect(revokeAiConsentGrant({ purpose: "ai", policyId: "old", policyHash: "h", revision: 7 })).rejects.toThrow("Session changed");
+    expect(request).not.toHaveBeenCalled();
+  });
+  it("все запросы решения несут сессию состояния", async () => {
+    const s = await required();
+    request.mockResolvedValueOnce(response()).mockResolvedValueOnce({ changed: true, revision: 8 });
+    await decideAiConsent(s, "grant");
+    expect(request.mock.calls.slice(1).map((c) => c[1]?.session)).toEqual([0, 0]);
   });
 });

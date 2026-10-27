@@ -1,3 +1,4 @@
+import type { ApiSession } from "@ustal/api-client";
 import { apiClient } from "./client";
 // Subpath-экспорт пакета (packages/domain/package.json "exports"): Metro не загружает index.ts пакета, чьи
 // реэкспорты "./x.js" (NodeNext для сервера) он не разрешает. Та же функция, что на сервере (identity №8).
@@ -180,11 +181,13 @@ export interface SubmitProfileInputResult {
 export function submitProfileInput(
   payload: { inputType: "text"; text: string } | { inputType: "voice"; audioMediaId: string },
   idempotencyKey: string,
+  session?: ApiSession,
 ): Promise<SubmitProfileInputResult> {
   return apiClient.request<SubmitProfileInputResult>("/profile/inputs", {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(payload),
+    session,
   });
 }
 

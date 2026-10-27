@@ -6,7 +6,7 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 
 /** Показывается, только если сервер требует согласие на ИИ-обработку, а действующего согласия нет. */
 export function AiConsentNotice() {
-  const { data } = useQuery({ queryKey: ["ai-consent"], queryFn: getAiConsent, staleTime: 60_000 });
+  const { data } = useQuery({ queryKey: ["ai-consent"], queryFn: () => getAiConsent(), staleTime: 60_000 });
   if (!data || data.kind === "not_required" || (data.kind === "required" && data.status === "granted")) return null;
   return (
     <Pressable style={styles.box} onPress={() => router.push("/ai-consent")} accessibilityRole="button">

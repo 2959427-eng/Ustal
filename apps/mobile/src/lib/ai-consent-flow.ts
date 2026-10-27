@@ -24,10 +24,35 @@ export function afterAiConsentRoute(input: { onboarding: boolean; next?: string 
   return "/(tabs)";
 }
 
-/** Маршрут сразу после успешной регистрации: сначала «Как работает USTAL», затем запомненный заказ или главный экран. */
-export function postRegistrationRoute(pendingOrder: { pathname: "/order/[id]"; params: { id: string } } | null):
-  { pathname: "/ai-consent"; params: { onboarding: "1"; next?: string } } {
-  return pendingOrder
-    ? { pathname: "/ai-consent", params: { onboarding: "1", next: `/order/${encodeURIComponent(pendingOrder.params.id)}` } }
-    : { pathname: "/ai-consent", params: { onboarding: "1" } };
+type PendingOrderRoute = { pathname: "/order/[id]"; params: { id: string } };
+/**
+ * Маршрут сразу после успешной регистрации — сразу в приложение, без окна согласия (2026-10-26):
+ * окно показывается при первом заполнении профиля, до первой ИИ-обработки.
+ */
+export function postRegistrationRoute(pendingOrder: PendingOrderRoute | null): PendingOrderRoute | "/(tabs)" {
+  return pendingOrder ?? "/(tabs)";
+}
+
+/** Экран заполнения профиля и переход к окну согласия с возвратом на него. */
+export const PROFILE_FILL_ROUTE = "/(tabs)/profile";
+export const CONSENT_FOR_PROFILE_ROUTE = { pathname: "/ai-consent", params: { next: PROFILE_FILL_ROUTE } } as const;
+
+export type AiActionCheck = { ok: true } | { ok: false; gate: "ask" | "blocked" | "unknown"; message: string };
+export const AI_ACTION_MESSAGES = {
+  ask: "Перед обработкой ИИ нужно решение о передаче данных в OpenAI. Данные не отправлены.",
+  refused: "Вы не разрешили передачу данных в OpenAI, поэтому ИИ не обрабатывает профиль и заказы. Разрешить можно в любой момент: «Аккаунт» → «Передача данных AI».",
+  unavailable: "Обработка ИИ временно недоступна: данные в OpenAI не передаются.",
+  unknown: "Не удалось проверить разрешение на обработку ИИ. Данные не отправлены — проверьте подключение и попробуйте ещё раз.",
+} as const;
+
+/**
+ * Куда вести, если ИИ-действие заблокировано. С экрана профиля: ask → окно согласия с возвратом в профиль,
+ * отказ — сообщение на месте. С других экранов (заказ, повтор разбора): ask → окно согласия, затем профиль;
+ * отказ/нет условий → к заполнению профиля. Ошибка проверки — только сообщение.
+ */
+export function aiBlockedRoute(check: AiActionCheck, from: "profile" | "other"):
+  typeof CONSENT_FOR_PROFILE_ROUTE | typeof PROFILE_FILL_ROUTE | null {
+  if (check.ok || check.gate === "unknown") return null;
+  if (check.gate === "ask") return CONSENT_FOR_PROFILE_ROUTE;
+  return from === "profile" ? null : PROFILE_FILL_ROUTE;
 }

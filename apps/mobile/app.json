@@ -5,6 +5,8 @@
     "owner": "kimkos1980",
     "scheme": "ustal",
     "version": "1.0.0",
+    "updates": { "enabled": false },
+    "runtimeVersion": "1.0.0-v7-expo57-crypto57",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,7 +14,6 @@
       "**/*"
     ],
     "ios": {
-      "buildNumber": "1",
       "supportsTablet": false,
       "bundleIdentifier": "ru.ustal.app",
       "infoPlist": {
@@ -90,3 +91,5 @@
     }
   }
 }
+
+

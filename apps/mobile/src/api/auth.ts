@@ -2,6 +2,7 @@ import { ApiRequestError } from "@ustal/api-client";
 import { apiClient, setCachedAccessToken } from "./client";
 import { clearTokens, getRefreshToken, saveTokens, invalidateTokenWrites } from "./session";
 import { clearUserQueries } from "../state/query-client";
+import { clearFormDrafts } from "../lib/form-drafts";
 import { resetPushRegistrationState, unregisterPush } from "../notifications/push";
 
 /**
@@ -44,6 +45,7 @@ async function isolateSession() {
   invalidateTokenWrites();
   refreshInFlight = null;
   apiClient.cancelAll();
+  clearFormDrafts(); // несохранённый ввод прежнего пользователя не переходит в новую сессию
   await clearUserQueries();
 }
 
