@@ -1,3 +1,13 @@
+## 2026-10-28 — Codex: compact registration phone-paste fix
+
+Owner authorized minimal repair and commit/push of the already applied compact-registration patch on c09bcad. Preserved seven WIP files before changes. Verified TypeScript PASS, Vitest229/229, Jest49/49 (6 suites); eight new real-input/API transport regressions PASS. Product repair removes only raw maxLength13; existing phoneDigitsFromInput continues to cap normalized input at10 digits. Added eight navigation regressions using actual TextInput/onChangeText, auth.register and ApiClient with intercepted fetch: seven pasted formats all produce exactly+79001234567 in POST/auth/register; excess normalized digits capped. Original compact-registration, consent/modal/registration checks retained. API/database/worker/other screen runtime/dependencies unchanged. Evidence: C:/Users/User/Desktop/ustal-release-candidates/register-phone-fix-20261028/. No EAS Build/OTA/deploy.
+
+---
+## 2026-10-28 — Codex: compact registration patch BLOCKED, no commit/push
+
+Owner supplied exact31166-byte SHA9551ddfafb5c10fe204a898600c41ac9c51a64940972a34967a20950c467ccb0 patch; base local/remote c09bcad matched and worktree was clean. Applied unchanged. Independent blocking regression at register.tsx:148: native maxLength13 truncates a formatted full phone before normalization; '+7 (900) 123-45-67' -> '+7 (900) 123-' ->7900123, invalid. Existing fireEvent tests bypass native truncation. TypeScript/Vitest229/Jest41 PASS (Jest serial isolated-cache rerun after Windows EPERM shared-cache error). Independent paste reproduction FAIL. No silent fix, commit or push. Patch retained as uncommitted WIP. Evidence/repro: C:/Users/User/Desktop/ustal-release-candidates/register-compact-20261028/REVIEW.md. No builds/OTA/deploy/publication.
+
+---
 ## 2026-10-27 — Codex: legal modals merged, iPhone/TestFlight update authorized
 
 Owner requested the iPhone update and explicitly authorized TestFlight upload, without App Store publication. PR7 CI build-and-test passed; reviewed head292e0f5 merged into release as9d7ec73039bd409481e17d78e451e2a7be7af5a2. Canonical checkout fast-forwarded cleanly; v7 dependencies/native/OTA/session behavior preserved. Preparing only a new iOS production build and TestFlight upload; no Android rebuild, OTA, server/worker/production/enforced changes. Existing225 unit/36 navigation/typecheck/lint PASS and PR CI reused without unnecessary repeat. New canonical manifest anchored at9d7ec73 records this exact preparation.

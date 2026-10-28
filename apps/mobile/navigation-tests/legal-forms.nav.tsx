@@ -18,17 +18,19 @@ beforeEach(() => {
 it("registration inputs and consent checkboxes survive the legal modal", async () => {
  renderRouter({_layout:layout,index:RegisterScreen});
  fireEvent.changeText(screen.getByPlaceholderText("Как к вам обращаться"),"Synthetic user");
- fireEvent.changeText(screen.getByPlaceholderText("+7XXXXXXXXXX"),"+70000000001");
+ fireEvent.changeText(screen.getByLabelText("Телефон, 10 цифр после +7"),"9000000001");
  const passwords=screen.UNSAFE_getAllByType(TextInput).filter(n=>n.props.secureTextEntry);
+ expect(passwords).toHaveLength(1); // повтор пароля больше не нужен: сервер его не требует
  passwords.forEach(p=>fireEvent.changeText(p,"Synthetic-password"));
- const checks=screen.getAllByRole("checkbox");checks.forEach(c=>fireEvent.press(c));
- await waitFor(()=>expect(screen.getByText("Открыть пользовательское соглашение")).toBeTruthy());
- fireEvent.press(screen.getByText("Открыть пользовательское соглашение"));
+ const checks=screen.getAllByRole("checkbox");
+ expect(checks).toHaveLength(2);
+ checks.forEach(c=>fireEvent.press(c));
+ fireEvent.press(screen.getByText("Пользовательское соглашение"));
  await screen.findByText("Current server document");
  fireEvent.press(screen.getByLabelText("Закрыть документ"));
  expect(screen.getByDisplayValue("Synthetic user")).toBeTruthy();
- expect(screen.getByDisplayValue("+70000000001")).toBeTruthy();
- expect(screen.getAllByDisplayValue("Synthetic-password")).toHaveLength(2);
+ expect(screen.getByDisplayValue("900 000-00-01")).toBeTruthy();
+ expect(screen.getAllByDisplayValue("Synthetic-password")).toHaveLength(1);
  screen.getAllByRole("checkbox").forEach(c=>expect(c.props.accessibilityState.checked).toBe(true));
 });
 it("login phone and password survive opening and closing the document", async () => {

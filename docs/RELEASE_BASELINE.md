@@ -1,3 +1,6 @@
+## Current approved snapshot — 2026-10-28
+
+Base commit c09bcad5a1a1fb0323e1345e7c866c7e27e4fd6f; owner-authorized compact-registration patch SHA2569551ddfafb5c10fe204a898600c41ac9c51a64940972a34967a20950c467ccb0 plus minimal raw-phone-input fix and regression coverage. Normalized phone remains10 digits, outgoing format+7XXXXXXXXXX. Existing server contracts, v7 isolation, Expo lockfile and legal modals preserved. Commit/push only release/ustal-1.0.0; no builds, OTA or deploy. Earlier baseline notes below are historical.
 ## Current approved snapshot — 2026-10-27
 
 Release merge: `9d7ec73039bd409481e17d78e451e2a7be7af5a2` (PR7 legal modals, CI PASS). This manifest anchors the iOS/TestFlight preparation to that merge. Owner authorized integration, a new iOS build and TestFlight upload only; no App Store publication, OTA, server or production changes. Earlier preparation notes below are historical.

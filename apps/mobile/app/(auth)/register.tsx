@@ -1,5 +1,6 @@
 import { getLegalDocuments, registrationDocumentsReady } from "../../src/api/legal";
-import { LegalLink, LegalLinks } from "../../src/components/LegalLinks";
+import { LegalDocumentModal } from "../../src/components/LegalDocumentModal";
+import type { LegalPage } from "../../src/lib/legal-links";
 import { postRegistrationRoute } from "../../src/lib/ai-consent-flow";
 import { consumeOrderRoute } from "../../src/notifications/navigation";
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
@@ -12,42 +13,34 @@ import { CityPicker } from "../../src/components/CityPicker";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 import { getCities, type City } from "../../src/api/cities";
 import { register } from "../../src/api/auth";
-import { passwordConfirmError } from "../../src/lib/password-confirm";
+import { formatPhoneDigits, isCompletePhone, phoneDigitsFromInput, phoneFromDigits } from "../../src/lib/phone-input";
 import { ensurePushRegistered } from "../../src/notifications/push";
 
-const PHONE_PATTERN = /^\+7\d{10}$/;
-
 /**
- * Регистрация — одним экраном: имя, телефон, пароль и город, кнопка
- * «Зарегистрироваться» сразу вызывает POST /auth/register.
- *
- * 2026-09-13 fix: раньше город выбирался на ОТДЕЛЬНОМ следующем экране
- * (`select-city.tsx`, теперь неиспользуемый — не удаляю сама, файлового
- * доступа к `git rm` у меня нет, см. AI_HANDOFF.md) — эта форма только
- * копила черновик в памяти (`src/state/registrationDraft.ts`, тоже больше
- * не импортируется — пароль намеренно не шёл через query-параметры роута)
- * и переходила дальше отдельным шагом. Пользователь попросил город прямо
- * здесь и одну кнопку регистрации. Паттерн выбора города — тот же, что и
- * в `app/edit-profile.tsx`: поле-кнопка открывает `CityPicker`
- * на весь экран, выбор возвращает обратно в форму.
+ * Регистрация — один компактный экран: имя, телефон (+7 фиксирован), пароль с показом, город,
+ * две обязательные активные отметки и одна кнопка. POST /auth/register и его поля не менялись:
+ * сервер не требует повтора пароля; acceptedRules, acceptedPdn и acceptedAge18 отправляются как раньше.
+ * Согласие на обработку ПДн — отдельной отметкой (не вместе с соглашением).
+ * Документы открываются во встроенном окне (LegalDocumentModal), форма при этом не сбрасывается.
+ * Полный список документов, поддержка и удаление аккаунта — на экране входа и в «Аккаунт».
  */
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const [documentsReady, setDocumentsReady] = useState(false);
   useEffect(() => { void getLegalDocuments().then(d => setDocumentsReady(registrationDocumentsReady(d))).catch(() => setDocumentsReady(false)); }, []);
-  const [ageConfirmed, setAgeConfirmed] = useState(false);
-  const [rulesAccepted, setRulesAccepted] = useState(false);
+  // Одна активная отметка: соглашение + 18+ (обе подтверждаются осознанно); отдельная — согласие на ПДн.
+  const [termsAndAge, setTermsAndAge] = useState(false);
   const [pdnAccepted, setPdnAccepted] = useState(false);
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("+7");
+  const [phoneDigits, setPhoneDigits] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [cityId, setCityId] = useState<string | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [cities, setCities] = useState<City[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(true);
   const [citiesError, setCitiesError] = useState(false);
+  const [doc, setDoc] = useState<LegalPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -65,41 +58,20 @@ export default function RegisterScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Ошибку под полем показываем, как только пользователь начал вводить повтор, либо после попытки отправки.
-  const confirmError = passwordConfirmError(password, confirm);
-  const showConfirmError = confirmError !== null && (confirm.length > 0 || submitAttempted);
-
-  const cityName = cities.find((c) => c.id === cityId)?.name ?? "Выбрать город";
+  const cityName = cities.find((c) => c.id === cityId)?.name;
 
   const onRegister = async () => {
     if (!__DEV__ && !documentsReady) { setError("Документы ещё не опубликованы — регистрация временно недоступна"); return; }
-    if (!ageConfirmed) { setError("Подтвердите, что вам исполнилось 18 лет"); return; }
-    if (!rulesAccepted || !pdnAccepted) { setError("Подтвердите условия и обработку данных"); return; }
-    if (name.trim().length === 0) {
-      setError("Укажите, как к вам обращаться");
-      return;
-    }
-    if (!PHONE_PATTERN.test(phone)) {
-      setError("Телефон должен быть в формате +7XXXXXXXXXX");
-      return;
-    }
-    if (password.length < 8) {
-      setError("Пароль должен быть не короче 8 символов");
-      return;
-    }
-    if (confirmError) {
-      setSubmitAttempted(true);
-      setError(null);
-      return;
-    }
-    if (!cityId) {
-      setError("Выберите город");
-      return;
-    }
+    if (!termsAndAge) { setError("Подтвердите, что вам исполнилось 18 лет, и примите соглашение"); return; }
+    if (!pdnAccepted) { setError("Нужно согласие на обработку персональных данных"); return; }
+    if (name.trim().length === 0) { setError("Укажите, как к вам обращаться"); return; }
+    if (!isCompletePhone(phoneDigits)) { setError("Введите 10 цифр номера после +7"); return; }
+    if (password.length < 8) { setError("Пароль должен быть не короче 8 символов"); return; }
+    if (!cityId) { setError("Выберите город"); return; }
     setError(null);
     setSubmitting(true);
     try {
-      await register({ name: name.trim(), phone, password, cityId, acceptedAge18: true, acceptedRules: true, acceptedPdn: true });
+      await register({ name: name.trim(), phone: phoneFromDigits(phoneDigits), password, cityId, acceptedAge18: true, acceptedRules: true, acceptedPdn: true });
       // Сразу в приложение; окно «Как работает USTAL» — при первом заполнении профиля, до первой ИИ-обработки.
       router.replace(postRegistrationRoute(consumeOrderRoute()));
       void ensurePushRegistered();
@@ -112,7 +84,7 @@ export default function RegisterScreen() {
 
   if (cityPickerOpen) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.pickerContainer, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable style={styles.back} onPress={() => setCityPickerOpen(false)} hitSlop={12}>
           <Text style={styles.backText}>← Назад</Text>
         </Pressable>
@@ -132,80 +104,124 @@ export default function RegisterScreen() {
     );
   }
 
+  const link = (page: LegalPage, label: string) => (
+    <Text style={styles.link} accessibilityRole="link" onPress={() => setDoc(page)} suppressHighlighting>{label}</Text>
+  );
+
   return (
     <KeyboardAvoid>
-    <ScrollView contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.sm }]} keyboardShouldPersistTaps="handled">
-      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12}>
-        <Text style={styles.backText}>← Назад</Text>
+    <ScrollView
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.lg }]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+    >
+      <Pressable style={styles.back} onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Назад">
+        <Text style={styles.backText}>←</Text>
       </Pressable>
       <Text style={styles.title}>Регистрация</Text>
 
-      <Text style={styles.label}>Имя</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Как к вам обращаться" />
-
-      <Text style={styles.label}>Телефон</Text>
       <TextInput
         style={styles.input}
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-        autoCapitalize="none"
-        placeholder="+7XXXXXXXXXX"
+        value={name}
+        onChangeText={setName}
+        placeholder="Как к вам обращаться"
+        placeholderTextColor={colors.textTertiary}
+        accessibilityLabel="Имя"
+        autoComplete="name"
+        textContentType="name"
+        returnKeyType="next"
+        editable={!submitting}
       />
-      <Text style={styles.hint}>Проверьте номер — он не подтверждается кодом в этой версии приложения.</Text>
 
-      <Text style={styles.label}>Пароль</Text>
-      <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
+      <View style={styles.row}>
+        <Text style={styles.prefix}>+7</Text>
+        <TextInput
+          style={styles.rowInput}
+          value={formatPhoneDigits(phoneDigits)}
+          onChangeText={(t) => setPhoneDigits(phoneDigitsFromInput(t))}
+          keyboardType="phone-pad"
+          placeholder="900 123-45-67"
+          placeholderTextColor={colors.textTertiary}
+          accessibilityLabel="Телефон, 10 цифр после +7"
+          autoComplete="tel"
+          textContentType="telephoneNumber"
+          editable={!submitting}
+        />
+      </View>
+      <Text style={styles.note}>Номер пока не подтверждается по SMS — проверьте его: по нему вы будете входить.</Text>
 
-      <Text style={styles.label}>Повторите пароль</Text>
-      <TextInput
-        style={[styles.input, showConfirmError && styles.inputError]}
-        value={confirm}
-        onChangeText={setConfirm}
-        secureTextEntry
-        autoCapitalize="none"
-        accessibilityLabel="Повторите пароль"
-      />
-      {showConfirmError ? <Text style={styles.error}>{confirmError}</Text> : null}
+      <View style={styles.row}>
+        <TextInput
+          style={styles.rowInput}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          placeholder="Пароль, не короче 8 символов"
+          placeholderTextColor={colors.textTertiary}
+          accessibilityLabel="Пароль"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          editable={!submitting}
+        />
+        <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} accessibilityRole="button"
+          accessibilityLabel={showPassword ? "Скрыть пароль" : "Показать пароль"}>
+          <Text style={styles.toggle}>{showPassword ? "Скрыть" : "Показать"}</Text>
+        </Pressable>
+      </View>
 
-      <Text style={styles.label}>Город</Text>
-      <Pressable style={styles.input} onPress={() => setCityPickerOpen(true)} accessibilityRole="button">
-        <Text style={cityId ? styles.value : styles.placeholder}>{cityName}</Text>
+      <Pressable style={styles.input} onPress={() => setCityPickerOpen(true)} accessibilityRole="button" accessibilityLabel={cityName ? `Город: ${cityName}` : "Выбрать город"} disabled={submitting}>
+        <Text style={cityName ? styles.value : styles.placeholder}>{cityName ?? "Город"}</Text>
       </Pressable>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <View style={styles.legal}>
+        <Pressable style={styles.check} accessibilityRole="checkbox" accessibilityState={{ checked: termsAndAge }}
+          accessibilityLabel="Мне есть 18 лет, принимаю Пользовательское соглашение" disabled={submitting} onPress={() => setTermsAndAge((v) => !v)} hitSlop={4}>
+          <Text style={[styles.box, termsAndAge && styles.boxOn]}>{termsAndAge ? "✓" : ""}</Text>
+          <Text style={styles.checkText}>Мне есть 18 лет, принимаю {link("terms", "Пользовательское соглашение")}</Text>
+        </Pressable>
+        <Pressable style={styles.check} accessibilityRole="checkbox" accessibilityState={{ checked: pdnAccepted }}
+          accessibilityLabel="Согласен на обработку персональных данных по Политике конфиденциальности" disabled={submitting} onPress={() => setPdnAccepted((v) => !v)} hitSlop={4}>
+          <Text style={[styles.box, pdnAccepted && styles.boxOn]}>{pdnAccepted ? "✓" : ""}</Text>
+          <Text style={styles.checkText}>Согласен(на) на обработку персональных данных по {link("privacy", "Политике конфиденциальности")}</Text>
+        </Pressable>
+      </View>
 
-      <LegalLinks />
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: rulesAccepted }} disabled={submitting} onPress={() => setRulesAccepted(v => !v)}><Text>{rulesAccepted ? "☑" : "☐"} Принимаю пользовательское соглашение</Text></Pressable>
-      <LegalLink page="terms" label="Открыть пользовательское соглашение" />
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: pdnAccepted }} disabled={submitting} onPress={() => setPdnAccepted(v => !v)}><Text>{pdnAccepted ? "☑" : "☐"} Ознакомлен(а) с политикой конфиденциальности и согласен(на) на обработку персональных данных</Text></Pressable>
-      <LegalLink page="privacy" label="Открыть политику конфиденциальности" />
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: ageConfirmed }} accessibilityLabel="Мне исполнилось 18 лет" onPress={() => setAgeConfirmed(v => !v)} disabled={submitting}>
-        <Text style={styles.hint}>{ageConfirmed ? "☑" : "☐"} Мне исполнилось 18 лет</Text>
+      {error ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
+      <PrimaryButton disabled={!termsAndAge || !pdnAccepted} label="Зарегистрироваться" onPress={onRegister} loading={submitting} />
+
+      <Pressable style={styles.login} onPress={() => router.replace("/(auth)/login")} accessibilityRole="link" hitSlop={8}>
+        <Text style={styles.loginText}>Уже есть аккаунт? <Text style={styles.link}>Войти</Text></Text>
       </Pressable>
-      <PrimaryButton disabled={!ageConfirmed || !rulesAccepted || !pdnAccepted} label="Зарегистрироваться" onPress={onRegister} loading={submitting} />
+      <LegalDocumentModal page={doc} onClose={() => setDoc(null)} />
     </ScrollView>
     </KeyboardAvoid>
   );
 }
 
+const field = { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: spacing.md } as const;
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.xs, backgroundColor: colors.background, flexGrow: 1 },
-  back: { marginBottom: spacing.xs },
-  backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
-  label: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },
-  input: {
-    ...typography.body,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.sm,
-    padding: spacing.sm,
-    color: colors.textPrimary,
-  },
-  inputError: { borderColor: colors.danger },
+  container: { paddingHorizontal: spacing.lg, gap: spacing.sm, backgroundColor: colors.background, flexGrow: 1 },
+  pickerContainer: { flex: 1, padding: spacing.lg, gap: spacing.xs, backgroundColor: colors.background },
+  back: { alignSelf: "flex-start", paddingVertical: spacing.xs },
+  backText: { fontSize: 22, color: colors.textPrimary },
+  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.sm },
+  input: { ...typography.body, ...field, justifyContent: "center", color: colors.textPrimary },
+  row: { ...field, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rowInput: { ...typography.body, flex: 1, minHeight: 46, color: colors.textPrimary },
+  prefix: { ...typography.body, color: colors.textPrimary },
+  toggle: { ...typography.caption, color: colors.primary, fontWeight: "600" },
+  note: { ...typography.caption, color: colors.textSecondary, marginTop: -spacing.xs },
   value: { ...typography.body, color: colors.textPrimary },
-  placeholder: { ...typography.body, color: colors.textSecondary },
-  hint: { ...typography.caption, color: colors.warning, marginBottom: spacing.sm },
-  error: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
+  placeholder: { ...typography.body, color: colors.textTertiary },
+  legal: { gap: spacing.sm, marginTop: spacing.xs },
+  check: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, minHeight: 32 },
+  box: { width: 22, height: 22, borderWidth: 1.5, borderColor: colors.border, borderRadius: 6, textAlign: "center", lineHeight: 20, fontSize: 14, color: colors.textInverse, overflow: "hidden" },
+  boxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkText: { ...typography.caption, flex: 1, color: colors.textSecondary, lineHeight: 18 },
+  link: { color: colors.primary, textDecorationLine: "underline" },
+  error: { ...typography.caption, color: colors.danger },
+  login: { alignSelf: "center", paddingVertical: spacing.sm },
+  loginText: { ...typography.caption, color: colors.textSecondary },
 });

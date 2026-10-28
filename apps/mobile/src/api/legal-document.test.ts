@@ -44,8 +44,9 @@ describe("все ссылки на документы в приложении о
     const src = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
     expect(src("src/components/LegalLinks.tsx")).not.toMatch(/Linking|openURL/);
     for (const screen of ["app/(auth)/register.tsx", "app/(auth)/login.tsx", "app/(auth)/select-city.tsx", "app/(tabs)/account.tsx", "app/ai-consent.tsx"]) {
-      expect(src(screen)).toMatch(/<LegalLinks? /);
-      expect(src(screen)).not.toMatch(/legalUrl\(/);
+      // Встроенные ссылки в тексте отметок (регистрация) открывают то же окно LegalDocumentModal напрямую.
+      expect(src(screen)).toMatch(/<LegalLinks? |<LegalDocumentModal /);
+      expect(src(screen)).not.toMatch(/legalUrl\(|Linking|openURL/);
     }
   });
 });
