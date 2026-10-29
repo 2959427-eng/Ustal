@@ -1,12 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { renderLegalMarkdown } from "../legal/markdown.js";
+import { renderLegalPage } from "../legal/pages.js";
+import { currentPublication, type LegalPublication } from "../legal/publication.js";
 import type { FastifyInstance } from "fastify";
 
 /**
- * Публичные юридические документы (политика ПДн, соглашение, согласие на ИИ-обработку) — один источник для
- * приложения и для страниц App Store / Google Play. Отдаются только утверждённые копии из apps/api/legal/:
- * документ с незаполненными полями ([УКАЗАТЬ) или пометкой ПРОЕКТ не публикуется (404), чтобы проект не попал к людям.
+ * Политика и соглашение используют ту же утверждённую publication, что /privacy и /terms.
+ * /legal и старые адреса /legal/:id сохранены для выпущенных мобильных сборок.
+ * Источник отдельного AI-документа не меняется этой правкой.
  */
 export const LEGAL_DOCUMENTS = ["privacy", "terms", "ai-processing"] as const;
 export type LegalDocumentId = (typeof LEGAL_DOCUMENTS)[number];
@@ -35,17 +37,28 @@ export function renderLegalHtml(doc: LegalDocument): string {
     + `</head><body>${renderLegalMarkdown(doc.body)}<p><small>Версия ${escape(doc.version)}</small></p></body></html>`;
 }
 
-export default async function legalRoutes(app: FastifyInstance, opts: { dir?: string } = {}) {
+export default async function legalRoutes(app: FastifyInstance, opts: { dir?: string; publication?: LegalPublication } = {}) {
+  const publication = opts.publication ?? currentPublication();
   const load = (id: LegalDocumentId) => loadLegalDocument(id, opts.dir);
-  app.get("/legal", async () => ({
+  const list = async () => ({
     documents: await Promise.all(LEGAL_DOCUMENTS.map(async (id) => {
+      if (id === "privacy" || id === "terms") {
+        return { id, available: Boolean(publication), version: publication?.version ?? null, path: `/legal/${id}` };
+      }
       const doc = await load(id);
       return { id, available: Boolean(doc), version: doc?.version ?? null, path: `/legal/${id}` };
     })),
-  }));
+  });
+  for (const path of ["/legal", "/legal/"]) app.get(path, async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return list();
+  });
   app.get("/legal/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const doc = (LEGAL_DOCUMENTS as readonly string[]).includes(id) ? await load(id as LegalDocumentId) : null;
+    if ((id === "privacy" || id === "terms") && publication) {
+      return reply.header("Cache-Control", "no-store").type("text/html; charset=utf-8").send(renderLegalPage(id, publication));
+    }
+    const doc = id === "ai-processing" ? await load(id) : null;
     if (!doc) return reply.code(404).send({ error: { code: "legal_document_unavailable", message: "Документ ещё не опубликован" } });
     reply.header("Cache-Control", "public, max-age=300");
     return reply.type("text/html; charset=utf-8").send(renderLegalHtml(doc));

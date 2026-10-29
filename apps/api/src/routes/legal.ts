@@ -1,12 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { titles, renderLegalPage, legalCss, type LegalPage } from "../legal/pages.js";
-import { loadPublication, type LegalPublication } from "../legal/publication.js";
+import { currentPublication, type LegalPublication } from "../legal/publication.js";
 import { deletionHtml, deletionClient } from "../web/account-deletion.js";
 
 export default async function legalRoutes(app: FastifyInstance, options: { publication?: LegalPublication } = {}) {
   // No production publication is authorized by installing the code. An operator-approved
   // bundle is required; invalid configured bundles fail startup rather than publish drafts.
-  const publication = options.publication ?? loadPublication();
+  const publication = options.publication ?? currentPublication();
   if (process.env.NODE_ENV === "production" && !publication) return;
   const headers = {
     "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",

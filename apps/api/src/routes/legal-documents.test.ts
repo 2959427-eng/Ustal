@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import legalRoutes, { parseLegalDocument, renderLegalHtml } from "./legal-documents.js";
 
 const approved = "version: 2026-11-01\n\n# Политика\n\nТекст <script>alert(1)</script> и **важно**.\n\n- пункт\n- второй\n";
+beforeEach(() => vi.stubEnv("USTAL_LEGAL_PUBLICATION_FILE", ""));
+afterEach(() => vi.unstubAllEnvs());
 async function appWith(files: Record<string, string>) {
   const dir = mkdtempSync(join(tmpdir(), "legal-")) + "/";
   for (const [name, text] of Object.entries(files)) writeFileSync(dir + name, text);
@@ -16,9 +18,9 @@ async function appWith(files: Record<string, string>) {
 }
 
 describe("юридические документы", () => {
-  it("утверждённый документ отдаётся HTML с версией, текст экранирован", async () => {
-    const app = await appWith({ "privacy.md": approved });
-    const res = await app.inject("/legal/privacy");
+  it("отдельный AI-документ сохраняет прежний HTML с версией и экранированием", async () => {
+    const app = await appWith({ "ai-processing.md": approved });
+    const res = await app.inject("/legal/ai-processing");
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/html");
     expect(res.body).toContain("<h1>Политика</h1>");
@@ -42,13 +44,13 @@ describe("юридические документы", () => {
     for (const path of ["/legal/terms", "/legal/..%2Fpackage", "/legal/README", "/legal/privacy.md"])
       expect((await app.inject(path)).statusCode).toBe(404);
   });
-  it("список показывает доступность и версии", async () => {
-    const app = await appWith({ "privacy.md": approved, "terms.md": approved });
+  it("старые файлы privacy/terms не подменяют publication; источник AI сохранён", async () => {
+    const app = await appWith({ "privacy.md": approved, "terms.md": approved, "ai-processing.md": approved });
     const docs = (await app.inject("/legal")).json().documents;
     expect(docs).toEqual([
-      { id: "privacy", available: true, version: "2026-11-01", path: "/legal/privacy" },
-      { id: "terms", available: true, version: "2026-11-01", path: "/legal/terms" },
-      { id: "ai-processing", available: false, version: null, path: "/legal/ai-processing" },
+      { id: "privacy", available: false, version: null, path: "/legal/privacy" },
+      { id: "terms", available: false, version: null, path: "/legal/terms" },
+      { id: "ai-processing", available: true, version: "2026-11-01", path: "/legal/ai-processing" },
     ]);
   });
   it("проекты из docs/legal сейчас не публикуются (ни один не готов)", () => {
