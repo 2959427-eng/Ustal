@@ -2,7 +2,8 @@ export const WHATSAPP_PHONE_ERROR = "Укажите WhatsApp в формате +
 
 /** No truncation: a malformed/overlong optional number must never become another valid number. */
 export function normalizeWhatsappPhone(input: string): string | null {
-  const text = input.trim();
+  // Copied phone numbers may contain Unicode hyphen/non-breaking hyphen (e.g. WhatsApp on iOS).
+  const text = input.replace(/[\u2010\u2011]/g, "-").trim();
   if (!text) return null;
   if (!/^\+?[\d\s()-]+$/.test(text)) throw new Error(WHATSAPP_PHONE_ERROR);
   let digits = text.replace(/\D/g, "");

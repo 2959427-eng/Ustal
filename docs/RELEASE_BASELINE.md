@@ -1,3 +1,7 @@
+## Approved WhatsApp Unicode separator follow-up — 2026-10-31
+
+Base HEAD0232d5344d9a009b59035bc940c6a233dd68bdbe. Narrow follow-up to the owner-authorized WhatsApp tester release: accept U+2010/U+2011 copied phone hyphens by converting to ASCII before the unchanged phone validation. Regression tests PASS; no API/server/consent/session changes. Production API and OTA OFF preserved. Existing tester groups only, no public release.
+
 ## Approved WhatsApp mobile tester snapshot — 2026-10-31
 
 Base HEAD412e069aafaa66bcd0699f89a14d7e50bb490684. Only mobile WhatsApp normalization, optional clearing, Russian errors and independent profile-field saving, with regression tests and release records. Typecheck/lint PASS, API-contract Vitest18, iOS26/Android26. Owner authorizes release commit/push and delivery to existing TestFlight/Internal Testing groups. Production API https://api.ustal.site; OTA OFF; no server deploy or public store release. Previous entries are historical.

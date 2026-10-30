@@ -1,3 +1,7 @@
+## 2026-10-31 — Codex: WhatsApp copied Unicode hyphen follow-up
+
+Owner reproduced rejected WhatsApp paste in shipped tester build11: the provided text contains U+2011 non-breaking hyphens and U+00A0 spaces. Prefix950 is accepted; U+2011 was rejected by the mobile ASCII separator whitelist before the API request. Normalize only U+2010/U+2011 to ASCII hyphen before existing validation; no truncation or API relaxation. Regression fixtures use synthetic digits, preserve copied separator codepoints, exercise both real forms through serialized PATCH. PASS mobile typecheck/lint, Vitest21 including API contract, iOS15/Android15. Continue the already authorized WhatsApp tester release only; no server/mobile policy/other feature changes.
+
 ## 2026-10-31 — Codex: owner authorized WhatsApp tester release
 
 Owner requests delivery to existing TestFlight and Google Play Internal Testing testers. Only tested optional WhatsApp mobile fix plus release records; current production API/worker remains unchanged. Existing platform consent/session safeguards and OTA OFF preserved. Commit/push release branch and native test distribution authorized by this request; no public store publication.

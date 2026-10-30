@@ -33,6 +33,17 @@ function render(edit = false) {
 const body = () => JSON.parse((mockRequest.mock.calls.at(-1)?.[1] as { body: string }).body);
 const variants = ["+79001234567", "89001234567", "9001234567", "+7 (900) 123-45-67"];
 
+it.each([false, true])("WhatsApp iPhone paste with non-breaking spaces/hyphens reaches PATCH correctly (full form: %s)", async edit => {
+  render(edit);
+  if (!edit) fireEvent.press(await screen.findByLabelText("Изменить WhatsApp"));
+  const input = await screen.findByLabelText("WhatsApp");
+  fireEvent.changeText(input, "+7\u00a0950\u00a0123\u201145\u201167");
+  if (edit) fireEvent.press(screen.getByText("Сохранить"));
+  else fireEvent(input, "submitEditing");
+  await waitFor(() => expect(mockRequest).toHaveBeenCalled());
+  expect(body()).toMatchObject({ whatsappPhone: "+79501234567" });
+});
+
 it.each([...variants, ""])("inline real TextInput -> PATCH /profile: %s", async raw => {
   render();
   fireEvent.press(await screen.findByLabelText("Изменить WhatsApp"));
