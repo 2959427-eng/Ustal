@@ -1,3 +1,13 @@
+## Current approved unified mobile snapshot — 2026-10-30
+
+HEAD `19fee21f9fa44f799879c8b840df0436bfdf0811`, canonical `release/ustal-1.0.0`. Owner authorized uncommitted integration of verified shipped Android1.0.0(7) and iOS1.0.0(9) common UI: bottom tabs, paginated feed, shared order composer, embedded responses, styling and expo-font57.0.3. iOS consent implementation remains the shipped default module; Metro resolves the exact shipped Android implementation via ai-consent-flow.android.ts. Account management link is retained on iOS and absent on Android, matching the shipped builds. No new consent policy, server mode or approved text. Cities, adapted empty-profile CTA and age-duration fix2 retained. All prior WIP preserved in external source archive. This manifest identifies the COMPLETE uncommitted snapshot, not clean HEAD alone. Prior notes below are historical. No commit/push/native build/deploy performed or authorized by this preparation.
+
+Validation: all-workspace typecheck PASS plus final mobile typecheck; mobile Vitest243; navigation iOS62 and Android62; lint0 errors/9 existing warnings. Prior isolated DB76/76 gate retained: server/domain/matching/prompt files byte-identical to that validated candidate. New tests preserve all earlier assertions and add actual bottom-tab navigation and platform management-link checks. Android navigation is reproducible with npm run test:navigation:android -w @ustal/mobile -- --runInBand; iOS uses test:navigation. Physical-device acceptance remains unverified.
+
+## Current approved snapshot — 2026-10-30
+
+Owner-authorized uncommitted full snapshot on HEAD `19fee21f9fa44f799879c8b840df0436bfdf0811`, canonical release/ustal-1.0.0. Includes all original 18 WIP entries, support-v3, consent-once, city optimization, profile-empty CTA and committed legal-publication corrections. Exact source is release-baseline.json; HEAD alone is insufficient. Claude task "33 года" must start from this complete snapshot and record the manifest SHA256 in its patch handoff. Prior entries below are historical. No commit, push, builds or deploy authorized by this baseline refresh. Canonical UI differs from shipped iOS9/Android7; this snapshot is not authorization to replace those builds.
+
 ## Current approved snapshot — 2026-10-28
 
 Base commit c09bcad5a1a1fb0323e1345e7c866c7e27e4fd6f; owner-authorized compact-registration patch SHA2569551ddfafb5c10fe204a898600c41ac9c51a64940972a34967a20950c467ccb0 plus minimal raw-phone-input fix and regression coverage. Normalized phone remains10 digits, outgoing format+7XXXXXXXXXX. Existing server contracts, v7 isolation, Expo lockfile and legal modals preserved. Commit/push only release/ustal-1.0.0; no builds, OTA or deploy. Earlier baseline notes below are historical.

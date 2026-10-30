@@ -1,25 +1,22 @@
 import { useRef, useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HomeHeader } from "../../src/components/HomeHeader";
 import { useNotificationBadges } from "../../src/notifications/badges";
-import { QuickActions } from "../../src/components/QuickActions";
 import { OrderCard } from "../../src/components/OrderCard";
 import { ContactButtons } from "../../src/components/ContactButtons";
+import { CreateOrderComposer } from "../../src/components/CreateOrderComposer";
 import { getFeed } from "../../src/api/feed";
+import { getMe } from "../../src/api/me";
 import { getMyResponses } from "../../src/api/my";
 import { getCities } from "../../src/api/cities";
 import { createResponse } from "../../src/api/responses";
 import { ApiRequestError } from "@ustal/api-client";
-import { colors, spacing, typography } from "../../src/theme/tokens";
+import { colors, radii, spacing, typography } from "../../src/theme/tokens";
 
 /**
- * UX-аудит 2026-09-22, «Важно» №4: раньше любая ошибка отклика из ленты
- * (не только ожидаемое "уже откликался") молча проглатывалась — кнопка
- * просто переставала крутиться, без единого слова пользователю. Теперь
- * код ошибки от API превращается в понятный текст под карточкой.
+ * UX-аудит 2026-09-22, «Важно» №4: код ошибки отклика из ленты превращается в понятный текст под карточкой.
  */
 const RESPOND_ERROR_MESSAGES: Record<string, string> = {
   already_responded: "Вы уже откликнулись на этот заказ.",
@@ -29,18 +26,20 @@ const RESPOND_ERROR_MESSAGES: Record<string, string> = {
   forbidden: "Нельзя откликнуться на этот заказ.",
 };
 const RESPOND_ERROR_FALLBACK = "Не удалось откликнуться. Попробуйте ещё раз.";
+const FEED_PAGE = 20;
+
+function greeting(now = new Date()): string {
+  const h = now.getHours();
+  return h < 5 ? "Доброй ночи" : h < 12 ? "Доброе утро" : h < 18 ? "Добрый день" : "Добрый вечер";
+}
 
 /**
- * «Возможности» — лента подобранных AI заказов для исполнителя (раздел 15/26
- * ТЗ, макет Main.dc.html). GET /feed. Один из двух главных экранов нижней
- * навигации — второй см. app/(tabs)/orders.tsx ("Заказы").
- *
- * Кнопки на карточке — как в макете (Main.dc.html / OrderDetail.dc.html):
- * «Откликнуться» сразу создаёт отклик (POST /orders/{id}/responses, без
- * доп. формы — цену/комментарий можно уточнить позже на самом заказе) и
- * превращается в «✓ Откликнулся»; «Скрыть» убирает карточку из ленты
- * локально на этом экране (без отдельного API — как и в макете). Тап по
- * самой карточке по-прежнему открывает полную карточку заказа.
+ * «Главная» (новый интерфейс 2026-10-28, утверждённый прототип): закреплённая шапка «Ваши возможности»,
+ * под ней бесконечная лента подобранных AI заказов (GET /feed постранично, limit/offset — контракт не менялся),
+ * внизу — поле «Что вам нужно сделать?» (тот же переход к созданию заказа, что и на «Заказах»).
+ * Логика карточки прежняя: «Откликнуться» сразу создаёт отклик (POST /orders/{id}/responses) → «✓ Откликнулся»;
+ * «Скрыть» убирает карточку локально; при переговорах/работе — статус и «Позвонить / WhatsApp» (OrderCard).
+ * «Мои отклики» и «История» перенесены во вкладку «Заказы».
  */
 export default function OpportunitiesScreen() {
   const router = useRouter();
@@ -53,22 +52,33 @@ export default function OpportunitiesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [respondErrors, setRespondErrors] = useState<Record<string, string>>({});
 
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["feed"], queryFn: () => getFeed() });
-  const { data: cities } = useQuery({ queryKey: ["cities"], queryFn: getCities });
+  const feed = useInfiniteQuery({
+    queryKey: ["feed"],
+    queryFn: ({ pageParam }) => getFeed({ limit: FEED_PAGE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.items.length < last.limit ? undefined : last.offset + last.limit),
+  });
+  const { data: cities } = useQuery({ queryKey: ["cities"], queryFn: getCities, staleTime: Infinity });
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
   const badges = useNotificationBadges();
   const { data: myResponses, refetch: refetchResponses } = useQuery({ queryKey: ["my-responses"], queryFn: () => getMyResponses({ limit: 100 }) });
   const cityName = (cityId: string) => cities?.find((c) => c.id === cityId)?.name ?? cityId;
 
+  const firstName = me?.name?.trim().split(/\s+/)[0];
+  const myCity = cities?.find((c) => c.id === me?.cityId)?.name;
+  const subtitle = [firstName ? `${greeting()}, ${firstName}` : greeting(), myCity].filter(Boolean).join(" · ");
+
   // The API permits a new response after withdrawal, retaining the historical row.
   const respondedOrderIds = new Set((myResponses?.items ?? []).filter((r) => r.status !== "withdrawn").map((r) => r.orderId));
-  const visibleItems = [...new Map((data?.items ?? []).map((item) => [item.orderId, item])).values()].filter((item) => !hiddenIds[item.orderId]);
+  const allItems = (feed.data?.pages ?? []).flatMap((p) => p.items);
+  const visibleItems = [...new Map(allItems.map((item) => [item.orderId, item])).values()].filter((item) => !hiddenIds[item.orderId]);
 
   const refresh = async () => {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
     setRefreshing(true);
     try {
-      await Promise.all([refetch(), refetchResponses()]);
+      await Promise.all([feed.refetch(), refetchResponses()]);
     } finally {
       refreshInFlight.current = false;
       setRefreshing(false);
@@ -92,8 +102,7 @@ export default function OpportunitiesScreen() {
       const message = (code && RESPOND_ERROR_MESSAGES[code]) || RESPOND_ERROR_FALLBACK;
       setRespondErrors((prev) => ({ ...prev, [orderId]: message }));
     } finally {
-      // Инвалидируем и при ошибке: например, "уже откликался" — состояние
-      // должно подтянуться из GET /my/responses, а не просто скрыть ошибку.
+      // Инвалидируем и при ошибке: состояние должно подтянуться из GET /my/responses.
       try {
         await queryClient.invalidateQueries({ queryKey: ["my-responses"] });
       } finally {
@@ -104,52 +113,77 @@ export default function OpportunitiesScreen() {
   };
 
   const handleHide = (orderId: string) => setHiddenIds((prev) => ({ ...prev, [orderId]: true }));
+  const loadMore = () => { if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage(); };
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.headerPad, { paddingTop: insets.top + spacing.sm }]}>
-        <HomeHeader
-          active="opportunities"
-          opportunitiesCount={badges.opportunities}
-          ordersCount={badges.orders}
-        />
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} accessibilityRole="header">Ваши возможности</Text>
+          {badges.opportunities > 0 && (
+            <View style={styles.countChip} accessible accessibilityLabel={`Новых событий по откликам: ${badges.opportunities}`}>
+              <Text style={styles.countText}>{badges.opportunities}</Text>
+            </View>
+          )}
+        </View>
       </View>
 
-      {/*
-       * Упрощение рейтинга (2026-09-22): раньше здесь был баннер «Оценить»
-       * для исполнителя (оценка заказчика) — исполнитель заказчика больше
-       * не оценивает, баннер убран вместе с полем ratingPending в
-       * MyResponseItem (apps/mobile/src/api/my.ts).
-       */}
-      <View style={styles.extras}>
-        <QuickActions />
-        <Pressable onPress={() => void refresh()} disabled={refreshing} accessibilityRole="button">
-          <Text style={styles.retry}>{refreshing ? "Обновляем…" : "Обновить"}</Text>
-        </Pressable>
-      </View>
+      {feed.isLoading && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
 
-      {isLoading && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
-
-      {isError && (
+      {feed.isError && !feed.data && (
         <View style={styles.errorBox}>
           <Text style={styles.error}>Не удалось загрузить ленту.</Text>
-          <Pressable onPress={() => void refresh()} disabled={refreshing}>
+          <Pressable onPress={() => void refresh()} disabled={refreshing} accessibilityRole="button">
             <Text style={styles.retry}>Повторить</Text>
           </Pressable>
         </View>
       )}
 
-      {data && !isLoading && !isError && visibleItems.length === 0 && (
-        <Text style={styles.empty}>Пока нет подходящих заказов — как только AI найдёт совпадение, вы увидите его здесь.</Text>
+      {feed.data && !feed.isLoading && visibleItems.length === 0 && (
+        <View style={styles.emptyBox}>
+          <Text style={styles.empty}>{feed.hasNextPage ? "Все загруженные заказы скрыты. Можно посмотреть следующие." : "Пока нет подходящих заказов — как только AI найдёт совпадение, вы увидите его здесь."}</Text>
+          <Pressable onPress={() => router.push("/(tabs)/profile")} accessibilityRole="button" hitSlop={8}>
+            <Text style={styles.retry}>Изменить навыки и ресурсы</Text>
+          </Pressable>
+        </View>
       )}
 
-      {data && visibleItems.length > 0 && (
+      {feed.data && (
         <FlatList
+          style={styles.flex}
           data={visibleItems}
           onRefresh={() => void refresh()}
           refreshing={refreshing}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
           keyExtractor={(item) => item.orderId}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            <Pressable style={styles.refreshLink} onPress={() => void refresh()} disabled={refreshing} accessibilityRole="button" hitSlop={8}>
+              <Text style={styles.refreshText}>{refreshing ? "Обновляем…" : "Обновить"}</Text>
+            </Pressable>
+          }
+          ListFooterComponent={
+            feed.isFetchingNextPage ? (
+              <View style={styles.footer}><ActivityIndicator color={colors.primary} /><Text style={styles.footerText}>Подбираем ещё заказы…</Text></View>
+            ) : feed.isError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.error}>Не удалось обновить ленту.</Text>
+                <Pressable accessibilityRole="button" onPress={() => feed.isFetchNextPageError ? loadMore() : void refresh()}>
+                  <Text style={styles.retry}>Повторить загрузку</Text>
+                </Pressable>
+              </View>
+            ) : feed.hasNextPage && visibleItems.length === 0 ? (
+              <Pressable accessibilityRole="button" onPress={loadMore}>
+                <Text style={styles.retry}>Показать ещё заказы</Text>
+              </Pressable>
+            ) : !feed.hasNextPage ? (
+              <Text style={styles.footerText}>Это все подходящие заказы на сейчас. Новые появятся здесь.</Text>
+            ) : null
+          }
           renderItem={({ item }) => (
             <Pressable
               style={styles.cardWrapper}
@@ -196,19 +230,38 @@ export default function OpportunitiesScreen() {
           )}
         />
       )}
-    </View>
+
+      {!feed.data && <View style={styles.flex} />}
+      <CreateOrderComposer placeholder="Что вам нужно сделать?" bottomInset={false} />
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  extras: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
-  headerPad: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
-  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
+  container: { flex: 1, backgroundColor: colors.surface },
+  flex: { flex: 1 },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  subtitle: { ...typography.caption, color: colors.textSecondary },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, marginTop: 2 },
+  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: colors.textPrimary, flexShrink: 1 },
+  countChip: { minWidth: 28, height: 24, paddingHorizontal: 8, borderRadius: radii.pill, backgroundColor: colors.primaryTintBg, alignItems: "center", justifyContent: "center" },
+  countText: { ...typography.caption, fontWeight: "700", color: colors.primary },
+  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   cardWrapper: { marginBottom: spacing.sm },
-  empty: { ...typography.body, color: colors.textSecondary, paddingHorizontal: spacing.lg },
+  refreshLink: { alignSelf: "flex-end", paddingVertical: spacing.sm },
+  refreshText: { ...typography.caption, color: colors.primary, fontWeight: "600" },
+  emptyBox: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.sm },
+  empty: { ...typography.body, color: colors.textSecondary },
   spinner: { marginTop: spacing.lg },
-  errorBox: { paddingHorizontal: spacing.lg, gap: spacing.xs },
+  errorBox: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.xs },
   error: { ...typography.body, color: colors.danger },
   retry: { ...typography.body, color: colors.primary },
+  footer: { alignItems: "center", gap: spacing.xs, paddingVertical: spacing.md },
+  footerText: { ...typography.caption, color: colors.textSecondary, textAlign: "center", paddingVertical: spacing.md },
 });

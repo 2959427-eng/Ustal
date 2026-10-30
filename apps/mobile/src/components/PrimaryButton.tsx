@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   primary: { backgroundColor: colors.primary },
-  secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight },
+  secondary: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderLight },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
   label: { ...typography.subtitle, fontWeight: "600", color: colors.textInverse },

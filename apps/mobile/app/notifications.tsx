@@ -77,16 +77,16 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  container: { flex: 1, backgroundColor: colors.surface, padding: spacing.lg, gap: spacing.md },
   back: { marginBottom: spacing.xs },
   backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.title, color: colors.textPrimary },
+  title: { ...typography.title, fontSize: 28, lineHeight: 34, color: colors.textPrimary },
   spinner: { marginTop: spacing.lg },
   errorBox: { gap: spacing.xs },
   error: { ...typography.body, color: colors.danger },
   retry: { ...typography.body, color: colors.primary },
   empty: { ...typography.body, color: colors.textSecondary },
-  row: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.sm, gap: spacing.xs },
+  row: { backgroundColor: colors.background, borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.sm, gap: spacing.xs },
   rowHeader: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   dot: { width: 8, height: 8, borderRadius: radii.pill, backgroundColor: colors.primary },
   rowTitle: { ...typography.body, color: colors.textSecondary },

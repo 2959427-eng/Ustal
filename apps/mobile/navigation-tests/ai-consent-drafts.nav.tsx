@@ -4,7 +4,7 @@
  */
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act } from "react";
-import { Text } from "react-native";
+import { Text, Platform } from "react-native";
 import { router, Stack } from "expo-router";
 import { fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -127,8 +127,17 @@ describe("черновик профиля переживает окно согл
     expect(await screen.findByDisplayValue(PROFILE_TEXT)).toBeTruthy();
 
     fireEvent.press(screen.getByText("Сохранить"));
-    expect(await screen.findByText(/Вы не разрешили передачу данных в OpenAI/)).toBeTruthy();
-    expect(view.getPathname()).toBe("/profile");
+    if (Platform.OS === "android") {
+      // Android7 повторно открывает согласие только при отправке профиля после отказа.
+      expect(await screen.findByText("Как работает USTAL")).toBeTruthy();
+      expect(view.getPathname()).toBe("/ai-consent");
+      expect(posts("/profile/inputs")).toHaveLength(0);
+      fireEvent.press(screen.getByText("Не разрешаю"));
+      await waitFor(() => expect(view.getPathname()).toBe("/profile"));
+    } else {
+      expect(await screen.findByText(/Вы не разрешили передачу данных в OpenAI/)).toBeTruthy();
+      expect(view.getPathname()).toBe("/profile");
+    }
     expect(posts("/profile/inputs")).toHaveLength(0);
     expect(profileInput().props.value).toBe(PROFILE_TEXT);
     expect(readFormDraft("profile")).toBe(PROFILE_TEXT);
@@ -154,6 +163,13 @@ describe("черновик нового заказа переживает окн
     fireEvent.changeText(await screen.findByPlaceholderText("Опишите, что нужно сделать — своими словами"), "Покрасить забор");
     fireEvent.changeText(screen.getByPlaceholderText("Например, 2000"), "3000");
     fireEvent.press(screen.getByText("Продолжить"));
+    if (Platform.OS === "android") {
+      await waitFor(() => expect(view.getPathname()).toBe("/profile"));
+      expect(screen.queryByText("Как работает USTAL")).toBeNull();
+      expect(posts("/orders")).toHaveLength(0);
+      fireEvent.changeText(await screen.findByPlaceholderText(/Опишите себя текстом/), PROFILE_TEXT);
+      fireEvent.press(screen.getByText("Сохранить"));
+    }
     await screen.findByText("Как работает USTAL");
     fireEvent.press(await screen.findByText("Не разрешаю"));
     await waitFor(() => expect(view.getPathname()).toBe("/profile"));

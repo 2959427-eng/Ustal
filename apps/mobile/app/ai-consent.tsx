@@ -109,9 +109,9 @@ export default function AiConsentScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background, flexGrow: 1 },
+  content: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.surface, flexGrow: 1 },
   gap: { gap: spacing.md },
-  title: { fontSize: 24, fontWeight: "700", color: colors.textPrimary },
+  title: { fontSize: 28, fontWeight: "700", color: colors.textPrimary },
   text: { ...typography.body, color: colors.textPrimary },
   caption: { ...typography.caption, color: colors.textSecondary },
   error: { ...typography.caption, color: colors.danger },

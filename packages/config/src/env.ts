@@ -87,6 +87,15 @@ const envSchema = z
 
     ADMIN_SESSION_SECRET: z.string().min(16).optional(),
 
+    // Обращения в поддержку из приложения (POST /support). Пока не заданы — форма отвечает 503,
+    // ничего не теряется молча. Пароль — пароль приложения почтового ящика, не основной.
+    SUPPORT_EMAIL_TO: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
+    SMTP_HOST: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+    SMTP_USER: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    SMTP_PASSWORD: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    SMTP_FROM: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
+
     API_PORT: z.coerce.number().default(4000),
     ADMIN_PORT: z.coerce.number().default(4100),
   })

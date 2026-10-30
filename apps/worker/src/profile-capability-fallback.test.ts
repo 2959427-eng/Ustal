@@ -16,3 +16,10 @@ it("a physical resource extraction does not become a capability",()=>{
   expect(retain("есть самолёт",{capabilities:[],resources:[{label:"самолёт"}]},[{kind:"resource"}])).toEqual([]);
   expect(retain("есть самолёт",extracted("самолёт"),[{kind:"resource",subjectType:"physical_resource",phrase:"самолёт"}])).toEqual([]);
 });
+// «33 года» (2026-10-30): возраст/стаж из старого извлечения не возвращается навыком, когда нормализация его отбросила.
+it.each(["33 года","Мне 33 года","стаж 10 лет","полгода"])("does not retain age/duration-only %s",label=>{
+  expect(retain(`Мне 33 года. ${label}`,extracted(label),[])).toEqual([]);
+});
+it.each(["33 года за рулём","работаю сварщиком 10 лет"])("still retains a real ability with a duration: %s",text=>{
+  expect(retain(text,extracted(text),[])).toMatchObject([{kind:"capability",phrase:text}]);
+});

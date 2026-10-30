@@ -920,7 +920,7 @@ function MyResponsePanel({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   back: { marginBottom: spacing.xs },
   backText: { ...typography.body, color: colors.primary },

@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act } from "react";
-import { Text } from "react-native";
+import { Text, Platform } from "react-native";
 import { router, Stack } from "expo-router";
 import { fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -272,6 +272,13 @@ describe("v6: prefillText и состояние экрана заказа при
     renderRouter(routes(), { initialUrl: "/orders" });
     await openCreateFromComposer(ORDER_A);
     fireEvent.press(screen.getByText("Продолжить"));
+    if (Platform.OS === "android") {
+      const input = await screen.findByPlaceholderText(/Опишите себя текстом/);
+      expect(screen.queryByText("Как работает USTAL")).toBeNull();
+      expect(sent.filter((r) => r.path === "/orders" && r.method === "POST")).toEqual([]);
+      fireEvent.changeText(input, "Умею красить заборы");
+      fireEvent.press(screen.getByText("Сохранить"));
+    }
     fireEvent.press(await screen.findByText("Не разрешаю"));
     await screen.findByPlaceholderText(/Опишите себя текстом/);
     act(() => router.navigate("/create"));

@@ -1,5 +1,4 @@
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
-import { AiConsentNotice } from "../../src/components/AiConsentNotice";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { View, Text, TextInput, StyleSheet, ActivityIndicator, Image, Pressable, Switch, ScrollView } from "react-native";
@@ -236,7 +235,6 @@ export default function CreateOrderScreen() {
       <ScrollView contentContainerStyle={[styles.container, { flex: 0, flexGrow: 1 }]} keyboardShouldPersistTaps="handled">
         {CloseButton}
         <Text style={styles.title}>Что вам нужно?</Text>
-        <AiConsentNotice />
         <TextInput
           style={styles.textArea}
           multiline
@@ -296,7 +294,6 @@ export default function CreateOrderScreen() {
       <View style={styles.container}>
         {CloseButton}
         <Text style={styles.title}>Что вам нужно?</Text>
-        <AiConsentNotice />
         <View style={styles.processingBox}>
           {!pollTimedOut && <ActivityIndicator color={colors.primary} />}
           <Text style={styles.processingText}>AI обрабатывает заказ…</Text>
@@ -393,15 +390,15 @@ export default function CreateOrderScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  container: { flex: 1, backgroundColor: colors.surface, padding: spacing.lg, gap: spacing.md },
   topBar: { flexDirection: "row", justifyContent: "flex-end" },
   closeIcon: { fontSize: 20, color: colors.textSecondary, padding: 4 },
-  title: { ...typography.title, color: colors.textPrimary },
+  title: { ...typography.title, fontSize: 28, lineHeight: 34, color: colors.textPrimary },
   body: { ...typography.body, color: colors.textSecondary },
   label: { ...typography.caption, color: colors.textSecondary },
   textArea: {
     ...typography.body,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderRadius: radii.lg,
     padding: spacing.md,
     minHeight: 120,
@@ -423,7 +420,7 @@ const styles = StyleSheet.create({
   hint: { ...typography.caption, color: colors.textSecondary },
   processingBox: { alignItems: "center", gap: spacing.xs, padding: spacing.md },
   processingText: { ...typography.body, color: colors.textSecondary },
-  previewBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.xs },
+  previewBox: { backgroundColor: colors.background, borderRadius: radii.md, padding: spacing.md, gap: spacing.xs },
   previewTitle: { ...typography.subtitle, color: colors.textPrimary },
   previewDescription: { ...typography.body, color: colors.textSecondary },
   previewPrice: { ...typography.subtitle, color: colors.textPrimary, marginTop: spacing.xs },

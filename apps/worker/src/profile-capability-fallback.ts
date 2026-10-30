@@ -1,3 +1,5 @@
+import { isQuantityOnlyProfileText } from "@ustal/domain";
+
 /** Retain a literal, explicitly extracted ability if normalization omitted all
  * positive abilities. No ontology guessing, word dictionary or inferred skills.
  */
@@ -8,7 +10,7 @@ export function retainedExplicitCapabilities(text: string, extracted: unknown, f
   if (!Array.isArray(caps)) return [];
   return caps.flatMap(c => {
     const label=c.label?.trim();
-    if (!label || c.evidenceType!=="explicit" || (c.confidence??0)<0.85) return [];
+    if (!label || isQuantityOnlyProfileText(label) || c.evidenceType!=="explicit" || (c.confidence??0)<0.85) return [];
     if (facts.some(f=>f.kind==="resource" && f.subjectType==="physical_resource" && f.phrase?.trim().toLowerCase()===label.toLowerCase())) return [];
     const at=text.toLowerCase().indexOf(label.toLowerCase());
     if (at<0) return [];

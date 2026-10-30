@@ -1,5 +1,4 @@
 import { KeyboardAvoid } from "../../src/components/KeyboardAvoid";
-import { AiConsentNotice } from "../../src/components/AiConsentNotice";
 import { useEffect, useRef, useState } from "react";
 import { View, Text, TextInput, StyleSheet, ActivityIndicator, ScrollView, Keyboard, Pressable, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
@@ -246,7 +245,6 @@ export default function ProfileScreen() {
         <Text style={styles.backText}>← Назад</Text>
       </Pressable>
       <Text style={styles.title}>Навыки и ресурсы</Text>
-      <AiConsentNotice />
       {notice && <Text style={notice === "Сохранено" ? styles.success : styles.hint}>{notice}</Text>}
 
       {isLoading && <ActivityIndicator color={colors.primary} />}
@@ -347,23 +345,23 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.background },
+  scroll: { flex: 1, backgroundColor: colors.surface },
   success: { ...typography.body, color: colors.success },
-  container: { flexGrow: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  container: { flexGrow: 1, backgroundColor: colors.surface, padding: spacing.lg, gap: spacing.md },
   back: { marginBottom: spacing.xs },
   backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.title, color: colors.textPrimary },
+  title: { ...typography.title, fontSize: 28, lineHeight: 34, color: colors.textPrimary },
   error: { ...typography.caption, color: colors.danger },
   hint: { ...typography.caption, color: colors.textSecondary },
-  summaryBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.md },
+  summaryBox: { backgroundColor: colors.background, borderRadius: radii.md, padding: spacing.md, gap: spacing.md },
   summaryText: { ...typography.body, color: colors.textPrimary },
   processingBox: { alignItems: "center", gap: spacing.xs, padding: spacing.md },
   processingText: { ...typography.body, color: colors.textSecondary },
-  reviewBox: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.md, gap: spacing.sm },
+  reviewBox: { backgroundColor: colors.background, borderRadius: radii.md, padding: spacing.md, gap: spacing.sm },
   reviewTitle: { ...typography.subtitle, color: colors.textPrimary },
   textArea: {
     ...typography.body,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderRadius: radii.lg,
     padding: spacing.md,
     minHeight: 120,

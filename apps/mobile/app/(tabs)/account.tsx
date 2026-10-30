@@ -1,6 +1,5 @@
-import { LegalLinks } from "../../src/components/LegalLinks";
 import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, TextInput, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, TextInput, Image, Platform } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,13 +13,18 @@ import { getMediaUrl } from "../../src/api/media";
 import { ProfileBasicsModal } from "../../src/components/ProfileBasicsModal";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { ProfileSkillsStatus } from "../../src/components/ProfileSkillsStatus";
+import { PROFILE_EMPTY_CTA, profileSkillsView } from "../../src/lib/profile-skills-view";
+import { PROFILE_FILL_ROUTE } from "../../src/lib/ai-consent-flow";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
 type EditableField = "about" | "whatsapp";
 
 /**
+ * Новый интерфейс 2026-10-28: экран стал вкладкой «Профиль» нижней панели, прежние кнопки
+ * «Возможности / Заказы» убраны (их заменяет панель). Остальное без изменений.
+ *
  * «Мой профиль»: аватар, имя, город, о себе, WhatsApp, навыки и ресурсы (реальный AI-профиль),
- * «Заблокированные пользователи» и «Выйти». Открывается по аватарке/имени/городу в HomeHeader.
+ * «Заблокированные пользователи» и «Выйти». Открывается через нижнюю вкладку «Профиль».
  * С 2026-10-06 отдельной кнопки «Изменить профиль» нет: «О себе» и WhatsApp редактируются нажатием прямо на поле
  * (сохранение — «Готово» на клавиатуре или уход с поля). С 2026-10-17 аватар, имя и город — одним окном
  * «Основные данные» по нажатию на верхний блок профиля (ProfileBasicsModal, одно «Сохранить»).
@@ -28,7 +32,8 @@ type EditableField = "about" | "whatsapp";
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ["me"], queryFn: getMe });
-  const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: getProfile });
+  const profileQuery = useQuery({ queryKey: ["profile"], queryFn: getProfile });
+  const profile = profileQuery.data;
   const { data: reputation } = useQuery({ queryKey: ["my-reputation"], queryFn: getMyReputation });
   const queryClient = useQueryClient();
   const citiesQuery = useQuery({ queryKey: ["cities"], queryFn: getCities, staleTime: Infinity });
@@ -53,6 +58,7 @@ export default function AccountScreen() {
   };
 
   const { capabilities, resources } = recognizedLabels(profile);
+  const skillsView = profileSkillsView({ isLoading: profileQuery.isLoading, isError: profileQuery.isError, hasData: profile !== undefined, labels: { capabilities, resources } });
   const restrictions = restrictionGroups(profile);
 
   const save = async (field: EditableField, input: UpdateProfileInput) => {
@@ -91,16 +97,6 @@ export default function AccountScreen() {
         <Text style={styles.headerTitle}>Мой профиль</Text>
       </View>
 
-      <View style={styles.navTabs}>
-        <Pressable style={styles.navTab} onPress={() => router.navigate("/(tabs)")}>
-          <Text style={styles.navTabIcon}>💼</Text>
-          <Text style={styles.navTabText}>Возможности</Text>
-        </Pressable>
-        <Pressable style={styles.navTab} onPress={() => router.navigate("/(tabs)/orders")}>
-          <Text style={styles.navTabIcon}>📋</Text>
-          <Text style={styles.navTabText}>Заказы</Text>
-        </Pressable>
-      </View>
 
       {/* Одна точка редактирования аватара, имени и города (2026-10-17): всё меняется в окне «Основные данные»
           и сохраняется одним действием «Сохранить». */}
@@ -126,6 +122,16 @@ export default function AccountScreen() {
           )}
         </View>
       </Pressable>
+      {skillsView === "empty" && (
+        // Первый экран после регистрации: одно очевидное действие — открыть существующий экран ввода.
+        <View style={[styles.skillsCard, styles.ctaCard]} accessibilityLabel="Первый шаг: рассказать о своих возможностях">
+          <Text style={styles.ctaTitle} accessibilityRole="header">{PROFILE_EMPTY_CTA.title}</Text>
+          <Text style={styles.ctaText}>{PROFILE_EMPTY_CTA.description}</Text>
+          <PrimaryButton label={PROFILE_EMPTY_CTA.button} onPress={() => router.push(PROFILE_FILL_ROUTE)} />
+          <Text style={styles.ctaCaption}>{PROFILE_EMPTY_CTA.caption}</Text>
+          <ProfileSkillsStatus showEditButton={false} />
+        </View>
+      )}
 
       <Pressable
         style={styles.skillsCard}
@@ -200,11 +206,17 @@ export default function AccountScreen() {
         />
       )}
 
+      {skillsView !== "empty" && (
       <View style={styles.skillsCard}>
         <Text style={styles.sectionTitle}>Навыки и ресурсы</Text>
         {/* Раньше здесь были только навыки: профиль с одним ресурсом («есть машина») выглядел пустым. */}
-        {capabilities.length === 0 && resources.length === 0 ? (
-          <Text style={styles.hint}>Пока ничего не рассказали — AI соберёт профиль из голоса или текста.</Text>
+        {skillsView === "loading" ? (
+          <View style={styles.skillsStateRow}><ActivityIndicator color={colors.primary} /><Text style={styles.hint}>Загружаем профиль…</Text></View>
+        ) : skillsView === "error" ? (
+          <View style={{ gap: spacing.xs }}>
+            <Text style={styles.hint}>Не удалось загрузить навыки и ресурсы. Проверьте подключение.</Text>
+            <PrimaryButton label="Повторить" variant="secondary" onPress={() => { void profileQuery.refetch(); }} />
+          </View>
         ) : (
           <View style={{ gap: spacing.sm }}>
             {capabilities.length > 0 && (
@@ -233,8 +245,9 @@ export default function AccountScreen() {
             )}
           </View>
         )}
-        <ProfileSkillsStatus />
+        {skillsView === "filled" ? <ProfileSkillsStatus /> : null}
       </View>
+      )}
 
       {/* Явные ограничения пользователя его же словами (время, виды работ, «только …»). Нет — нет раздела. */}
       {restrictions.length > 0 && (
@@ -257,8 +270,12 @@ export default function AccountScreen() {
       {reputation && <ReputationBlock reputation={reputation} />}
 
       <PrimaryButton label="Заблокированные пользователи" variant="secondary" onPress={() => router.push("/blocked-users")} />
-      <LegalLinks />
-      <PrimaryButton label="Передача данных AI" variant="secondary" onPress={() => router.push("/ai-consent")} />
+      <PrimaryButton label="Написать в поддержку" variant="secondary" onPress={() => router.push("/support")} />
+      {Platform.OS !== "android" && (
+      <Pressable accessibilityRole="link" onPress={() => router.push("/ai-consent")} style={{ minHeight: 44, justifyContent: "center" }}>
+        <Text style={{ ...typography.caption, color: colors.textSecondary, textDecorationLine: "underline" }}>Управление согласием ИИ</Text>
+      </Pressable>
+      )}
       <PrimaryButton label="Удалить аккаунт" variant="secondary" onPress={() => router.push("/delete-account")} />
 
       {!confirmingLogout && (
@@ -298,23 +315,10 @@ const styles = StyleSheet.create({
   cancelText: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
   confirmButton: { flex: 1, backgroundColor: colors.danger, borderRadius: radii.button, paddingVertical: 11, alignItems: "center" },
   confirmButtonText: { ...typography.body, fontWeight: "600", color: colors.textInverse },
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
-  navTabs: { flexDirection: "row", gap: spacing.sm },
-  navTab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 13,
-    borderRadius: radii.button,
-    backgroundColor: colors.surface,
-  },
-  navTabIcon: { fontSize: 14 },
-  navTabText: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -342,6 +346,11 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary },
   hint: { ...typography.caption, color: colors.textSecondary },
+  skillsStateRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  ctaCard: { borderColor: colors.primary, borderWidth: 1.5, gap: spacing.md },
+  ctaTitle: { ...typography.title, color: colors.textPrimary },
+  ctaText: { ...typography.body, color: colors.textSecondary },
+  ctaCaption: { ...typography.caption, color: colors.textSecondary, textAlign: "center", marginTop: -spacing.xs },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   restrictionRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs },
   restrictionMark: { fontSize: 12, lineHeight: 20 },

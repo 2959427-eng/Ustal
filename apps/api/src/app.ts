@@ -25,6 +25,7 @@ import contactsRoutes from "./routes/contacts.js";
 import assignmentsRoutes from "./routes/assignments.js";
 import reviewsRoutes from "./routes/reviews.js";
 import reportsRoutes from "./routes/reports.js";
+import supportRoutes from "./routes/support.js";
 import blocksRoutes from "./routes/blocks.js";
 import myRoutes from "./routes/my.js";
 import notificationsRoutes from "./routes/notifications.js";
@@ -132,6 +133,7 @@ export async function buildApp() {
   await app.register(assignmentsRoutes);
   await app.register(reviewsRoutes);
   await app.register(reportsRoutes);
+  await app.register(supportRoutes);
   await app.register(blocksRoutes);
   await app.register(myRoutes);
   await app.register(notificationsRoutes);

@@ -23,4 +23,19 @@ describe("profile items: label and attributes in GET /profile", () => {
     expect(withItemAttributes(rows, facts).map((r) => [r.label, r.itemAttributes])).toEqual([
       ["Газель", [{ key: "payload", value: 1.5, unit: "t" }]], ["Машина", []], ["Грузовая машина", [{ key: "payload", value: 5, unit: "t" }]], ["Дрель", []]]);
   });
+  // «33 года» (2026-10-30): уже сохранённые записи только из возраста/длительности не показываются в «Что я умею».
+  it("hides saved age/duration-only items, shows the phrase for a duration-only label, keeps real skills", () => {
+    expect(pickUnmappedFacts([
+      { kind: "capability", phrase: "33 года", label: "33 года", nodeIds: [], constraintType: "none" },
+      { kind: "capability", phrase: "Мне 33 года", nodeIds: [] },
+      { kind: "capability", phrase: "полгода", nodeIds: [] },
+      { kind: "capability", phrase: "работаю сварщиком 10 лет", label: "10 лет", nodeIds: [] },
+      { kind: "capability", phrase: "33 года за рулём", label: "Вождение", nodeIds: [] },
+      { kind: "capability", phrase: "опыт вождения 10 лет", nodeIds: [] },
+    ])).toEqual([
+      { kind: "capability", phrase: "работаю сварщиком 10 лет" },
+      { kind: "capability", phrase: "Вождение" },
+      { kind: "capability", phrase: "опыт вождения 10 лет" },
+    ]);
+  });
 });

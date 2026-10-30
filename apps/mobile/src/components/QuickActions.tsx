@@ -39,14 +39,6 @@ export function OrdersQuickActions() {
   );
 }
 
-export function QuickActions() {
-  return (
-    <View style={styles.row}>
-      <QuickActionCard icon="paper-plane-outline" title="Мои отклики" subtitle="Смотреть отклики" href="/responses" />
-      <QuickActionCard icon="time-outline" title="История" subtitle="Заказы, которые я выполнял" href={{ pathname: "/archive", params: { role: "executor" } }} />
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: spacing.sm },

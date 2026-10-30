@@ -14,7 +14,7 @@ import { deduplicateProfileResourceFacts } from "./profile-resource-identity.js"
 import { guardProfileUpdate, mentionsTime } from "./profile-update-guard.js";
 import { retainedExplicitCapabilities } from "./profile-capability-fallback.js";
 import { normalizeAttributes, normalizeLabel } from "./profile-item-attributes.js";
-import { normalizeProfileItemIdentity } from "@ustal/domain";
+import { normalizeProfileItemIdentity, withoutQuantityOnlyProfileItems } from "@ustal/domain";
 
 // v3.1 (2026-10-17): дни недели из нормализации — явный знак daysMode, сервер приводит к разрешённым дням. Документы
 // прежней версии (возможна инверсия «не работаю по …») распознаются по processingVersion для переобработки.
@@ -188,6 +188,9 @@ export async function prepareDocument(
     throw new Error(
       "Semantic normalization returned unsupported source evidence",
     );
+  // «33 года» в «Что я умею» (2026-10-30): возраст/стаж/длительность без деятельности — не навык и не ресурс
+  // (детерминированно, промпт не меняется). «33 года за рулём», «работаю сварщиком 10 лет» остаются.
+  if (kind === "profile") parsed.facts = withoutQuantityOnlyProfileItems(parsed.facts);
 
   // Career context (the person's own job search: desired position/salary, openness to offers,
   // relocation or business-trip readiness) is never a constraint on service work: a refusal/scope/
@@ -442,7 +445,8 @@ export async function prepareDocument(
       addedFacts = guardAdded;
       history = prior.facts.filter((f) => (f.kind as string) === SUPERSEDED_KIND);
       removedMarkers = guard.history;
-      const kept = priorActive.filter((f) => !guard.dropped.has(f)).map((f): Ordered => ({ ...f, messageOrder: PRIOR_ORDER }));
+      // Ранее сохранённый пункт только из возраста/длительности («33 года») не переносится в новую версию.
+      const kept = withoutQuantityOnlyProfileItems(priorActive.filter((f) => !guard.dropped.has(f))).map((f): Ordered => ({ ...f, messageOrder: PRIOR_ORDER }));
       const added = guardAdded.map((f): Ordered => ({ ...f,
         messageOrder: { seg: 1, pos: NEW_MESSAGE_POS + Math.max(0, text.lastIndexOf(f.evidence)) } }));
       // Отзыв навыка, который guard снял по сообщению, — тоже отзыв (в «Ограничениях» не показывается).

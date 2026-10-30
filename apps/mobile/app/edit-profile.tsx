@@ -186,12 +186,12 @@ export default function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
+  container: { flex: 1, backgroundColor: colors.surface, padding: spacing.lg },
   content: { paddingBottom: spacing.xxl },
   back: { marginBottom: spacing.xs },
   backText: { ...typography.body, color: colors.primary },
   gap: { gap: spacing.sm, marginTop: spacing.md },
-  title: { ...typography.title, color: colors.textPrimary },
+  title: { ...typography.title, fontSize: 28, lineHeight: 34, color: colors.textPrimary },
   sectionTitle: { ...typography.subtitle, fontWeight: "700", color: colors.textPrimary, marginTop: spacing.sm },
   label: { ...typography.caption, color: colors.textSecondary },
   hintText: { ...typography.caption, color: colors.textSecondary },

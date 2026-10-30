@@ -43,7 +43,10 @@ describe("все ссылки на документы в приложении о
     const { readFileSync } = await import("node:fs");
     const src = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
     expect(src("src/components/LegalLinks.tsx")).not.toMatch(/Linking|openURL/);
-    for (const screen of ["app/(auth)/register.tsx", "app/(auth)/login.tsx", "app/(auth)/select-city.tsx", "app/(tabs)/account.tsx", "app/ai-consent.tsx"]) {
+    // Аккаунт: документы показываются только при регистрации/входе (решение владельца 2026-10-29); поддержка — форма.
+    expect(src("app/(tabs)/account.tsx")).not.toMatch(/LegalLinks|LegalDocument|legalUrl\(|Linking|openURL/);
+    expect(src("app/(tabs)/account.tsx")).toMatch(/router\.push\("\/support"\)/);
+    for (const screen of ["app/(auth)/register.tsx", "app/support.tsx", "app/(auth)/login.tsx", "app/(auth)/select-city.tsx", "app/ai-consent.tsx"]) {
       // Встроенные ссылки в тексте отметок (регистрация) открывают то же окно LegalDocumentModal напрямую.
       expect(src(screen)).toMatch(/<LegalLinks? |<LegalDocumentModal /);
       expect(src(screen)).not.toMatch(/legalUrl\(|Linking|openURL/);

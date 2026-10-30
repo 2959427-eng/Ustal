@@ -1,4 +1,4 @@
-import { normalizeProfileItemIdentity } from "@ustal/domain";
+import { normalizeProfileItemIdentity, profileItemDisplayText } from "@ustal/domain";
 
 /**
  * Дифф черновика профиля по ontologyNodeId (а не по label): тот же узел с другой
@@ -58,7 +58,10 @@ export function pickUnmappedFacts(facts: FactRow[], mappedLabels: string[] = [])
     // Отказ («больше не делаю …») — ограничение для matching, а не текущий навык.
     if (f.constraintType === "exclusion") continue;
     if (f.kind === "resource" && f.resourceRole && HIDDEN_RESOURCE_ROLES.has(f.resourceRole)) continue;
-    const shown = (f.label || f.phrase).trim();
+    // Уже сохранённый пункт только из возраста/длительности («33 года») не показывается; подпись «33 года» у
+    // содержательной фразы заменяется фразой (2026-10-30). Данные в БД не меняются.
+    const shown = profileItemDisplayText(f.label, f.phrase);
+    if (!shown) continue;
     const key = normalizeProfileItemIdentity(shown);
     if (!key || seen.has(key)) continue;
     seen.add(key);

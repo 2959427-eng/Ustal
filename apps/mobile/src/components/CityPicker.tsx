@@ -3,14 +3,15 @@ import { View, Text, TextInput, Pressable, FlatList, ActivityIndicator, StyleShe
 import type { City } from "../api/cities";
 import { colors, spacing, typography } from "../theme/tokens";
 
-import { filterCities } from "../utils/citySearch";
+import { filterCityIndex, prepareCitySearch } from "../utils/citySearch";
 
 export function CityPicker({ cities, loading, error, onRetry, selectedId, busyId, onSelect }: {
   cities: City[]; loading: boolean; error?: boolean; onRetry: () => void;
   selectedId?: string | null; busyId?: string | null; onSelect: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const filtered = useMemo(() => filterCities(cities, query), [cities, query]);
+  const index = useMemo(() => prepareCitySearch(cities), [cities]);
+  const filtered = useMemo(() => filterCityIndex(index, query), [index, query]);
   return <View style={styles.container}>
     <TextInput style={styles.search} value={query} onChangeText={setQuery} placeholder="Название города или региона" accessibilityLabel="Поиск города" autoCorrect={false} />
     {loading ? <ActivityIndicator color={colors.primary} /> : error ? <View>

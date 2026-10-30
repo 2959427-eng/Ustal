@@ -47,7 +47,7 @@ export default function UserProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing.lg, gap: spacing.lg },
   back: { color: colors.primary, fontSize: 16 },
   center: { alignItems: "center", gap: 8, marginTop: spacing.lg },

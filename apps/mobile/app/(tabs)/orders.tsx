@@ -1,16 +1,15 @@
 import { useCallback, useState } from "react";
-import { View, Text, TextInput, KeyboardAvoidingView, Platform, StyleSheet, FlatList, Pressable, ActivityIndicator, Image, Alert } from "react-native";
+import { View, Text, KeyboardAvoidingView, Platform, StyleSheet, FlatList, Pressable, ActivityIndicator, Image, Alert } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { getMediaUrl } from "../../src/api/media";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SwipeToDelete } from "../../src/components/SwipeToDelete";
 import { canDeleteOrder } from "../../src/lib/order-delete";
-import { formDraftSession, readFormDraft, useOnSessionChange, writeFormDraft } from "../../src/lib/form-drafts";
 import { cancelOrder } from "../../src/api/orders";
-import { HomeHeader } from "../../src/components/HomeHeader";
-import { useNotificationBadges } from "../../src/notifications/badges";
-import { OrdersQuickActions } from "../../src/components/QuickActions";
+import { OrdersQuickActions, QuickActionCard } from "../../src/components/QuickActions";
+import { CreateOrderComposer } from "../../src/components/CreateOrderComposer";
+import { MyResponsesList } from "../../src/components/MyResponsesList";
 import { myKeys, getMyOrders, type MyOrderItem } from "../../src/api/my";
 import type { OrderStatus } from "../../src/api/orders";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
@@ -32,108 +31,72 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 };
 
 /**
- * «Заказы» — то, что опубликовал сам пользователь (раздел 19/26 ТЗ, макет
- * Main.dc.html). GET /my/orders. Композер «Создать заказ» закреплён над
- * клавиатурой — переход в app/(tabs)/create.tsx с предзаполнением (раздел 6 ТЗ).
- * Только текст — голосовой ввод из композера и всего флоу создания заказа
- * убран по просьбе пользователя (было неочевидно, что запись — это ввод для
- * AI, а не голосовое сообщение, и путало). Второй из двух главных экранов
- * нижней навигации — см. app/(tabs)/index.tsx ("Возможности").
+ * «Заказы» (новый интерфейс 2026-10-28): вкладка нижней панели с двумя разделами.
+ * «Мои заказы» — то, что опубликовал сам пользователь (GET /my/orders, раздел 19/26 ТЗ), «Архив заказов»
+ * и поле «Создать заказ» (src/components/CreateOrderComposer — та же логика prefill, что была здесь).
+ * «Мои отклики» — прежний экран откликов (src/components/MyResponsesList, GET /my/responses) и «История»
+ * (app/archive.tsx?role=executor) — раньше были быстрыми карточками на «Возможностях».
  */
 export default function OrdersScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [segment, setSegment] = useState<"orders" | "responses">("orders");
   const { data, isLoading, isError, isRefetching, refetch } = useQuery({ queryKey: myKeys.orders(), queryFn: () => getMyOrders() });
   useFocusEffect(useCallback(() => { void refetch(); }, [refetch]));
 
   // Архивные заказы (оценены/пропущены, не выполнены, закрыты) живут в «Архиве заказов».
   const activeOrders = (data?.items ?? []).filter((o) => o.status !== "cancelled" && !o.archived);
-  const badges = useNotificationBadges();
-
-  const [needText, setNeedText] = useState("");
-  const canContinue = needText.trim().length > 0;
-  // Вкладка остаётся примонтированной: текст композера прежнего пользователя не переходит к следующему.
-  useOnSessionChange(useCallback(() => setNeedText(""), []));
-
-  const handlePublish = () => {
-    if (!canContinue) return;
-    const draftSession = formDraftSession();
-    const current = readFormDraft("order", draftSession);
-    // Начатый на экране заказа черновик не перезаписываем (как и раньше: prefill — только в пустую форму).
-    if (!current?.text.trim()) writeFormDraft("order", { text: needText.trim(), priceText: current?.priceText ?? "", acceptsPriceOffers: current?.acceptsPriceOffers ?? false, photos: current?.photos ?? [] }, draftSession);
-    router.push({
-      pathname: "/(tabs)/create",
-      // prefillSession — криптостойкий id сессии (не данные): экран заказа восстанавливает текст только в этой же
-      // сессии и этом же запуске. Текст также кладётся в черновик заказа (память, привязка к сессии).
-      params: { prefillText: needText.trim(), prefillSession: formDraftSession().id ?? "" },
-    });
-    // Текст уже передан на экран создания заказа; вкладка «Заказы» остаётся примонтированной,
-    // поэтому без очистки в поле после публикации висел бы прошлый заказ.
-    setNeedText("");
-  };
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior="padding">
-      <FlatList
-        refreshing={isRefetching}
-        onRefresh={() => { void refetch(); }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-        data={activeOrders}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          <View style={[styles.headerPad, { paddingTop: insets.top + spacing.sm }]}>
-            <HomeHeader active="orders" opportunitiesCount={badges.opportunities} ordersCount={badges.orders} />
-            <View style={styles.linksRow}>
-              <OrdersQuickActions />
-            </View>
-          </View>
-        }
-        ListEmptyComponent={
-          isLoading ? (
-            <ActivityIndicator color={colors.primary} style={styles.spinner} />
-          ) : isError ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.error}>Не удалось загрузить список.</Text>
-              <Pressable onPress={() => refetch()}>
-                <Text style={styles.retry}>Повторить</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <Text style={styles.empty}>Вы ещё не создавали заказов — опишите, что нужно, ниже.</Text>
-          )
-        }
-        renderItem={({ item }) => <MyOrderRow item={item} />}
-      />
-      <View style={[styles.composerDock, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-        <View style={styles.composer}>
-          <TextInput
-            accessibilityLabel="Создать заказ"
-            style={styles.input}
-            value={needText}
-            onChangeText={setNeedText}
-            placeholder="Создать заказ"
-            placeholderTextColor={colors.textSecondary}
-            multiline
-            autoCapitalize="sentences"
-            textAlignVertical="center"
-          />
-          {canContinue && (
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Text style={styles.title} accessibilityRole="header">Заказы</Text>
+        <View style={styles.segments} accessibilityRole="tablist">
+          {([["orders", "Мои заказы"], ["responses", "Мои отклики"]] as const).map(([key, label]) => (
             <Pressable
-              onPress={handlePublish}
-              style={styles.sendButton}
-              accessibilityRole="button"
-              accessibilityLabel="Продолжить создание заказа"
+              key={key}
+              style={[styles.segment, segment === key && styles.segmentActive]}
+              onPress={() => setSegment(key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: segment === key }}
             >
-              <View accessible={false} style={styles.arrow}>
-                <View style={styles.arrowStem} />
-                <View style={styles.arrowHead} />
-              </View>
+              <Text style={[styles.segmentText, segment === key && styles.segmentTextActive]}>{label}</Text>
             </Pressable>
-          )}
+          ))}
         </View>
       </View>
+
+      {segment === "orders" ? (
+        <FlatList
+          refreshing={isRefetching}
+          onRefresh={() => { void refetch(); }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          data={activeOrders}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={<View style={styles.linksRow}><OrdersQuickActions /></View>}
+          ListEmptyComponent={
+            isLoading ? (
+              <ActivityIndicator color={colors.primary} style={styles.spinner} />
+            ) : isError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.error}>Не удалось загрузить список.</Text>
+                <Pressable onPress={() => refetch()}>
+                  <Text style={styles.retry}>Повторить</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.empty}>Вы ещё не создавали заказов — опишите, что нужно, ниже.</Text>
+            )
+          }
+          renderItem={({ item }) => <MyOrderRow item={item} />}
+        />
+      ) : (
+        <MyResponsesList
+          header={<View style={styles.linksRow}><QuickActionCard icon="time-outline" title="История" subtitle="Заказы, которые я выполнял" href={{ pathname: "/archive", params: { role: "executor" } }} /></View>}
+        />
+      )}
+      <CreateOrderComposer bottomInset={false} />
     </KeyboardAvoidingView>
   );
 }
@@ -184,9 +147,15 @@ function MyOrderRow({ item }: { item: MyOrderItem }) {
 const styles = StyleSheet.create({
   photoRow: { flexDirection: "row", gap: spacing.xs },
   photo: { width: 64, height: 64, borderRadius: radii.md },
-  container: { flex: 1, backgroundColor: colors.background },
-  headerPad: { marginBottom: spacing.md },
-  linksRow: { marginTop: spacing.md },
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: colors.textPrimary, marginBottom: spacing.md },
+  segments: { flexDirection: "row", backgroundColor: colors.surfaceAlt, borderRadius: radii.md, padding: 2 },
+  segment: { flex: 1, minHeight: 40, borderRadius: radii.sm, alignItems: "center", justifyContent: "center" },
+  segmentActive: { backgroundColor: colors.background, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segmentText: { ...typography.body, fontWeight: "500", color: colors.textSecondary },
+  segmentTextActive: { color: colors.textPrimary, fontWeight: "600" },
+  linksRow: { marginTop: spacing.md, marginBottom: spacing.sm },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
   empty: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.sm },
   spinner: { marginTop: spacing.lg, marginBottom: spacing.md },
@@ -207,23 +176,4 @@ const styles = StyleSheet.create({
   myOrderStatus: { ...typography.caption, color: colors.textTertiary },
   myOrderStatusPending: { ...typography.caption, fontWeight: "700", color: colors.primary },
   myOrderPrice: { ...typography.subtitle, fontWeight: "700", color: colors.primary },
-  composerDock: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.background },
-  composer: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 58,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 29,
-    paddingLeft: 20,
-    paddingRight: 6,
-    paddingVertical: 6,
-    gap: 2,
-  },
-  input: { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingVertical: 11, paddingHorizontal: 0, fontSize: 16, lineHeight: 22, color: colors.textPrimary },
-  sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.textPrimary, alignItems: "center", justifyContent: "center" },
-  arrow: { width: 22, height: 22, alignItems: "center" },
-  arrowStem: { position: "absolute", top: 3, width: 2, height: 17, borderRadius: 1, backgroundColor: colors.textInverse },
-  arrowHead: { position: "absolute", top: 3, width: 11, height: 11, borderTopWidth: 2, borderLeftWidth: 2, borderColor: colors.textInverse, transform: [{ rotate: "45deg" }] },
 });

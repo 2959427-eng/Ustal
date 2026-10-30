@@ -33,7 +33,8 @@ export function draftPollInterval(waitingSince: number | null, serverProcessing:
   return serverProcessing ? 30_000 : false;
 }
 
-export function ProfileSkillsStatus() {
+/** showEditButton=false — на пустом профиле: там главная кнопка своя, статус AI при этом остаётся. */
+export function ProfileSkillsStatus({ showEditButton = true }: { showEditButton?: boolean } = {}) {
   const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
   // Подписка на отметку «текст отправлен» (экран «Мой профиль» — вкладка, остаётся смонтированным).
@@ -155,7 +156,7 @@ export function ProfileSkillsStatus() {
           AI пока не ответил — ваш текст сохранён на сервере. Проверьте позже или попробуйте ещё раз.
         </Text>
       )}
-      <PrimaryButton label="Изменить навыки и ресурсы" variant="secondary" onPress={() => router.push("/(tabs)/profile")} />
+      {showEditButton ? <PrimaryButton label="Изменить навыки и ресурсы" variant="secondary" onPress={() => router.push("/(tabs)/profile")} /> : null}
     </View>
   );
 }

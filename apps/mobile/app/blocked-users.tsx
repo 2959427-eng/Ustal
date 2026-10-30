@@ -72,10 +72,10 @@ export default function BlockedUsersScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
+  container: { flex: 1, backgroundColor: colors.surface, padding: spacing.lg, gap: spacing.md },
   back: { marginBottom: spacing.xs },
   backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.title, color: colors.textPrimary },
+  title: { ...typography.title, fontSize: 28, lineHeight: 34, color: colors.textPrimary },
   spinner: { marginTop: spacing.lg },
   errorBox: { gap: spacing.xs },
   error: { ...typography.body, color: colors.danger },
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderRadius: radii.md,
     padding: spacing.md,
     marginBottom: spacing.sm,

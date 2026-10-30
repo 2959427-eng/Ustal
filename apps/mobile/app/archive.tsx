@@ -107,10 +107,10 @@ export default function ArchiveScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg, gap: spacing.md },
-  title: { ...typography.title, color: colors.textPrimary },
+  container: { flex: 1, backgroundColor: colors.surface, paddingHorizontal: spacing.lg, gap: spacing.md },
+  title: { ...typography.title, fontSize: 28, lineHeight: 34, color: colors.textPrimary },
   segments: { flexDirection: "row", gap: spacing.sm },
-  segment: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: radii.button, backgroundColor: colors.surface },
+  segment: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: radii.button, backgroundColor: colors.background },
   segmentActive: { backgroundColor: colors.textPrimary },
   segmentText: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
   segmentTextActive: { color: colors.textInverse },
