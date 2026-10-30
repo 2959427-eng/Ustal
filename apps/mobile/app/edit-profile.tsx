@@ -10,6 +10,7 @@ import { getProfile, getProfileDraft, recognizedLabels, updateProfile } from "..
 import { AvatarPicker } from "../src/components/AvatarPicker";
 import { KeyboardAvoid } from "../src/components/KeyboardAvoid";
 import { PrimaryButton } from "../src/components/PrimaryButton";
+import { normalizeWhatsappPhone, profileSaveError, WHATSAPP_PHONE_ERROR } from "../src/lib/whatsapp-phone";
 import { colors, spacing, typography, radii } from "../src/theme/tokens";
 
 /**
@@ -40,13 +41,14 @@ export default function EditProfileScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [syncedMeData, setSyncedMeData] = useState<typeof meQuery.data>(undefined);
+  const [whatsappEdited, setWhatsappEdited] = useState(false);
 
   // Синхронизируем поля формы с данными аккаунта при их появлении/изменении
   // (паттерн React "adjusting state when a prop changes", без useEffect).
   if (meQuery.data && meQuery.data !== syncedMeData) {
     setSyncedMeData(meQuery.data);
     setName(meQuery.data.name);
-    setWhatsapp(meQuery.data.whatsappPhone ?? "");
+    if (!whatsappEdited) setWhatsapp(meQuery.data.whatsappPhone ?? "");
     setAbout(meQuery.data.about ?? "");
     setCityId(meQuery.data.cityId);
   }
@@ -65,18 +67,26 @@ export default function EditProfileScreen() {
     setSaveError(null);
     setSaved(false);
     setSaving(true);
+    let whatsappPhone: string | null | undefined;
+    let whatsappInvalid = false;
+    try { whatsappPhone = normalizeWhatsappPhone(whatsapp); }
+    catch { whatsappInvalid = true; }
     try {
       await updateProfile({
         name: name.trim() || undefined,
         cityId: cityId ?? undefined,
-        whatsappPhone: whatsapp.trim() ? whatsapp.trim() : null,
+        ...(whatsappInvalid ? {} : { whatsappPhone }),
         about: about.trim() ? about.trim() : null,
       });
       await queryClient.invalidateQueries({ queryKey: ["me"] });
+      if (whatsappInvalid) {
+        setSaveError(`Остальные данные сохранены. ${WHATSAPP_PHONE_ERROR}`);
+        return;
+      }
       setSaved(true);
       router.back();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Не удалось сохранить.");
+      setSaveError(profileSaveError(err));
     } finally {
       setSaving(false);
     }
@@ -151,7 +161,8 @@ export default function EditProfileScreen() {
             <TextInput
               style={styles.input}
               value={whatsapp}
-              onChangeText={(v) => { setWhatsapp(v); setSaved(false); }}
+              accessibilityLabel="WhatsApp"
+              onChangeText={(v) => { setWhatsapp(v); setWhatsappEdited(true); setSaved(false); }}
               placeholder="+7 900 000-00-00"
               keyboardType="phone-pad"
             />

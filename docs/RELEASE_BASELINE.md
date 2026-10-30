@@ -1,3 +1,7 @@
+## Approved WhatsApp mobile tester snapshot — 2026-10-31
+
+Base HEAD412e069aafaa66bcd0699f89a14d7e50bb490684. Only mobile WhatsApp normalization, optional clearing, Russian errors and independent profile-field saving, with regression tests and release records. Typecheck/lint PASS, API-contract Vitest18, iOS26/Android26. Owner authorizes release commit/push and delivery to existing TestFlight/Internal Testing groups. Production API https://api.ustal.site; OTA OFF; no server deploy or public store release. Previous entries are historical.
+
 ## Current approved student metadata snapshot — 2026-10-30
 
 Base HEAD `655e548292ce8e34c9b12b918c2af38cdca73d54`; owner-approved patch SHA256 `831ea24e53e36266ccb32c2ece88e7d51a892bbeab922ce61d26fb4b081f24fa`. Narrow matching admission excludes status/age/work intention without activity and prevents order resources alone opening the match door. Existing profile resources/related skills retained. Prompts, mobile, schema and all unrelated runtime sources unchanged. Live holdout100 FN0/FP0/anomalies0; affected typechecks and domain128/matching240/local integration71 PASS. Commit/push authorized only release/ustal-1.0.0; controlled API/worker-only rollout requires verified backup/restore. No paid rerun, migrations, mass reprocess or EAS Build. Earlier entries are history.

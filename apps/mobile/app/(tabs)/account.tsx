@@ -15,6 +15,7 @@ import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { ProfileSkillsStatus } from "../../src/components/ProfileSkillsStatus";
 import { PROFILE_EMPTY_CTA, profileSkillsView } from "../../src/lib/profile-skills-view";
 import { PROFILE_FILL_ROUTE } from "../../src/lib/ai-consent-flow";
+import { normalizeWhatsappPhone, profileSaveError } from "../../src/lib/whatsapp-phone";
 import { colors, spacing, typography, radii } from "../../src/theme/tokens";
 
 type EditableField = "about" | "whatsapp";
@@ -68,7 +69,7 @@ export default function AccountScreen() {
       await queryClient.invalidateQueries({ queryKey: ["me"] });
       return true;
     } catch (err) {
-      Alert.alert("Не удалось сохранить", err instanceof Error ? err.message : "Попробуйте ещё раз.");
+      Alert.alert("Не удалось сохранить", profileSaveError(err));
       return false;
     } finally {
       setSavingField(null);
@@ -88,7 +89,13 @@ export default function AccountScreen() {
     setEditing(null);
     if (v === current) return;
     if (field === "about") await save("about", { about: v || null });
-    else await save("whatsapp", { whatsappPhone: v || null });
+    else {
+      try {
+        await save("whatsapp", { whatsappPhone: normalizeWhatsappPhone(v) });
+      } catch (err) {
+        Alert.alert("Проверьте WhatsApp", profileSaveError(err));
+      }
+    }
   };
 
   return (
@@ -185,6 +192,7 @@ export default function AccountScreen() {
             keyboardType="phone-pad"
             autoFocus
             placeholder="+7 900 000-00-00"
+            accessibilityLabel="WhatsApp"
           />
         ) : (
           <Text style={me?.whatsappPhone ? styles.aboutText : styles.hint}>
