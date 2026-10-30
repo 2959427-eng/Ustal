@@ -21,6 +21,7 @@ export interface Relation {
   toNodeId: string;
   relationType: string;
 }
+import { isPersonMetadataOnlyProfileText } from "@ustal/domain";
 export const SEMANTIC_POLICY = {
   version: "semantic-score-v2.12",
   shortlist: 150,
@@ -558,7 +559,12 @@ export function evaluateSemantic(input: {
     // not a "required" one, so it never increments resourceHits at all: if physicalReviewRequired
     // was true, reaching this point already proves semanticReview passed the earlier hard gate
     // above, so it is a safe, equally-narrow door in alongside resourceHits.
-    (caps.length || resourceHits > 0 || resourceReviewRequired || input.requirements.some(r => r.kind === "resource"))
+    // False positive 2026-10-30: the door must be opened by the PROFILE -- a capability that names an activity (not only
+    // status/study/age/intent: «Студент», «ищу подработку», «33 года», «готов учиться») or a stated resource. An order
+    // resource requirement alone, or a positive review alone, never opens it. Checked at match time, so old profiles too.
+    (caps.some((c) => !isPersonMetadataOnlyProfileText(c.phrase)) ||
+      (input.capabilities.some((f) => f.kind === "resource" && f.resourceRole !== "missing") &&
+        (resourceHits > 0 || resourceReviewRequired || input.requirements.some(r => r.kind === "resource"))))
   )
     classification = "semantic-only";
   else return reject("insufficient_capability_evidence");
